@@ -9,7 +9,7 @@ import type { Cart, Grant } from "@/engine/types";
 import { settlePurchase, proposePurchase, type Deps } from "@/flows/purchase";
 import { ledgerView } from "@/ledger/ledger";
 import {
-  ApprovalError, decideApproval, pendingApprovals, proposeShop, requestApproval, teenMessage,
+  ApprovalError, decideApproval, normaliseDomain, pendingApprovals, proposeShop, requestApproval, teenMessage,
 } from "@/flows/approvals";
 
 const DOMAIN = "books.example";
@@ -88,7 +88,7 @@ describe("approvals", () => {
   it("week boundary: approval expired, purchase expired, new week budget fresh", async () => {
     const { familyId, merchantId } = await seed("2026-11-04T12:00:00Z"); // 2026-W45
     const d = deps();
-    await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 700, at: new Date(nowMs) } as never);
+    await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 200, at: new Date(nowMs) } as never);
     const { purchaseId } = await proposePurchase(d, familyId, cartOf(merchantId));
     const p = await repo.getPurchase(db, purchaseId);
     const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p!.cartHash);
@@ -103,22 +103,22 @@ describe("approvals", () => {
   it("re-asking returns the same open approval", async () => {
     const { familyId } = await seed("2026-11-04T12:00:00Z");
     const d = deps();
-    const a = await requestApproval(d, familyId, "purchase", "p1", "h");
-    const b = await requestApproval(d, familyId, "purchase", "p1", "h");
+    const a = await requestApproval(d, familyId, "fund", "p1", "h");
+    const b = await requestApproval(d, familyId, "fund", "p1", "h");
     expect(b).toEqual(a);
   });
 
   it("deciding an expired approval throws", async () => {
     const { familyId } = await seed("2026-11-04T12:00:00Z");
     const d = deps();
-    const { approvalId } = await requestApproval(d, familyId, "purchase", "p2", "h");
+    const { approvalId } = await requestApproval(d, familyId, "fund", "p2", "h");
     nowMs += 25 * 3_600_000; // past 24h, still inside W45
     await expect(decideApproval(d, approvalId, "approved")).rejects.toBeInstanceOf(ApprovalError);
   });
 
   it("expiry is capped at the ISO week end", async () => {
     const { familyId } = await seed("2026-11-08T20:00:00Z"); // Sunday, 4h before week end
-    const { approvalId } = await requestApproval(deps(), familyId, "purchase", "p3", "h");
+    const { approvalId } = await requestApproval(deps(), familyId, "fund", "p3", "h");
     const [row] = await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
     expect(row.expiresAt.toISOString()).toBe("2026-11-08T23:59:59.999Z");
   });
@@ -137,5 +137,59 @@ describe("approvals", () => {
     expect(payees.merchantIds).toContain(m.id);
     const old = await db.select().from(t.grants).where(eq(t.grants.familyId, familyId));
     expect(old.find((x) => x.version === 1)!.status).toBe("expired");
+  });
+
+  it("cannot approve or decline a paid purchase, nor approve a refused one", async () => {
+    const { familyId, merchantId } = await seed("2026-11-04T12:00:00Z");
+    const d = deps();
+    const { purchaseId } = await proposePurchase(d, familyId, cartOf(merchantId));
+    const p = await repo.getPurchase(db, purchaseId);
+    const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p!.cartHash);
+    await db.update(t.purchases).set({ status: "paid" }).where(eq(t.purchases.id, purchaseId));
+    await expect(decideApproval(d, approvalId, "approved")).rejects.toBeInstanceOf(ApprovalError);
+    await expect(decideApproval(d, approvalId, "declined")).rejects.toBeInstanceOf(ApprovalError);
+    expect(await statusOf(purchaseId)).toBe("paid");
+    // rolled back: the approval is still undecided
+    expect((await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId)))[0].result).toBeNull();
+    await db.update(t.purchases).set({ status: "refused" }).where(eq(t.purchases.id, purchaseId));
+    await expect(decideApproval(d, approvalId, "approved")).rejects.toBeInstanceOf(ApprovalError);
+    expect(await statusOf(purchaseId)).toBe("refused");
+  });
+
+  it("requestApproval rejects refused purchases and mismatched cart hashes", async () => {
+    const { familyId, merchantId } = await seed("2026-11-04T12:00:00Z");
+    const d = deps();
+    const { purchaseId } = await proposePurchase(d, familyId, cartOf(merchantId));
+    const p = await repo.getPurchase(db, purchaseId);
+    await expect(requestApproval(d, familyId, "purchase", purchaseId, "other-hash")).rejects.toBeInstanceOf(ApprovalError);
+    await db.update(t.purchases).set({ status: "refused" }).where(eq(t.purchases.id, purchaseId));
+    await expect(requestApproval(d, familyId, "purchase", purchaseId, p!.cartHash)).rejects.toBeInstanceOf(ApprovalError);
+  });
+
+  it("shop approval throws without an allowed_payees list or for a higher-level shop, and rolls back", async () => {
+    const { familyId } = await seed("2026-11-04T12:00:00Z", false);
+    const d = deps();
+    const { approvalId } = await proposeShop(d, familyId, "high.example", "r");
+    await db.insert(t.merchants).values({ id: `hi${n}`, name: "Hi", domain: "high.example", class: "general", channel3WebsiteId: "high.example", opensAtLevel: 3 });
+    await expect(decideApproval(d, approvalId, "approved")).rejects.toBeInstanceOf(ApprovalError);
+    expect((await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId)))[0].result).toBeNull();
+    expect((await repo.getActiveGrant(db, familyId))!.version).toBe(1);
+
+    const g = (await repo.getActiveGrant(db, familyId))!;
+    const body = { ...g.body, constraints: g.body.constraints.filter((c) => c.type !== "payment.allowed_payees") };
+    await db.update(t.grants).set({ body }).where(eq(t.grants.id, g.id));
+    const r = await proposeShop(d, familyId, "plain.example", "r");
+    await expect(decideApproval(d, r.approvalId, "approved")).rejects.toBeInstanceOf(ApprovalError);
+    expect(await db.select().from(t.merchants).where(eq(t.merchants.channel3WebsiteId, "plain.example"))).toHaveLength(0);
+  });
+
+  it("proposeShop normalises the domain, rejects junk, and keeps the note", async () => {
+    expect(normaliseDomain("HTTPS://WWW.Nike.com/x?y=1")).toBe("nike.com");
+    const { familyId } = await seed("2026-11-04T12:00:00Z", false);
+    const d = deps();
+    await expect(proposeShop(d, familyId, "not a domain", "r")).rejects.toBeInstanceOf(ApprovalError);
+    await proposeShop(d, familyId, "HTTPS://WWW.Nike.com/x", "my shoes");
+    const [p] = await pendingApprovals(db, familyId, new Date(nowMs));
+    expect(p).toMatchObject({ subjectId: "nike.com", shopDomain: "nike.com", note: "my shoes", cartHash: null });
   });
 });

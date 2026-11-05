@@ -21,40 +21,63 @@ function weekEnd(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysToSunday, 23, 59, 59, 999));
 }
 
-const open = (id: string) => and(eq(t.approvals.id, id), isNull(t.approvals.result));
+const SHOP_DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+/** "HTTPS://WWW.Nike.com/x?y" -> "nike.com"; throws if it is not a bare domain. */
+export function normaliseDomain(input: string): string {
+  const d = input.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/^www\./, "");
+  if (!SHOP_DOMAIN.test(d)) throw new ApprovalError(`"${input}" is not a shop domain`);
+  return d;
+}
 
 export async function requestApproval(
-  deps: Deps, familyId: string, subject: Subject, subjectId: string, cartHash: string,
+  deps: Deps, familyId: string, subject: Subject, subjectId: string, cartHash: string | null, note: string | null = null,
 ): Promise<{ approvalId: string }> {
   const { db } = deps;
+  await expireStale(deps, familyId);
   const now = await deps.now(familyId);
-  const [existing] = await db.select().from(t.approvals).where(and(
+  if (subject === "purchase") {
+    const p = await getPurchase(db, subjectId);
+    if (!p || p.familyId !== familyId) throw new ApprovalError(`unknown purchase ${subjectId}`);
+    if (p.status !== "needs_approval") throw new ApprovalError(`purchase is ${p.status}, not awaiting approval`);
+    if (p.cartHash !== cartHash) throw new ApprovalError("cart hash does not match the purchase");
+  }
+  const find = () => db.select().from(t.approvals).where(and(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subject, subject), eq(t.approvals.subjectId, subjectId),
-    isNull(t.approvals.result), gt(t.approvals.expiresAt, now),
-  )).limit(1);
+    isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now))).limit(1);
+  const [existing] = await find();
   if (existing) return { approvalId: existing.id };
   const expiresAt = new Date(Math.min(now.getTime() + DAY_MS, weekEnd(now).getTime()));
   const approvalId = crypto.randomUUID();
-  await db.insert(t.approvals).values({ id: approvalId, familyId, subject, subjectId, cartHash, expiresAt });
-  return { approvalId };
+  const ins = await db.insert(t.approvals).values({ id: approvalId, familyId, subject, subjectId, cartHash, expiresAt, note })
+    .onConflictDoNothing().returning({ id: t.approvals.id });
+  if (ins.length) return { approvalId };
+  const [raced] = await find(); // lost a race to the one-open-approval index
+  if (!raced) throw new ApprovalError("could not open approval");
+  return { approvalId: raced.id };
 }
 
 export async function decideApproval(deps: Deps, approvalId: string, result: "approved" | "declined"): Promise<void> {
-  const { db } = deps;
-  const [a] = await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
+  const [a] = await deps.db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
   if (!a) throw new ApprovalError(`unknown approval ${approvalId}`);
-  const now = await deps.now(a.familyId);
-  // compare-and-set: only an open, unexpired approval can be decided, once
-  const [won] = await db.update(t.approvals).set({ result, decidedAt: now })
-    .where(and(open(approvalId), gt(t.approvals.expiresAt, now))).returning();
-  if (!won) throw new ApprovalError("approval is not open (already decided or expired)");
-  if (a.subject === "purchase") await decidePurchase(db, a.subjectId, result);
-  else if (a.subject === "shop" && result === "approved") await applyShop(db, a.familyId, a.subjectId, now);
+  // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
+  await deps.db.transaction(async (tx) => {
+    await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, a.familyId)).for("update");
+    const now = await deps.now(a.familyId);
+    const [won] = await tx.update(t.approvals).set({ result, decidedAt: now })
+      .where(and(eq(t.approvals.id, approvalId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now)))
+      .returning();
+    if (!won) throw new ApprovalError("approval is not open (already decided or expired)");
+    if (a.subject === "purchase") await decidePurchase(tx, a.subjectId, result);
+    else if (a.subject === "shop" && result === "approved") await applyShop(tx, a.familyId, a.subjectId, now);
+  });
 }
 
 async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "declined") {
   const p = await getPurchase(db, purchaseId);
   if (!p) throw new ApprovalError(`unknown purchase ${purchaseId}`);
+  const allowed = result === "approved" ? ["needs_approval"] : ["needs_approval", "approved"];
+  if (!allowed.includes(p.status)) throw new ApprovalError(`cannot ${result === "approved" ? "approve" : "decline"} a ${p.status} purchase`);
   if (result === "approved") {
     await db.update(t.purchases).set({ status: "approved" }).where(eq(t.purchases.id, purchaseId));
     return;
@@ -67,6 +90,8 @@ async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "
 export async function expireStale(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<void> {
   const { db } = deps;
   const now = await deps.now(familyId);
+  await db.update(t.approvals).set({ expiredAt: now }).where(and(
+    eq(t.approvals.familyId, familyId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), lte(t.approvals.expiresAt, now)));
   const stale = await db.select({ subjectId: t.approvals.subjectId }).from(t.approvals).where(and(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subject, "purchase"), lte(t.approvals.expiresAt, now),
     or(isNull(t.approvals.result), eq(t.approvals.result, "approved"))));
@@ -77,35 +102,41 @@ export async function expireStale(deps: Pick<Deps, "db" | "now">, familyId: stri
 
 export type PendingApproval = {
   id: string; subject: Subject; subjectId: string; expiresAt: Date; cartHash: string | null;
-  cart?: Cart; shopDomain?: string;
+  cart?: Cart; shopDomain?: string; note: string | null;
 };
 
 export async function pendingApprovals(db: Db, familyId: string, at?: Date): Promise<PendingApproval[]> {
   const now = at ?? await demoNow(db, familyId);
   await expireStale({ db, now: async () => now }, familyId);
   const rows = await db.select().from(t.approvals).where(and(
-    eq(t.approvals.familyId, familyId), isNull(t.approvals.result), gt(t.approvals.expiresAt, now)));
-  return Promise.all(rows.map(async (a): Promise<PendingApproval> => {
-    const base = { id: a.id, subject: a.subject, subjectId: a.subjectId, expiresAt: a.expiresAt, cartHash: a.cartHash };
+    eq(t.approvals.familyId, familyId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now)));
+  const out = await Promise.all(rows.map(async (a): Promise<PendingApproval | null> => {
+    const base = { id: a.id, subject: a.subject, subjectId: a.subjectId, expiresAt: a.expiresAt, cartHash: a.cartHash, note: a.note };
     if (a.subject === "shop") return { ...base, shopDomain: a.subjectId };
-    if (a.subject === "purchase") return { ...base, cart: (await getPurchase(db, a.subjectId))?.cart };
+    if (a.subject === "purchase") {
+      const p = await getPurchase(db, a.subjectId);
+      return p?.status === "needs_approval" ? { ...base, cart: p.cart } : null; // already settled or refused
+    }
     return base;
   }));
+  return out.filter((a): a is PendingApproval => a !== null);
 }
 
 export async function proposeShop(deps: Deps, familyId: string, domain: string, reason: string) {
-  void reason; // ponytail: not persisted (no column); add one if the parent UI needs to show it
-  return requestApproval(deps, familyId, "shop", domain, "");
+  return requestApproval(deps, familyId, "shop", normaliseDomain(domain), null, reason);
 }
 
 const addId = (c: Constraint, merchantId: string): Constraint =>
   (c.type === "payment.allowed_payees" || c.type === "checkout.allowed_merchants") && Array.isArray(c.merchantIds)
-    ? { ...c, merchantIds: [...(c.merchantIds as string[]), merchantId] } : c;
+    ? { ...c, merchantIds: [...new Set([...(c.merchantIds as string[]), merchantId])] } : c;
 
 async function applyShop(db: Db, familyId: string, domain: string, now: Date) {
   const grant = await getActiveGrant(db, familyId);
   if (!grant) throw new ApprovalError("no active grant");
+  const hasPayees = grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds));
+  if (!hasPayees) throw new ApprovalError("active grant has no allowed_payees list to add the shop to");
   const [found] = await db.select().from(t.merchants).where(eq(t.merchants.channel3WebsiteId, domain));
+  if (found && found.opensAtLevel > grant.level) throw new ApprovalError("that shop opens at a higher level");
   const merchantId = found?.id ?? crypto.randomUUID();
   if (!found) {
     await db.insert(t.merchants).values({

@@ -1,4 +1,5 @@
-import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { Cart, Decision, Grant } from "@/engine/types";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -32,7 +33,7 @@ export const grants = pgTable("grants", {
   signedAt: ts("signed_at").notNull(),
   expiresAt: ts("expires_at").notNull(),
   status: text("status", { enum: ["active", "expired", "revoked"] }).notNull(),
-});
+}, (g) => [uniqueIndex("grants_family_version_uq").on(g.familyId, g.version)]);
 
 export const vault = pgTable("vault", {
   familyId: text("family_id").primaryKey().references(() => families.id),
@@ -62,7 +63,10 @@ export const approvals = pgTable("approvals", {
   expiresAt: ts("expires_at").notNull(),
   result: text("result", { enum: ["approved", "declined"] }),
   decidedAt: ts("decided_at"),
-});
+  expiredAt: ts("expired_at"),
+  note: text("note"),
+}, (a) => [uniqueIndex("approvals_one_open_uq").on(a.familyId, a.subject, a.subjectId)
+  .where(sql`${a.result} is null and ${a.expiredAt} is null`)]);
 
 export const consumedTokens = pgTable("consumed_tokens", {
   tokenId: text("token_id").primaryKey(),
