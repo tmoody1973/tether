@@ -24,6 +24,7 @@ export const merchants = pgTable("merchants", {
   channel3WebsiteId: text("channel3_website_id"),
   paypalPayeeEmail: text("paypal_payee_email"),
   opensAtLevel: integer("opens_at_level").notNull(),
+  addedByFamilyId: text("added_by_family_id"), // set for teen-suggested shops: visible to that family only
 });
 
 export const grants = pgTable("grants", {

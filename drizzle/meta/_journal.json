@@ -29,6 +29,13 @@
       "when": 1793910752710,
       "tag": "0003_elite_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793911115074,
+      "tag": "0004_woozy_quicksilver",
+      "breakpoints": true
     }
   ]
 }

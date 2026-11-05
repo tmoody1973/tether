@@ -39,7 +39,7 @@ export async function installGrant(tx: Db, familyId: string, make: (version: num
 
 /** A fresh grant at `level`: merchants opened by that level, bookshops from class 'books'. */
 export async function buildForLevel(tx: Db, familyId: string, level: Level, version: number, s: Settings, now: Date): Promise<Grant> {
-  const ms = (await tx.select().from(t.merchants)).filter((m) => m.opensAtLevel <= level);
+  const ms = (await tx.select().from(t.merchants)).filter((m) => m.opensAtLevel <= level && (m.addedByFamilyId === null || m.addedByFamilyId === familyId));
   const byClass: Record<string, string[]> = {};
   for (const m of ms) (byClass[m.class] ??= []).push(m.id);
   return grantForLevel(level, { id: crypto.randomUUID(), familyId, version, ...s }, byClass, byClass.books ?? [], now);
@@ -100,14 +100,14 @@ export async function setCommitment(deps: Deps, familyId: string, cents: number)
   });
 }
 
-export type RevokeResult = { revoked: true; paypalTokenDeleted: boolean; error?: string };
+export type RevokeResult = { revoked: true; paypalTokenDeleted: boolean; error?: string; reason?: "no_vault" };
 
 /** Fail closed: the local revoke is committed first and stands even if PayPal's delete fails. */
 export async function revoke(deps: Deps, familyId: string): Promise<RevokeResult> {
   await withFamilyLock(deps, familyId, (tx) =>
     tx.update(t.grants).set({ status: "revoked" }).where(and(eq(t.grants.familyId, familyId), eq(t.grants.status, "active"))));
   const vault = await getVault(deps.db, familyId);
-  if (!vault) return { revoked: true, paypalTokenDeleted: true };
+  if (!vault) return { revoked: true, paypalTokenDeleted: false, reason: "no_vault" };
   try {
     await deletePaymentToken(deps.paypal, vault.paymentTokenId);
   } catch (e) {

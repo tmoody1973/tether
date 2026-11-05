@@ -9,6 +9,7 @@ import type { Cart } from "@/engine/types";
 import { grantForLevel } from "@/engine/ladder";
 import { proposePurchase, type Deps } from "@/flows/purchase";
 import { savingsCents } from "@/ledger/ledger";
+import { proposeShop, decideApproval } from "@/flows/approvals";
 import { closeWeek } from "@/flows/week";
 import { confirmRelease, runMonthReview } from "@/flows/month";
 import { GrantError, guardianSetLevel, renewGrant, resetTeenLink, revoke, setCommitment, signGrant } from "@/flows/grant";
@@ -115,7 +116,70 @@ describe("month review and release", () => {
   });
 });
 
+const addClosedWeeks = (familyId: string, from: number, count: number) =>
+  db.insert(t.weeks).values(Array.from({ length: count }, (_, i) => ({
+    familyId, weekKey: `2026-W${from + i}`, allowanceCents: 2000, commitmentCents: 200, closedAt: new Date(nowMs + 1000),
+  })));
+
+describe("month review idempotency", () => {
+  it("running the review twice promotes once with one release", async () => {
+    const { familyId } = await seed();
+    await seedWeeks(familyId, [true, true, true, true]);
+    await saveJournal(familyId, 1200);
+    const a = await runMonthReview(deps(), familyId);
+    const b = await runMonthReview(deps(), familyId);
+    expect(a.action).toBe("PROMOTE");
+    expect(b.action).toBe("HOLD");
+    expect(b.release).toBeUndefined();
+    expect(await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId))).toHaveLength(1);
+    expect(await db.select().from(t.releases).where(eq(t.releases.familyId, familyId))).toHaveLength(1);
+    expect((await active(familyId)).level).toBe(2);
+  });
+
+  it("a second promotion reuses the unconfirmed release instead of double-counting", async () => {
+    const { familyId } = await seed();
+    await seedWeeks(familyId, [true, true, true, true]);
+    await saveJournal(familyId, 1200);
+    const a = await runMonthReview(deps(), familyId);
+    nowMs += 60_000;
+    await addClosedWeeks(familyId, 45, 4); // closed after the level change
+    const b = await runMonthReview(deps(), familyId);
+    expect(b.action).toBe("PROMOTE");
+    expect((await active(familyId)).level).toBe(3);
+    expect(b.release).toEqual(a.release);
+    expect(await db.select().from(t.releases).where(eq(t.releases.familyId, familyId))).toHaveLength(1);
+  });
+});
+
+describe("family-scoped shops", () => {
+  it("A's approved shop stays out of B's promotion but survives A's", async () => {
+    const A = await seed();
+    const B = await seed();
+    const domain = `shop-a-${A.n}.example`;
+    const { approvalId } = await proposeShop(deps(), A.familyId, domain, "wants it");
+    await decideApproval(deps(), approvalId, "approved");
+    const [shop] = await db.select().from(t.merchants).where(eq(t.merchants.channel3WebsiteId, domain));
+    expect(shop.addedByFamilyId).toBe(A.familyId);
+    for (const f of [A, B]) { await seedWeeks(f.familyId, [true, true, true, true]); await runMonthReview(deps(), f.familyId); }
+    const ids = async (fid: string) => ((await active(fid)).body.constraints
+      .find((c) => c.type === "payment.allowed_payees") as { merchantIds: string[] }).merchantIds;
+    expect(await ids(A.familyId)).toContain(shop.id);
+    expect(await ids(B.familyId)).not.toContain(shop.id);
+  });
+});
+
 describe("week close and commitment", () => {
+  it("closeWeek closes every skipped week in order", async () => {
+    const { familyId } = await seed("2026-11-04T12:00:00Z"); // grant signed W45
+    await setCommitment(deps(), familyId, 500);
+    nowMs = new Date("2026-11-25T09:00:00Z").getTime(); // W48 -> W45, W46, W47 ended
+    const r = await closeWeek(deps(), familyId);
+    expect(r.weekKeys).toEqual(["2026-W45", "2026-W46", "2026-W47"]);
+    const ws = (await db.select().from(t.weeks).where(eq(t.weeks.familyId, familyId))).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
+    expect(ws.map((w) => w.commitmentCents)).toEqual([0, 500, 500]); // pending applies after the first closed week
+    expect((await closeWeek(deps(), familyId)).closed).toBe(false);
+  });
+
   it("closeWeek is idempotent", async () => {
     const { familyId } = await seed("2026-11-10T09:00:00Z"); // Tue of W46 -> closes W45
     await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 500, at: new Date("2026-11-05T10:00:00Z") });
@@ -193,6 +257,7 @@ describe("grant management", () => {
     deleted = [];
     const r = await revoke(deps(), familyId);
     expect(r).toEqual({ revoked: true, paypalTokenDeleted: true });
+    expect(await revoke(deps(), familyId)).toMatchObject({ paypalTokenDeleted: false, reason: "no_vault" });
     expect(deleted).toEqual([`/v3/vault/payment-tokens/V${n}`]);
     expect(await repo.getActiveGrant(db, familyId)).toBeNull();
     expect(await repo.getVault(db, familyId)).toBeNull();

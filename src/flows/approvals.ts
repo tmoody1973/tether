@@ -141,6 +141,7 @@ async function applyShop(db: Db, familyId: string, domain: string, now: Date) {
   if (!found) {
     await db.insert(t.merchants).values({
       id: merchantId, name: domain, domain, class: "general", channel3WebsiteId: domain, opensAtLevel: grant.level,
+      addedByFamilyId: familyId,
     });
   }
   const body = {
