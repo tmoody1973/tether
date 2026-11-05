@@ -6,6 +6,14 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    // The PayPal agent toolkit can move money; only the read-only month assistant may import it.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/ai/monthAssistant.ts", "scripts/spikes/**"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: ["@paypal/agent-toolkit", "@paypal/agent-toolkit/*"] }],
+    },
+  },
+  {
     files: ["src/engine/**"],
     rules: {
       "no-restricted-imports": [

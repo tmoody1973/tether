@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import * as t from "./schema";
 
@@ -103,3 +103,24 @@ export async function getValidApproval(
   )).orderBy(desc(t.approvals.expiresAt)).limit(1));
 }
 
+
+export interface MonthReceipt {
+  at: Date; shop: string; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
+}
+
+/** One family's receipts whose capture time falls in `month` ('YYYY-MM', UTC). Family always comes from the caller. */
+export async function receiptsForMonth(db: Db, familyId: string, month: string): Promise<MonthReceipt[]> {
+  const rows = await db.select({ r: t.receipts, p: t.purchases, m: t.merchants, a: t.approvals, j: t.journal })
+    .from(t.receipts)
+    .innerJoin(t.purchases, eq(t.purchases.id, t.receipts.purchaseId))
+    .leftJoin(t.merchants, eq(t.merchants.id, sql`${t.purchases.cart}->>'merchantId'`))
+    .leftJoin(t.approvals, eq(t.approvals.id, t.receipts.approvalId))
+    .leftJoin(t.journal, and(eq(t.journal.kind, "spend"), eq(t.journal.ref, t.purchases.id)))
+    .where(eq(t.purchases.familyId, familyId));
+  // The spend journal row carries the demo-clock time; receipts.createdAt is wall-clock.
+  const dated = rows.map((row) => ({ ...row, at: row.j?.at ?? row.r.createdAt }));
+  return dated.filter(({ at }) => at.toISOString().startsWith(month)).map(({ r, p, m, a, at }) => ({
+    at, shop: m?.name ?? "unknown shop", amountCents: p.cart.totalCents,
+    status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
+  }));
+}
