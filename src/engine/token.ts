@@ -32,10 +32,12 @@ export function mintToken(d: Decision, grant: Grant, cart: Cart, now: Date, secr
 export function verifyToken(
   t: AuthToken, cart: Cart, now: Date, secret: string, isConsumed: (tokenId: string) => boolean,
 ): VerifyResult {
+  if (!secret) throw new Error("token secret is required");
   const { signature, ...body } = t;
+  if (typeof signature !== "string" || !/^[0-9a-f]{64}$/.test(signature)) return { ok: false, reason: "BAD_SIGNATURE" };
   const expected = Buffer.from(sign(body, secret), "hex");
   const given = Buffer.from(signature, "hex");
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return { ok: false, reason: "BAD_SIGNATURE" };
+  if (!timingSafeEqual(expected, given)) return { ok: false, reason: "BAD_SIGNATURE" };
   if (now.getTime() > Date.parse(t.expiresAt)) return { ok: false, reason: "EXPIRED" };
   if (isConsumed(t.tokenId)) return { ok: false, reason: "CONSUMED" };
   if (cartHash(cart) !== t.cartHash) return { ok: false, reason: "CART_MISMATCH" };

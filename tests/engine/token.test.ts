@@ -103,4 +103,20 @@ describe("single-use token", () => {
     expect(verifyToken(t, c, NOW, "other", never)).toEqual({ ok: false, reason: "BAD_SIGNATURE" });
     expect(verifyToken({ ...t, signature: "ab" }, c, NOW, SECRET, never)).toEqual({ ok: false, reason: "BAD_SIGNATURE" });
   });
+
+  it("verify fails closed: empty secret throws, malformed signature is BAD_SIGNATURE", () => {
+    const c = cart(600);
+    const t = mintToken(allow(c), grant, c, NOW, SECRET);
+    expect(() => verifyToken(t, c, NOW, "", never)).toThrow("token secret is required");
+    const noSig = { ...t, signature: undefined } as unknown as typeof t;
+    expect(verifyToken(noSig, c, NOW, SECRET, never)).toEqual({ ok: false, reason: "BAD_SIGNATURE" });
+    expect(verifyToken({ ...t, signature: t.signature + "0" }, c, NOW, SECRET, never)).toEqual({ ok: false, reason: "BAD_SIGNATURE" });
+    expect(verifyToken({ ...t, signature: t.signature.toUpperCase() }, c, NOW, SECRET, never)).toEqual({ ok: false, reason: "BAD_SIGNATURE" });
+  });
+
+  it("tampered expiresAt is BAD_SIGNATURE", () => {
+    const c = cart(600);
+    const t = mintToken(allow(c), grant, c, NOW, SECRET);
+    expect(verifyToken({ ...t, expiresAt: week(1) }, c, NOW, SECRET, never)).toEqual({ ok: false, reason: "BAD_SIGNATURE" });
+  });
 });
