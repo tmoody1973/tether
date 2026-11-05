@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tether — Screen Mockups</title>
+<style>
+  /* ============================================================
+     Tether screen mockups
+     Teen app  (Zoe)    — playful, high-contrast, big numbers
+     Guardian app (Amara) — sober, sparse, document-like
+     The asymmetry is deliberate: the consent surface is plainest.
+     ============================================================ */
+
+  :root{
+    /* shared */
+    --ink:#14121F;
+    --ink-2:#4B4A5A;
+    --ink-3:#8A8899;
+    --line:#E6E4EF;
+
+    /* teen app */
+    --t-canvas:#F6F5FB;
+    --t-surface:#FFFFFF;
+    --t-accent:#5B4BFF;
+    --t-accent-soft:#EEEBFF;
+    --t-ok:#12B76A;
+    --t-warn:#F79009;          /* refusals are amber, never red */
+    --t-warn-soft:#FFF4E6;
+    --t-gold:#FFB020;
+
+    /* guardian app — deliberately calmer */
+    --g-canvas:#F4F5F7;
+    --g-surface:#FFFFFF;
+    --g-accent:#0B6B5B;
+    --g-accent-soft:#E8F2EF;
+    --g-line:#E3E6EA;
+    --g-ink:#1A1D21;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:#EDECF2;
+    color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:56px 32px 96px;
+    font-size:15px;
+    line-height:1.5;
+  }
+
+  /* ---------- page header ---------- */
+  .page-head{max-width:1400px;margin:0 auto 40px}
+  .page-head h1{font-size:34px;letter-spacing:-0.02em;font-weight:800}
+  .page-head p{color:var(--ink-2);margin-top:8px;max-width:74ch}
+  .brandbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  .brandmark{
+    width:34px;height:34px;border-radius:10px;
+    background:linear-gradient(140deg,var(--t-accent),#8B7BFF);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:17px;
+  }
+
+  /* ---------- design notes strip ---------- */
+  .notes{
+    max-width:1400px;margin:0 auto 56px;
+    background:#fff;border:1px solid var(--line);border-radius:18px;
+    padding:24px 26px;display:grid;gap:26px;
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  }
+  .notes h3{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+  .swatches{display:flex;gap:10px;flex-wrap:wrap}
+  .sw{width:44px;height:44px;border-radius:11px;border:1px solid rgba(0,0,0,.07)}
+  .sw span{display:block;font-size:9px;color:var(--ink-3);margin-top:48px;white-space:nowrap}
+  .notes ul{list-style:none;font-size:13px;color:var(--ink-2);display:grid;gap:7px}
+  .notes li::before{content:"—  ";color:var(--ink-3)}
+  .notes code{background:#F2F1F7;padding:1px 5px;border-radius:4px;font-size:12px}
+
+  /* ---------- app sections ---------- */
+  .app-section{max-width:1400px;margin:0 auto 72px}
+  .app-section > h2{
+    font-size:13px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-3);margin-bottom:6px;font-weight:700;
+  }
+  .app-section > .sub{color:var(--ink-2);font-size:14px;margin-bottom:28px;max-width:70ch}
+
+  .rail{
+    display:grid;gap:30px;
+    grid-template-columns:repeat(auto-fit,minmax(330px,1fr));
+  }
+
+  /* ---------- phone frame ---------- */
+  .frame{display:flex;flex-direction:column;gap:12px;align-items:center}
+  .frame .cap{font-size:12.5px;color:var(--ink-3);text-align:center;letter-spacing:.01em}
+  .frame .cap b{color:var(--ink);font-weight:600}
+
+  .phone{
+    width:100%;max-width:360px;height:740px;
+    border-radius:42px;padding:10px;
+    background:#15141C;
+    box-shadow:0 26px 50px -18px rgba(20,18,31,.42), 0 2px 0 rgba(255,255,255,.5) inset;
+    position:relative;
+  }
+  .screen{
+    width:100%;height:100%;border-radius:33px;overflow:hidden;
+    display:flex;flex-direction:column;position:relative;
+  }
+  .screen.teen{background:var(--t-canvas)}
+  .screen.guard{background:var(--g-canvas)}
+
+  /* status bar */
+  .status{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:11px 22px 4px;font-size:12px;font-weight:600;flex:0 0 auto;
+  }
+  .status .glyphs{display:flex;gap:5px;align-items:center}
+  .status .glyphs i{display:block;width:15px;height:9px;border:1.4px solid currentColor;border-radius:3px;opacity:.85}
+  .status .glyphs i.dot{width:9px;height:9px;border-radius:50%;background:currentColor;border:none}
+
+  /* body area */
+  .body{flex:1 1 auto;overflow:hidden;padding:0 20px 12px;display:flex;flex-direction:column;gap:14px}
+  .body.g{padding:0 22px 12px}
+
+  /* tab bar */
+  .tabs{
+    flex:0 0 auto;display:flex;justify-content:space-around;align-items:center;
+    padding:9px 8px 18px;border-top:1px solid var(--line);
+    background:var(--t-surface);
+  }
+  .tab{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;color:var(--ink-3);font-weight:600}
+  .tab.on{color:var(--t-accent)}
+  .tab i{display:block;width:19px;height:19px;border:2px solid currentColor;border-radius:6px;opacity:.9}
+  .tab.on i{border-radius:50%}
+
+  /* ---------- typography ---------- */
+  .eyebrow{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+  .h1{font-size:26px;font-weight:800;letter-spacing:-0.02em}
+  .h2{font-size:19px;font-weight:750;letter-spacing:-0.01em}
+  .muted{color:var(--ink-3);font-size:13px}
+  .small{font-size:12.5px;line-height:1.45}
+
+  .money{
+    font-variant-numeric:tabular-nums;
+    letter-spacing:-0.035em;font-weight:800;
+  }
+  .hero-money{font-size:60px;line-height:1}
+  .hero-sub{font-size:15px;color:var(--ink-2);font-weight:500;margin-top:2px}
+
+  /* ---------- cards ---------- */
+  .card{
+    background:var(--t-surface);border-radius:20px;padding:16px 17px;
+    box-shadow:0 1px 2px rgba(20,18,31,.05), 0 0 0 1px rgba(20,18,31,.045);
+  }
+  .card.g{
+    background:var(--g-surface);border-radius:16px;
+    box-shadow:none;border:1px solid var(--g-line);
+  }
+  .card.tight{padding:13px 15px}
+
+  /* budget bar */
+  .bar{height:11px;border-radius:99px;background:#E9E7F2;overflow:hidden;margin:9px 0 7px}
+  .bar > span{display:block;height:100%;border-radius:99px;background:var(--t-accent)}
+  .bar.gold > span{background:var(--t-gold)}
+  .bar.mini{height:7px;margin:7px 0 6px}
+  .barlabels{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);font-weight:600}
+
+  /* level pill */
+  .pill{
+    display:inline-flex;align-items:center;gap:7px;
+    background:var(--t-accent-soft);color:#3A2FCB;
+    padding:7px 12px;border-radius:99px;font-size:11.5px;font-weight:700;
+  }
+  .pill .why{text-decoration:underline;color:#5B4BFF;font-weight:700}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    background:#F2F1F7;border-radius:99px;padding:4px 10px;
+    font-size:11px;font-weight:650;color:var(--ink-2);
+  }
+  .chip.ok{background:#E7F7EF;color:#0B7A47}
+  .chip.warn{background:var(--t-warn-soft);color:#9A5B00}
+  .chip.g{background:var(--g-accent-soft);color:var(--g-accent)}
+
+  /* activity rows */
+  .row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .row:last-child{border-bottom:none}
+  .row .who{font-weight:600}
+  .row .amt{font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink-2)}
+
+  /* ---------- refusal sheet ---------- */
+  .scrim{position:absolute;inset:0;background:rgba(20,18,31,.42);display:flex;align-items:flex-end}
+  .sheet{
+    width:100%;background:#fff;border-radius:28px 28px 0 0;
+    padding:14px 22px 24px;display:flex;flex-direction:column;gap:13px;
+    box-shadow:0 -14px 34px rgba(20,18,31,.2);
+  }
+  .grabber{width:38px;height:4.5px;border-radius:99px;background:#D8D6E3;margin:0 auto}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:block;width:100%;text-align:center;padding:14px;border-radius:15px;
+    font-size:15px;font-weight:700;border:none;font-family:inherit;
+  }
+  .btn.primary{background:var(--t-accent);color:#fff}
+  .btn.ghost{background:#fff;color:var(--ink);border:1.5px solid #DCDAE7}
+  .btn.g{background:var(--g-accent);color:#fff;border-radius:13px;padding:13px;font-size:14.5px}
+  .btn.gg{background:#fff;color:var(--g-ink);border:1.5px solid #CBD2D9;border-radius:13px;padding:13px;font-size:14.5px}
+  .btnrow{display:flex;gap:10px}
+
+  /* ---------- teen: goals ---------- */
+  .stepper{display:flex;align-items:center;justify-content:space-between;background:#F7F6FC;border-radius:14px;padding:9px 12px}
+  .stepper .val{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
+  .stepper .ctrl{display:flex;align-items:center;gap:12px}
+  .stepper .ctrl b{
+    width:31px;height:31px;border-radius:50%;background:#fff;display:grid;place-items:center;
+    font-size:17px;font-weight:600;color:var(--ink-2);
+    box-shadow:0 1px 3px rgba(20,18,31,.12);
+  }
+
+  /* hint card — the pedagogical hook */
+  .hint{
+    background:var(--t-accent-soft);border-radius:15px;padding:13px 15px;
+    font-size:12.5px;line-height:1.5;color:#372C9E;
+  }
+  .hint b{color:#241C7A}
+
+  /* ---------- guardian: definition rows ---------- */
+  .defrow{
+    display:flex;align-items:baseline;gap:8px;
+    padding:11px 0;border-bottom:1px solid var(--g-line);font-size:13.5px;
+  }
+  .defrow:last-of-type{border-bottom:none}
+  .defrow .k{color:var(--ink-2);white-space:nowrap}
+  .defrow .lead{flex:1 1 auto;border-bottom:1.5px dotted #D3D8DE;transform:translateY(-4px)}
+  .defrow .v{font-weight:650;color:var(--g-ink);text-align:right}
+  .defrow .v small{display:block;font-weight:500;color:var(--ink-3);font-size:11px}
+
+  /* the contract clause — deliberately plain, serif, un-AI */
+  .clause{
+    background:#FBFBF9;border:1px solid #E7E7E1;border-left:4px solid var(--g-accent);
+    border-radius:4px 12px 12px 4px;padding:15px 17px;
+    font-family:Georgia,'Times New Roman',serif;font-size:13.8px;line-height:1.62;color:#22262A;
+  }
+  .clause .lbl{
+    font-family:'Inter',sans-serif;font-size:10.5px;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--ink-3);font-weight:700;display:block;margin-bottom:6px;
+  }
+
+  /* guardian home */
+  .quiet{
+    background:var(--g-accent-soft);border-radius:14px;padding:15px 16px;
+  }
+  .quiet .big{font-size:16.5px;font-weight:750;color:#08483E;letter-spacing:-0.01em}
+  .quiet p{font-size:12.5px;color:#2C6257;margin-top:5px;line-height:1.5}
+
+  /* record list */
+  .rec{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--g-line)}
+  .rec:last-child{border-bottom:none}
+  .rec .txt{font-size:12.8px;color:var(--ink-2);line-height:1.45}
+  .rec .txt b{display:block;color:var(--g-ink);font-size:13.5px;font-weight:650;margin-bottom:2px}
+  .expand{
+    background:#F7F8F9;border-radius:11px;padding:12px 13px;margin-top:9px;
+    font-size:11.8px;line-height:1.6;color:var(--ink-2);
+  }
+  .expand code{background:#EDEFF1;padding:1.5px 5px;border-radius:4px;font-size:11px;display:inline-block;margin-top:3px}
+
+  /* level-up celebration */
+  .badge{
+    width:88px;height:88px;border-radius:50%;
+    background:linear-gradient(150deg,var(--t-gold),#FF8A3D);
+    display:grid;place-items:center;color:#fff;font-size:40px;font-weight:800;
+    margin:6px auto 4px;box-shadow:0 12px 26px rgba(255,138,61,.34);
+  }
+  .evidence{display:flex;gap:8px;flex-wrap:wrap}
+
+  footer.page-foot{max-width:1400px;margin:0 auto;color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--line);padding-top:22px}
+  /* ---------- desktop guardian surfaces ---------- */
+  .browser{
+    width:100%;max-width:1000px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;
+    border:1px solid #DCDAE7;box-shadow:0 26px 52px -22px rgba(20,18,31,.38);
+  }
+  .browser__bar{display:flex;align-items:center;gap:7px;padding:11px 14px;background:#F2F1F7;border-bottom:1px solid #E6E4EF}
+  .browser__bar .d{width:11px;height:11px;border-radius:50%}
+  .browser__url{flex:1;background:#fff;border-radius:7px;padding:5px 12px;font-size:11.5px;color:var(--ink-3);margin-left:8px}
+  .app{display:flex;min-height:600px}
+  .sidebar{width:194px;flex:0 0 auto;background:#FBFBFD;border-right:1px solid var(--line);padding:18px 13px;display:flex;flex-direction:column;gap:3px}
+  .side-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;font-size:12.8px;font-weight:600;color:var(--ink-2)}
+  .side-item.on{background:var(--g-accent-soft);color:var(--g-accent)}
+  .side-item i{width:15px;height:15px;border:2px solid currentColor;border-radius:5px;flex:0 0 auto;opacity:.85}
+  .side-head{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:700;padding:0 11px;margin:14px 0 6px}
+  .main{flex:1 1 auto;padding:24px 28px;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .main h2{font-size:23px;font-weight:800;letter-spacing:-0.02em;color:var(--g-ink)}
+  .two{display:grid;grid-template-columns:1.12fr .88fr;gap:22px;align-items:start}
+  .panel{background:#fff;border:1px solid var(--g-line);border-radius:14px;padding:16px 19px}
+  .panel h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px;font-weight:700}
+  .frow{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--g-line)}
+  .frow:last-child{border-bottom:none}
+  .frow .fl{width:168px;flex:0 0 auto;font-size:13px;color:var(--ink-2)}
+  .frow .fv{flex:1 1 auto;font-weight:650;font-size:13.5px;color:var(--g-ink);text-align:right}
+  .input{border:1.5px solid #D5DAE0;border-radius:9px;padding:8px 12px;font-size:13px;background:#fff;font-family:inherit;color:var(--ink)}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .stat{background:#fff;border:1px solid var(--g-line);border-radius:13px;padding:14px 16px}
+  .stat .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+  .stat .n{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:6px;color:var(--g-ink);letter-spacing:-0.02em}
+  .stat .sub{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+  .dtable{width:100%;border-collapse:collapse;font-size:12.6px}
+  .dtable th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:8px 10px;border-bottom:1px solid var(--g-line);font-weight:700}
+  .dtable td{padding:11px 10px;border-bottom:1px solid var(--g-line);color:var(--ink-2);vertical-align:top}
+  .dtable td b{color:var(--g-ink);font-weight:650;display:block}
+  .dtable tr:last-child td{border-bottom:none}
+  .preview-note{font-size:11.5px;color:var(--ink-3);margin-top:10px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- ======================= PAGE HEADER ======================= -->
+<div class="page-head">
+  <div class="brandbar">
+    <div class="brandmark">T</div>
+    <div class="eyebrow" style="color:var(--ink-3)">Tether · screen mockups</div>
+  </div>
+  <h1>Two apps, one mandate</h1>
+  <p>Ten screens across the two surfaces. The teen app is built to make one number obvious and every refusal explainable; the guardian app is deliberately sober, and the moment of granting authority is the plainest screen in the product. All copy matches the specification in <code>HOW-IT-WORKS.md</code>, so these can be lifted straight into the demo video.</p>
+</div>
+
+<!-- ======================= DESIGN NOTES ======================= -->
+<div class="notes">
+  <div>
+    <h3>Teen palette</h3>
+    <div class="swatches">
+      <div class="sw" style="background:#5B4BFF" title="accent"></div>
+      <div class="sw" style="background:#F79009" title="refusal"></div>
+      <div class="sw" style="background:#12B76A" title="allowed"></div>
+      <div class="sw" style="background:#FFB020" title="level"></div>
+      <div class="sw" style="background:#F6F5FB" title="canvas"></div>
+    </div>
+  </div>
+  <div>
+    <h3>Guardian palette</h3>
+    <div class="swatches">
+      <div class="sw" style="background:#0B6B5B" title="accent"></div>
+      <div class="sw" style="background:#E8F2EF" title="soft"></div>
+      <div class="sw" style="background:#1A1D21" title="ink"></div>
+      <div class="sw" style="background:#F4F5F7" title="canvas"></div>
+      <div class="sw" style="background:#FFFFFF;border-color:#DDD" title="surface"></div>
+    </div>
+  </div>
+  <div>
+    <h3>Decisions</h3>
+    <ul>
+      <li><b>Refusal is amber, never red.</b> A blocked purchase is information, not punishment.</li>
+      <li><b>No AI in the consent path.</b> The grant reads like a contract in a serif face.</li>
+      <li><b>One number per screen.</b> The teen app shows what's left, oversized.</li>
+      <li><b>Tabular figures</b> everywhere money appears, so digits don't jitter.</li>
+      <li><b>The parent sees signals, not a feed.</b> "Nothing needs you today."</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Type</h3>
+    <ul>
+      <li>UI: Inter / system sans — 800 for money, 650–750 for headings</li>
+      <li>Body: 13–15px, 1.45–1.6 line height</li>
+      <li>Contract clause: Georgia serif, 1.62 line height</li>
+      <li>Money: 60px hero, tabular numerals, −0.035em tracking</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ======================= TEEN APP ======================= -->
+<section class="app-section">
+  <h2>Zoe's app · 15 years old</h2>
+  <p class="sub">Playful, fast, high-contrast. It should read like a game score, not a bank statement — and every refused purchase has to say which rule it hit and what would change it.</p>
+
+  <div class="rail">
+
+    <!-- ---------- 1. Your week ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body">
+          <div>
+            <div class="eyebrow">Your week</div>
+            <div class="money hero-money" style="margin-top:6px">$8.00</div>
+            <div class="hero-sub">left this week</div>
+          </div>
+
+          <div class="bar"><span style="width:60%"></span></div>
+          <div class="barlabels"><span>spent $12.00 of $20.00</span><span>resets Sunday</span></div>
+
+          <div class="pill">Level 2 · spend anywhere, no approval <span class="why">why?</span></div>
+
+          <div style="margin-top:2px">
+            <div class="eyebrow" style="margin-bottom:4px">This week</div>
+            <div class="card tight" style="padding:4px 15px">
+              <div class="row"><span class="who">Corner Store</span><span class="amt">$6.00</span></div>
+              <div class="row"><span class="who">City Transit</span><span class="amt">$2.50</span></div>
+              <div class="row"><span class="who">City Transit</span><span class="amt">$3.50</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab on"><i></i>Week</div>
+          <div class="tab"><i></i>Goals</div>
+          <div class="tab"><i></i>Ask</div>
+          <div class="tab"><i></i>Me</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>1 · Your week</b> — the home screen. One number, one bar.</div>
+    </div>
+
+    <!-- ---------- 2. Refusal sheet ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body">
+          <div>
+            <div class="eyebrow">Your week</div>
+            <div class="money hero-money" style="margin-top:6px">$8.00</div>
+            <div class="hero-sub">left this week</div>
+          </div>
+          <div class="bar"><span style="width:60%"></span></div>
+          <div class="barlabels"><span>spent $12.00 of $20.00</span><span>resets Sunday</span></div>
+        </div>
+
+        <div class="scrim">
+          <div class="sheet">
+            <div class="grabber"></div>
+            <div class="chip warn" style="align-self:flex-start">Not this time</div>
+            <div>
+              <div class="h2" style="font-size:21px">That one doesn't fit this week.</div>
+              <div class="muted" style="margin-top:5px">$15.00 · Sneaker Shop</div>
+            </div>
+
+            <div class="card tight" style="background:#FAF9FE;box-shadow:none;border:1px solid #EAE8F5">
+              <div class="small" style="color:var(--ink-2)">
+                You've spent <b>$12.00</b> of your <b>$20.00</b>, so there's <b>$8.00</b> left.<br>
+                Online purchases also need Amara's OK right now.
+              </div>
+            </div>
+
+            <div style="display:grid;gap:9px">
+              <button class="btn primary" style="white-space:nowrap">Ask Amara for it</button>
+              <button class="btn ghost" style="white-space:nowrap">Wait until Sunday</button>
+            </div>
+
+            <div class="hint">
+              <b>Your limit goes up automatically</b> when you stay inside it — 4 weeks in a row and online buys won't need asking.
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>2 · The refusal sheet</b> — the screen the whole idea rests on.</div>
+    </div>
+
+    <!-- ---------- 3. Goals ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body">
+          <div class="eyebrow">Goals</div>
+
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div class="h2">Headphones</div>
+              <div class="muted" style="font-weight:650">of $89</div>
+            </div>
+            <div class="money" style="font-size:33px;margin-top:9px">$34.00</div>
+            <div class="bar gold"><span style="width:38%"></span></div>
+            <div class="barlabels"><span>saved</span><span>38%</span></div>
+            <div style="margin-top:11px;display:flex;align-items:center;gap:7px">
+              <span class="chip ok">Saved to your Venmo account</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-size:12.5px;color:var(--ink-2);line-height:1.55">
+              <b>$4.00 a week</b> from you · Amara matches <b>$2 for every $4</b>
+            </div>
+          </div>
+
+          <div>
+            <div class="eyebrow" style="margin-bottom:7px">Your rule</div>
+            <div class="stepper">
+              <div>
+                <div style="font-size:11.5px;color:var(--ink-3);font-weight:650">I'll save each week</div>
+                <div class="val">$4.00</div>
+              </div>
+              <div class="ctrl"><b>−</b><b>+</b></div>
+            </div>
+            <div class="hint" style="margin-top:10px">
+              Keeping this promise helps you level up. Breaking it won't block anything — it just pauses your progress.
+            </div>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab"><i></i>Week</div>
+          <div class="tab on"><i></i>Goals</div>
+          <div class="tab"><i></i>Ask</div>
+          <div class="tab"><i></i>Me</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>3 · Goals</b> — the kid's own rule, and where the money actually lands.</div>
+    </div>
+
+    <!-- ---------- 4. Ask ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body">
+          <div class="eyebrow">Ask Amara</div>
+
+          <div class="card">
+            <div class="muted" style="font-size:11.5px;font-weight:650">WHAT</div>
+            <div style="font-weight:650;font-size:14.5px;margin-top:3px">Sneaker Shop</div>
+          </div>
+
+          <div class="card">
+            <div class="muted" style="font-size:11.5px;font-weight:650">HOW MUCH</div>
+            <div class="money" style="font-size:30px;margin-top:3px">$15.00</div>
+          </div>
+
+          <div class="card">
+            <div class="muted" style="font-size:11.5px;font-weight:650">WHY (OPTIONAL)</div>
+            <div style="font-style:italic;color:var(--ink-2);margin-top:5px;font-size:13.5px">"the ones I have are falling apart"</div>
+          </div>
+
+          <div class="small muted" style="line-height:1.5">
+            She'll see that you have $8.00 left this week, and your reason.
+          </div>
+
+          <div style="margin-top:auto;padding-bottom:6px">
+            <button class="btn primary">Send</button>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab"><i></i>Week</div>
+          <div class="tab"><i></i>Goals</div>
+          <div class="tab on"><i></i>Ask</div>
+          <div class="tab"><i></i>Me</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>4 · Ask</b> — a request carries her track record, not just the ask.</div>
+    </div>
+
+    <!-- ---------- 5. Level up ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body" style="justify-content:center;text-align:center">
+          <div class="badge">3</div>
+          <div class="h2" style="font-size:23px">Level 3 unlocked.</div>
+
+          <div class="card" style="text-align:left">
+            <div class="muted" style="font-size:11.5px;font-weight:650;margin-bottom:8px">WHY</div>
+            <div class="evidence">
+              <span class="chip ok">4 weeks inside your budget</span>
+              <span class="chip ok">saved 42% of your allowance</span>
+            </div>
+          </div>
+
+          <div class="card" style="text-align:left">
+            <div class="muted" style="font-size:11.5px;font-weight:650;margin-bottom:8px">WHAT CHANGED</div>
+            <div class="small" style="color:var(--ink-2)">
+              Your weekly limit is now <b>$30.00</b>, and online purchases no longer need approval.
+            </div>
+          </div>
+
+          <button class="btn ghost" style="margin-top:6px">Nice</button>
+        </div>
+      </div></div>
+      <div class="cap"><b>5 · The level-up moment</b> — a real screen, with the evidence on it.</div>
+    </div>
+
+    <!-- ---------- 6. Week ended ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body" style="justify-content:center;gap:15px">
+          <div class="chip warn" style="align-self:flex-start">Week ended</div>
+          <div class="h2" style="font-size:23px">Your week's finished.</div>
+          <div class="small" style="color:var(--ink-2)">
+            Sunday's $20.00 hasn't been loaded yet — Amara needs to renew your rules.
+          </div>
+          <div class="card">
+            <div class="muted" style="font-size:11.5px;font-weight:650">LAST WEEK</div>
+            <div class="money" style="font-size:27px;margin-top:6px">$18.50</div>
+            <div style="font-size:12.5px;color:var(--ink-2)">spent of $20.00 · nothing blocked</div>
+            <div class="bar" style="margin-top:12px"><span style="width:92%"></span></div>
+          </div>
+          <button class="btn primary">Nudge Amara</button>
+          <div class="small muted" style="text-align:center">
+            Your rules end on purpose, so you both get a fresh say.
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab on"><i></i>Week</div>
+          <div class="tab"><i></i>Goals</div>
+          <div class="tab"><i></i>Ask</div>
+          <div class="tab"><i></i>Me</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>6 · Week ended</b> — grants expire by design, so authority is never renewed by accident.</div>
+    </div>
+
+    <!-- ---------- 7. Money waiting ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen teen">
+        <div class="status"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body" style="justify-content:center;gap:15px">
+          <div class="chip warn" style="align-self:flex-start">Waiting for you</div>
+          <div>
+            <div class="money hero-money" style="font-size:52px">$6.00</div>
+            <div class="hero-sub">is waiting for your Venmo account</div>
+          </div>
+          <div class="card">
+            <div class="small" style="color:var(--ink-2)">
+              Your savings moved, and Amara's match went with it. Set up your Venmo account to receive it.
+            </div>
+          </div>
+          <div class="hint">
+            Money sent to an account that isn't set up yet <b>comes back after 30 days</b>. No rush — but don't leave it forever.
+          </div>
+          <button class="btn primary">Set up my account</button>
+        </div>
+        <div class="tabs">
+          <div class="tab"><i></i>Week</div>
+          <div class="tab on"><i></i>Goals</div>
+          <div class="tab"><i></i>Ask</div>
+          <div class="tab"><i></i>Me</div>
+        </div>
+      </div></div>
+      <div class="cap"><b>7 · Money waiting</b> — the unclaimed-payout state, handled honestly.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ======================= GUARDIAN APP ======================= -->
+<section class="app-section">
+  <h2>Amara's app · the guardian</h2>
+  <p class="sub">Sober, sparse, quiet. The parent sees signals rather than a surveillance feed, and the screen where she grants authority is deliberately the most boring in the product — no AI, no suggestions, no chat.</p>
+
+  <div class="rail">
+
+    <!-- ---------- 6. Home ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen guard">
+        <div class="status" style="color:var(--g-ink)"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body g">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="eyebrow">Zoe</div>
+            <span class="chip g">Level 2</span>
+          </div>
+
+          <div class="card g">
+            <div class="muted" style="font-size:11.5px;font-weight:650">THIS WEEK</div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px">
+              <div style="font-weight:700;font-size:15px;font-variant-numeric:tabular-nums">$12.00 of $20.00</div>
+            </div>
+            <div class="bar mini" style="background:#E7EAEC"><span style="width:60%;background:var(--g-accent)"></span></div>
+          </div>
+
+          <div class="card g">
+            <div class="muted" style="font-size:11.5px;font-weight:650">HEADPHONES</div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px">
+              <div style="font-weight:700;font-size:15px;font-variant-numeric:tabular-nums">$34.00 of $89.00</div>
+            </div>
+            <div class="bar mini" style="background:#E7EAEC"><span style="width:38%;background:#C99A2E"></span></div>
+            <div class="muted" style="font-size:11.5px;margin-top:2px">saved to her Venmo</div>
+          </div>
+
+          <div class="quiet">
+            <div class="big">Nothing needs you today.</div>
+            <p>You'll hear from Tether when something needs a decision — not every time Zoe buys a sandwich.</p>
+          </div>
+
+          <div class="card g">
+            <div class="muted" style="font-size:11.5px;font-weight:650;margin-bottom:6px">THIS MONTH</div>
+            <div class="rec" style="border-bottom:1px solid var(--g-line);padding:6px 0">
+              <span class="txt">Requests from Zoe</span><span style="font-weight:700;font-size:13px">1</span>
+            </div>
+            <div class="rec" style="padding:6px 0">
+              <span class="txt">Rules broken</span><span style="font-weight:700;font-size:13px">0</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>8 · Home</b> — signals, not surveillance. "Nothing needs you today."</div>
+    </div>
+
+    <!-- ---------- 7. The grant ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen guard">
+        <div class="status" style="color:var(--g-ink)"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body g">
+          <div class="h2" style="font-size:21px">Grant Zoe authority</div>
+
+          <div class="card g" style="padding:6px 16px 12px">
+            <div class="defrow">
+              <span class="k">Weekly amount</span><span class="lead"></span><span class="v">$20.00</span>
+            </div>
+            <div class="defrow">
+              <span class="k">Where</span><span class="lead"></span>
+              <span class="v">Corner Store<small>City Transit</small></span>
+            </div>
+            <div class="defrow">
+              <span class="k">Online purchases</span><span class="lead"></span><span class="v">needs your OK</span>
+            </div>
+            <div class="defrow">
+              <span class="k">Expires</span><span class="lead"></span><span class="v">Sun 15 Oct</span>
+            </div>
+            <div class="defrow">
+              <span class="k">Paid to</span><span class="lead"></span><span class="v">Zoe's Venmo<small>account</small></span>
+            </div>
+            <div class="defrow">
+              <span class="k">Zoe to save</span><span class="lead"></span>
+              <span class="v">$4.00 / week<small>toward Headphones</small></span>
+            </div>
+            <div class="defrow">
+              <span class="k">You match</span><span class="lead"></span><span class="v">$2 for every $4</span>
+            </div>
+          </div>
+
+          <div class="clause">
+            <span class="lbl">In plain words</span>
+            Zoe can spend up to <b>$20.00 a week</b> at the two places above, without asking you. Anything online comes to you first. This ends Sunday — you can change or cancel it any time.
+          </div>
+
+          <div style="margin-top:auto;padding-bottom:4px">
+            <button class="btn g">Sign and send</button>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>9 · The grant</b> — the consent surface. No AI, reads like a contract.</div>
+    </div>
+
+    <!-- ---------- 8. A request ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen guard">
+        <div class="status" style="color:var(--g-ink)"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body g">
+          <div>
+            <div class="eyebrow">Request</div>
+            <div class="h2" style="font-size:19px;margin-top:6px">Zoe is asking for $15.00 at Sneaker Shop</div>
+          </div>
+
+          <div class="card g">
+            <div class="small" style="color:var(--ink-2)">
+              She has <b>$8.00</b> left this week. This would use the rest and <b>$7.00</b> more.
+            </div>
+            <div class="bar mini" style="margin-top:11px;background:#E7EAEC;height:9px">
+              <span style="width:65%;background:var(--g-accent)"></span>
+            </div>
+            <div class="barlabels" style="font-size:11px">
+              <span>$8.00 available</span><span style="color:#9A5B00">$7.00 over</span>
+            </div>
+          </div>
+
+          <div class="card g">
+            <div class="muted" style="font-size:11.5px;font-weight:650">HER REASON</div>
+            <div style="font-style:italic;color:var(--ink-2);margin-top:5px;font-size:13.5px">"the ones I have are falling apart"</div>
+          </div>
+
+          <div class="card g" style="background:#FBFBF9">
+            <div class="small" style="color:var(--ink-2)">
+              Her last 4 weeks: <b>inside budget</b>, nothing blocked.
+            </div>
+          </div>
+
+          <div style="margin-top:auto;padding-bottom:4px;display:grid;gap:9px">
+            <div class="btnrow">
+              <button class="btn g">Approve $15.00</button>
+              <button class="btn gg">Not this time</button>
+            </div>
+            <div style="text-align:center" class="muted">
+              <span style="text-decoration:underline">or change her limit instead</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>10 · A request</b> — one tap, with the budget consequence shown first.</div>
+    </div>
+
+    <!-- ---------- 9. The record ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen guard">
+        <div class="status" style="color:var(--g-ink)"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body g">
+          <div>
+            <div class="eyebrow">The record</div>
+            <div class="muted" style="margin-top:5px;font-size:12.5px">Everything you've authorised, and the proof behind each payment.</div>
+          </div>
+
+          <div class="card g">
+            <div class="rec" style="padding-top:2px">
+              <div class="txt">
+                <b>Week of 8 October</b>
+                $20.00/week · Corner Store, City Transit · online needs OK
+              </div>
+              <span class="chip g">Active</span>
+            </div>
+            <div class="rec">
+              <div class="txt">
+                <b>Headphones goal</b>
+                $4.00/week from Zoe · you match $2 per $4
+              </div>
+              <span class="chip g">Active</span>
+            </div>
+            <div class="rec" style="padding-bottom:2px">
+              <div class="txt">
+                <b>Week of 1 October</b>
+                $20.00/week · same rules
+              </div>
+              <span class="chip">Ended</span>
+            </div>
+          </div>
+
+          <div class="card g">
+            <div class="rec" style="border:none;padding-top:0">
+              <div class="txt">
+                <b>Corner Store · $6.00</b>
+                8 October, 12:40
+              </div>
+              <span class="chip ok">Allowed</span>
+            </div>
+            <div class="expand">
+              <b style="color:var(--g-ink)">Allowed by:</b> week budget, $20.00 (used $6.00), approved payee<br>
+              <b style="color:var(--g-ink)">Payment id:</b> <code>CAP-0001</code>
+              <div style="margin-top:7px;color:var(--ink-3);font-size:11.3px">▸ View signed record</div>
+            </div>
+          </div>
+
+          <div class="card g">
+            <div class="rec" style="border:none;padding-top:0">
+              <div class="txt">
+                <b>Sneaker Shop · $15.00</b>
+                7 October, 16:02
+              </div>
+              <span class="chip ok">Allowed</span>
+            </div>
+            <div class="expand">
+              <b style="color:var(--g-ink)">Allowed by:</b> your approval <span class="muted">(approval id <code>appr_41c2</code>)</span><br>
+              <b style="color:var(--g-ink)">Payment id:</b> <code>CAP-0003</code>
+              <div style="margin-top:7px;color:var(--ink-3);font-size:11.3px">▸ View signed record</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>11 · The record</b> — every payment has a proof of permission behind it.</div>
+    </div>
+
+    <!-- ---------- 10. Level review ---------- -->
+    <div class="frame">
+      <div class="phone"><div class="screen guard">
+        <div class="status" style="color:var(--g-ink)"><span>9:41</span><span class="glyphs"><i></i><i></i><i class="dot"></i></span></div>
+        <div class="body g">
+          <div class="eyebrow">Monthly review</div>
+
+          <div class="card g">
+            <div class="h2" style="font-size:18px">Zoe has moved to Level 3.</div>
+            <div class="muted" style="margin-top:6px;font-size:12.5px">This happened automatically, on evidence. You can overrule it below.</div>
+          </div>
+
+          <div class="card g">
+            <div class="muted" style="font-size:11.5px;font-weight:650;margin-bottom:8px">THE EVIDENCE</div>
+            <div style="display:grid;gap:8px">
+              <div class="defrow" style="padding:2px 0;border:none">
+                <span class="k">Weeks inside budget</span><span class="lead"></span><span class="v">4 of 4</span>
+              </div>
+              <div class="defrow" style="padding:2px 0;border:none">
+                <span class="k">Saved</span><span class="lead"></span><span class="v">42% of allowance</span>
+              </div>
+              <div class="defrow" style="padding:2px 0;border:none">
+                <span class="k">Commitments kept</span><span class="lead"></span><span class="v">4 of 4</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="clause" style="border-left-color:#C99A2E">
+            <span class="lbl">What changed</span>
+            Weekly limit $20.00 → <b>$30.00</b>. Online purchases no longer need your approval.
+          </div>
+
+          <div style="margin-top:auto;padding-bottom:4px;display:grid;gap:9px">
+            <button class="btn g">Keep Level 3</button>
+            <div style="text-align:center" class="muted">
+              <span style="text-decoration:underline">Hold her at Level 2 for now</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div class="cap"><b>12 · The monthly review</b> — promotion arrives with its evidence, and stays overrulable.</div>
+    </div>
+
+  </div>
+</section>
+
+<footer class="page-foot">
+  Tether mockups · copy matches <code>HOW-IT-WORKS.md</code>. Edit this file and re-screenshot for the demo video; every screen is plain HTML so the colours, numbers and wording are all changeable.
+</footer>
+
+<!-- ======================= DESKTOP ======================= -->
+<section class="app-section">
+  <h2>Amara on a laptop · 1280px</h2>
+  <p class="sub">Approvals happen on a phone; authoring and review happen at a desk. Same product, two layouts — and the desktop is where the evidence trail finally becomes readable.</p>
+  <div class="rail" style="grid-template-columns:1fr">
+
+    <!-- ---------- 13. Grant editor, desktop ---------- -->
+    <div class="frame">
+      <div class="browser">
+        <div class="browser__bar">
+          <span class="d" style="background:#FF5F57"></span>
+          <span class="d" style="background:#FEBC2E"></span>
+          <span class="d" style="background:#28C840"></span>
+          <span class="browser__url">tether.app/zoe/grant</span>
+        </div>
+        <div class="app">
+          <div class="sidebar">
+            <div style="display:flex;align-items:center;gap:9px;padding:0 8px 14px">
+              <div style="width:26px;height:26px;border-radius:8px;font-size:13px;font-weight:800;color:#fff;display:grid;place-items:center;background:linear-gradient(140deg,#0B6B5B,#22A08A)">T</div>
+              <div style="font-weight:750;font-size:14px;color:var(--g-ink)">Tether</div>
+            </div>
+            <div class="side-item"><i></i>Zoe</div>
+            <div class="side-item on"><i></i>Grant</div>
+            <div class="side-item"><i></i>Record</div>
+            <div class="side-item"><i></i>Settings</div>
+            <div class="side-head">This week</div>
+            <div style="padding:0 11px;font-size:12px;color:var(--ink-2);line-height:1.75">
+              Spent <b style="color:var(--g-ink)">$12.00</b> of $20.00<br>
+              Level 2 · nothing blocked
+            </div>
+          </div>
+          <div class="main">
+            <h2>Grant Zoe authority</h2>
+            <div class="two">
+              <div class="panel">
+                <h4>The rules</h4>
+                <div class="frow"><span class="fl">Weekly amount</span><span class="fv"><input class="input" value="$20.00" style="width:112px;text-align:right"></span></div>
+                <div class="frow"><span class="fl">Where</span><span class="fv">Corner Store · City Transit <span class="chip" style="margin-left:6px">+ add</span></span></div>
+                <div class="frow"><span class="fl">Online purchases</span><span class="fv">Needs your OK ▾</span></div>
+                <div class="frow"><span class="fl">Expires</span><span class="fv"><input class="input" value="Sun 15 Oct" style="width:132px;text-align:right"></span></div>
+                <div class="frow"><span class="fl">Paid to</span><span class="fv">Zoe's Venmo account</span></div>
+                <div class="frow"><span class="fl">Zoe to save</span><span class="fv">$4.00 / week → Headphones</span></div>
+                <div class="frow"><span class="fl">You match</span><span class="fv">$2 for every $4 she saves</span></div>
+              </div>
+              <div class="panel">
+                <h4>What Zoe will read</h4>
+                <div class="clause">
+                  <span class="lbl">In plain words</span>
+                  Zoe can spend up to <b>$20.00 a week</b> at Corner Store and City Transit, without asking you. Anything online comes to you first. This ends Sunday — you can change or cancel it any time.
+                </div>
+                <div class="preview-note">You'll be asked to confirm before anything changes. Nothing here is decided by a model.</div>
+                <button class="btn g" style="margin-top:14px">Sign and send</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>13 · The grant, on a laptop</b> — authoring at a desk, with a live preview of exactly what Zoe reads.</div>
+    </div>
+
+    <!-- ---------- 14. Record, desktop ---------- -->
+    <div class="frame">
+      <div class="browser">
+        <div class="browser__bar">
+          <span class="d" style="background:#FF5F57"></span>
+          <span class="d" style="background:#FEBC2E"></span>
+          <span class="d" style="background:#28C840"></span>
+          <span class="browser__url">tether.app/zoe/record</span>
+        </div>
+        <div class="app">
+          <div class="sidebar">
+            <div style="display:flex;align-items:center;gap:9px;padding:0 8px 14px">
+              <div style="width:26px;height:26px;border-radius:8px;font-size:13px;font-weight:800;color:#fff;display:grid;place-items:center;background:linear-gradient(140deg,#0B6B5B,#22A08A)">T</div>
+              <div style="font-weight:750;font-size:14px;color:var(--g-ink)">Tether</div>
+            </div>
+            <div class="side-item"><i></i>Zoe</div>
+            <div class="side-item"><i></i>Grant</div>
+            <div class="side-item on"><i></i>Record</div>
+            <div class="side-item"><i></i>Settings</div>
+            <div class="side-head">Open</div>
+            <div style="padding:0 11px;font-size:12px;color:var(--ink-2);line-height:1.75">
+              Zoe's request · $15.00<br>
+              <span style="color:var(--ink-3)">answered 7 Oct</span>
+            </div>
+          </div>
+          <div class="main">
+            <h2>The record</h2>
+            <div class="grid4">
+              <div class="stat"><div class="k">This week</div><div class="n">$12.00</div><div class="sub">of $20.00</div></div>
+              <div class="stat"><div class="k">Level</div><div class="n">2</div><div class="sub">L3 at this pace</div></div>
+              <div class="stat"><div class="k">Saved</div><div class="n">$34.00</div><div class="sub">of $89.00 goal</div></div>
+              <div class="stat"><div class="k">Needs you</div><div class="n">0</div><div class="sub">nothing pending</div></div>
+            </div>
+            <div class="panel">
+              <h4>Grants</h4>
+              <table class="dtable">
+                <tr><th style="width:130px">Period</th><th>Rules</th><th style="width:90px">Status</th></tr>
+                <tr><td><b>8–15 Oct</b>Level 2</td><td>$20.00/week · Corner Store, City Transit · online needs OK</td><td><span class="chip g">Active</span></td></tr>
+                <tr><td><b>1–8 Oct</b>Level 2</td><td>$20.00/week · same rules</td><td><span class="chip">Ended</span></td></tr>
+              </table>
+            </div>
+            <div class="panel">
+              <h4>Payments</h4>
+              <table class="dtable">
+                <tr><th style="width:110px">When</th><th style="width:170px">Merchant</th><th>Allowed by</th><th style="width:110px">Proof</th></tr>
+                <tr><td>8 Oct 12:40</td><td><b>Corner Store</b>$6.00</td><td>week budget ($6.00 of $20.00 used) · approved payee</td><td><code>CAP-0001</code></td></tr>
+                <tr><td>7 Oct 16:02</td><td><b>Sneaker Shop</b>$15.00</td><td>your approval <code>appr_41c2</code></td><td><code>CAP-0003</code></td></tr>
+                <tr><td>6 Oct 08:15</td><td><b>City Transit</b>$2.50</td><td>week budget · approved payee</td><td><code>CAP-0002</code></td></tr>
+              </table>
+              <div class="preview-note">Every payment keeps its permission slip attached — exportable if a charge is ever questioned.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>14 · The record, on a laptop</b> — dashboard on top, audit trail below, the proof behind every payment.</div>
+    </div>
+
+  </div>
+</section>
+
+</body>
+</html>
