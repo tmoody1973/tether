@@ -12,6 +12,8 @@ export const families = pgTable("families", {
   clockOffsetMs: bigint("clock_offset_ms", { mode: "number" }).notNull().default(0),
   guardianName: text("guardian_name").notNull(),
   teenName: text("teen_name").notNull(),
+  commitmentCents: integer("commitment_cents").notNull().default(0),
+  pendingCommitmentCents: integer("pending_commitment_cents"), // takes effect at the next week close
 });
 
 export const merchants = pgTable("merchants", {

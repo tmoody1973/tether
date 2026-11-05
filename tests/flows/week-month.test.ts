@@ -1,0 +1,223 @@
+import { beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { createDb, migrateDb, type Db } from "@/db/client";
+import * as repo from "@/db/repo";
+import * as t from "@/db/schema";
+import { PaypalError, type PaypalHttp } from "@/adapters/paypal/http";
+import type { Channel3Adapter } from "@/adapters/channel3/client";
+import type { Cart } from "@/engine/types";
+import { grantForLevel } from "@/engine/ladder";
+import { proposePurchase, type Deps } from "@/flows/purchase";
+import { savingsCents } from "@/ledger/ledger";
+import { closeWeek } from "@/flows/week";
+import { confirmRelease, runMonthReview } from "@/flows/month";
+import { GrantError, guardianSetLevel, renewGrant, resetTeenLink, revoke, setCommitment, signGrant } from "@/flows/grant";
+
+let db: Db;
+beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
+
+let n = 0;
+let nowMs = 0;
+let deleted: string[] = [];
+let failDelete = false;
+const paypal: PaypalHttp = {
+  async request<T>(method: string, path: string) {
+    if (method === "DELETE") {
+      if (failDelete) throw new PaypalError(500, "INTERNAL", "boom");
+      deleted.push(path);
+    }
+    return { status: 204, headers: new Headers(), data: {} as T };
+  },
+};
+const nope = async () => { throw new Error("unused"); };
+const channel3: Channel3Adapter = { retrieve: nope, search: nope, lookup: nope, websites: nope } as unknown as Channel3Adapter;
+const deps = (): Deps => ({
+  db, paypal, channel3, classifier: { ask: async () => ({ probability: 0.99, model: "m", modelVersion: "1" }) },
+  secret: "s", now: async () => new Date(nowMs),
+});
+
+async function seed(start = "2026-11-04T12:00:00Z") {
+  n++;
+  nowMs = new Date(start).getTime();
+  const familyId = (await repo.insertFamily(db, { name: "F", teenToken: `wm-token-${n}`, guardianName: "Amara", teenName: "Z" })).id;
+  await db.insert(t.merchants).values([
+    { id: `gen${n}`, name: "Gen", domain: `gen${n}.example`, class: "general", opensAtLevel: 1 },
+    { id: `book${n}`, name: "Books", domain: `book${n}.example`, class: "books", opensAtLevel: 2 },
+    { id: `shoe${n}`, name: "Shoes", domain: `shoe${n}.example`, class: "sneakers", opensAtLevel: 3 },
+  ]);
+  await db.insert(t.vault).values({ familyId, paymentTokenId: `V${n}` });
+  const g = grantForLevel(1, { id: `g${n}`, familyId, version: 1, commitmentFloorPct: 10, matchPct: 100, fundAllowlist: [] },
+    { general: [`gen${n}`], books: [`book${n}`] }, [], new Date("2026-11-02T00:00:00Z"));
+  await repo.insertGrant(db, { id: g.id, familyId, version: 1, level: 1, body: g, signedAt: new Date(g.signedAt), expiresAt: new Date(g.expiresAt), status: "active" });
+  return { familyId, n };
+}
+
+const seedWeeks = (familyId: string, kept: boolean[]) =>
+  db.insert(t.weeks).values(kept.map((k, i) => ({
+    familyId, weekKey: `2026-W${41 + i}`, allowanceCents: 2000, commitmentCents: k ? 200 : 2500,
+  })));
+const saveJournal = (familyId: string, cents: number) =>
+  repo.appendJournal(db, { familyId, kind: "week_close", amountCents: cents, at: new Date(nowMs) });
+const active = async (familyId: string) => (await repo.getActiveGrant(db, familyId))!;
+
+describe("month review and release", () => {
+  it("four kept weeks -> level 2 grant with bookshop and $30", async () => {
+    const { familyId, n } = await seed();
+    await seedWeeks(familyId, [true, true, true, true]);
+    const r = await runMonthReview(deps(), familyId);
+    expect(r.action).toBe("PROMOTE");
+    const g = await active(familyId);
+    expect(g.level).toBe(2);
+    expect(g.version).toBe(2);
+    expect(g.body.weeklyCents).toBe(3000);
+    const payees = (g.body.constraints.find((c) => c.type === "payment.allowed_payees") as { merchantIds: string[] }).merchantIds;
+    expect(payees).toContain(`book${n}`);
+    expect(payees).not.toContain(`shoe${n}`);
+    expect(g.body.constraints).toContainEqual({ type: "checkout.semantic_category", merchantIds: [`book${n}`], rule: "BOOKS_ONLY" });
+    const lc = await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId));
+    expect(lc).toMatchObject([{ fromLevel: 1, toLevel: 2, by: "engine" }]);
+    const all = await db.select().from(t.grants).where(eq(t.grants.familyId, familyId));
+    expect(all.filter((x) => x.status === "active")).toHaveLength(1);
+  });
+
+  it("release amounts = savings and 100% match", async () => {
+    const { familyId } = await seed();
+    await seedWeeks(familyId, [true, true, true, true]);
+    await saveJournal(familyId, 1200);
+    const r = await runMonthReview(deps(), familyId);
+    expect(r.release).toMatchObject({ savedCents: 1200, matchCents: 1200 });
+    const [row] = await db.select().from(t.releases).where(eq(t.releases.id, r.release!.releaseId));
+    expect(row).toMatchObject({ savedCents: 1200, matchCents: 1200, confirmedAt: null });
+  });
+
+  it("HOLD creates no release", async () => {
+    const { familyId } = await seed();
+    await seedWeeks(familyId, [true, true, false, true]);
+    const r = await runMonthReview(deps(), familyId);
+    expect(r.action).toBe("HOLD");
+    expect(r.release).toBeUndefined();
+    expect((await active(familyId)).level).toBe(1);
+    expect(await db.select().from(t.releases).where(eq(t.releases.familyId, familyId))).toHaveLength(0);
+  });
+
+  it("confirmRelease journals release", async () => {
+    const { familyId } = await seed();
+    await seedWeeks(familyId, [true, true, true, true]);
+    await saveJournal(familyId, 1200);
+    const { release } = await runMonthReview(deps(), familyId);
+    expect(await savingsCents(db, familyId)).toBe(1200);
+    await confirmRelease(deps(), release!.releaseId);
+    await confirmRelease(deps(), release!.releaseId); // idempotent
+    expect(await savingsCents(db, familyId)).toBe(0);
+    const rel = (await db.select().from(t.journal).where(eq(t.journal.familyId, familyId))).filter((j) => j.kind === "release");
+    expect(rel).toHaveLength(1);
+    expect(rel[0].amountCents).toBe(1200);
+  });
+});
+
+describe("week close and commitment", () => {
+  it("closeWeek is idempotent", async () => {
+    const { familyId } = await seed("2026-11-10T09:00:00Z"); // Tue of W46 -> closes W45
+    await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 500, at: new Date("2026-11-05T10:00:00Z") });
+    await closeWeek(deps(), familyId);
+    await closeWeek(deps(), familyId);
+    const ws = await db.select().from(t.weeks).where(eq(t.weeks.familyId, familyId));
+    expect(ws).toHaveLength(1);
+    expect(ws[0]).toMatchObject({ weekKey: "2026-W45", allowanceCents: 2000 });
+    const wc = (await db.select().from(t.journal).where(eq(t.journal.familyId, familyId))).filter((j) => j.kind === "week_close");
+    expect(wc).toHaveLength(1);
+    expect(wc[0].amountCents).toBe(1500);
+  });
+
+  it("commitment change mid-week applies next week", async () => {
+    const { familyId } = await seed("2026-11-10T09:00:00Z");
+    await db.update(t.families).set({ commitmentCents: 300 }).where(eq(t.families.id, familyId));
+    await setCommitment(deps(), familyId, 500);
+    let [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
+    expect(f).toMatchObject({ commitmentCents: 300, pendingCommitmentCents: 500 });
+    await closeWeek(deps(), familyId);
+    const [w] = await db.select().from(t.weeks).where(eq(t.weeks.familyId, familyId));
+    expect(w.commitmentCents).toBe(300); // the closed week was judged on the old commitment
+    [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
+    expect(f).toMatchObject({ commitmentCents: 500, pendingCommitmentCents: null });
+  });
+
+  it("closeWeek applies pending commitment", async () => {
+    const { familyId } = await seed("2026-11-10T09:00:00Z");
+    await setCommitment(deps(), familyId, 400);
+    await closeWeek(deps(), familyId);
+    const [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
+    expect(f.commitmentCents).toBe(400);
+  });
+
+  it("setCommitment below floor throws with minCents", async () => {
+    const { familyId } = await seed();
+    const err = await setCommitment(deps(), familyId, 100).catch((e) => e);
+    expect(err).toBeInstanceOf(GrantError);
+    expect(err.minCents).toBe(200); // 10% of $20
+    const [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
+    expect(f.pendingCommitmentCents).toBeNull();
+  });
+});
+
+describe("grant management", () => {
+  it("renewGrant makes a new version, +7 days, old one expired", async () => {
+    const { familyId } = await seed();
+    await renewGrant(deps(), familyId);
+    const g = await active(familyId);
+    expect(g).toMatchObject({ version: 2, level: 1 });
+    expect(g.expiresAt.getTime()).toBe(nowMs + 7 * 86_400_000);
+    const v1 = (await db.select().from(t.grants).where(eq(t.grants.familyId, familyId))).find((x) => x.version === 1)!;
+    expect(v1.status).toBe("expired");
+  });
+
+  it("guardianSetLevel without reason throws", async () => {
+    const { familyId } = await seed();
+    await expect(guardianSetLevel(deps(), familyId, 3, "   ")).rejects.toThrow(/reason/);
+    expect((await active(familyId)).level).toBe(1);
+    await guardianSetLevel(deps(), familyId, 3, " she earned it ");
+    expect((await active(familyId)).level).toBe(3);
+    const [lc] = await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId));
+    expect(lc).toMatchObject({ by: "guardian", reason: "she earned it", fromLevel: 1, toLevel: 3 });
+  });
+
+  it("signGrant creates the first active grant with defaults", async () => {
+    const { familyId } = await seed();
+    await signGrant(deps(), familyId, { level: 2 });
+    expect(await active(familyId)).toMatchObject({ level: 2, version: 2 });
+    expect((await active(familyId)).body).toMatchObject({ commitmentFloorPct: 10, matchPct: 100, fundAllowlist: [] });
+  });
+
+  it("revoke deletes vault token and refuses next purchase", async () => {
+    const { familyId, n } = await seed();
+    deleted = [];
+    const r = await revoke(deps(), familyId);
+    expect(r).toEqual({ revoked: true, paypalTokenDeleted: true });
+    expect(deleted).toEqual([`/v3/vault/payment-tokens/V${n}`]);
+    expect(await repo.getActiveGrant(db, familyId)).toBeNull();
+    expect(await repo.getVault(db, familyId)).toBeNull();
+    const cart: Cart = { merchantId: `gen${n}`, items: [{ sku: "a", title: "x", qty: 1, unitCents: 500 }], totalCents: 500 };
+    const { decision } = await proposePurchase(deps(), familyId, cart);
+    expect(decision.outcome).toBe("REFUSE");
+  });
+
+  it("revoke keeps local revoke when PayPal delete fails", async () => {
+    const { familyId } = await seed();
+    failDelete = true;
+    try {
+      const r = await revoke(deps(), familyId);
+      expect(r).toMatchObject({ revoked: true, paypalTokenDeleted: false });
+      expect(r.error).toMatch(/boom/);
+      expect(await repo.getActiveGrant(db, familyId)).toBeNull();
+    } finally { failDelete = false; }
+  });
+
+  it("old teen token no longer resolves after reset", async () => {
+    const { familyId, n } = await seed();
+    const old = `wm-token-${n}`;
+    const { token } = await resetTeenLink(deps(), familyId);
+    expect(token).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(await repo.getFamilyByTeenToken(db, old)).toBeNull();
+    expect((await repo.getFamilyByTeenToken(db, token))?.id).toBe(familyId);
+  });
+});
