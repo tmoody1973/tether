@@ -14,7 +14,7 @@ export interface Product {
 
 export interface Channel3Adapter {
   search(query: string, allowedDomains: string[], limit?: number): Promise<Product[]>;
-  lookup(url: string, allowedDomains: string[]): Promise<Product | null>;
+  lookup(url: string, allowedDomains: string[]): Promise<LookupResult>;
   /** Free endpoint; used for the settle-time price re-check. */
   retrieve(productId: string, allowedDomains: string[]): Promise<Product | null>;
   websites(query: string): Promise<{ domain: string; name: string }[]>;
@@ -22,7 +22,7 @@ export interface Channel3Adapter {
 
 interface RawOffer {
   domain: string;
-  price: { price: number; currency: string };
+  price?: { price: number; currency: string } | null;
   availability?: string;
 }
 interface RawProduct {
@@ -32,7 +32,7 @@ interface RawProduct {
   offers?: RawOffer[];
 }
 
-/** The slice of the @channel3/sdk client that we call; tests inject a fake. */
+/** The slice of the @channel3/sdk client that we call; the real client must satisfy it (checked at compile time below). */
 export interface Channel3Like {
   products: {
     search(req: { query: string; filters: { website_ids: string[] }; limit: number }): Promise<{ data: RawProduct[] }>;
@@ -43,6 +43,11 @@ export interface Channel3Like {
     search(req: { query: string }): Promise<{ websites: { url: string; name?: string | null }[] }>;
   };
 }
+
+export type LookupResult =
+  | { kind: "ok"; product: Product }
+  | { kind: "not_a_product" }
+  | { kind: "shop_not_allowed"; domains: string[] };
 
 const DEFAULT_LIMIT = 10;
 // 422 not a product page, 404 gone, 500 extraction failed, 504 timeout (per Channel3 lookup docs).
@@ -57,13 +62,18 @@ function statusOf(e: unknown): number | undefined {
 /** Cheapest in-stock USD offer from an allowed shop, or null. Offer URLs are deliberately dropped. */
 function toProduct(raw: RawProduct, allowed: string[]): Product | null {
   const best = (raw.offers ?? [])
-    .filter((o) => allowed.includes(o.domain) && o.price.currency === "USD" && o.availability === "InStock")
-    .sort((a, b) => a.price.price - b.price.price)[0];
+    .flatMap((o) =>
+      o.price && Number.isFinite(o.price.price) && o.price.currency === "USD" &&
+      allowed.includes(o.domain) && o.availability === "InStock"
+        ? [{ domain: o.domain, price: o.price.price }]
+        : [],
+    )
+    .sort((a, b) => a.price - b.price)[0];
   if (!best) return null;
   return {
     id: raw.id,
     title: raw.title,
-    priceCents: Math.round(best.price.price * 100),
+    priceCents: Math.round(best.price * 100),
     domain: best.domain,
     ...(raw.category?.slug ? { category: raw.category.slug } : {}),
     available: true, // ponytail: only InStock offers are kept, so always true
@@ -79,7 +89,8 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
   if (!client) {
     const apiKey = process.env.CHANNEL3_API_KEY;
     if (!apiKey) throw new Error("CHANNEL3_API_KEY is not set; add it to .env.local");
-    client = new Channel3({ apiKey }) as unknown as Channel3Like;
+    const real: Channel3Like = new Channel3({ apiKey }); // no cast: compile-time check against the real SDK
+    client = real;
   }
   const c = client;
 
@@ -89,14 +100,16 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
       return page.data.flatMap((r) => toProduct(r, allowedDomains) ?? []);
     },
 
-    async lookup(url, allowedDomains) {
+    async lookup(url, allowedDomains): Promise<LookupResult> {
       try {
         const { product } = await c.products.lookup({ url });
         const p = toProduct(product, allowedDomains);
-        return p && { ...p, sourceUrl: url };
+        if (p) return { kind: "ok", product: { ...p, sourceUrl: url } };
+        const domains = [...new Set((product.offers ?? []).map((o) => o.domain))];
+        return { kind: "shop_not_allowed", domains };
       } catch (e) {
         const s = statusOf(e);
-        if (s !== undefined && LOOKUP_MISS.has(s)) return null;
+        if (s !== undefined && LOOKUP_MISS.has(s)) return { kind: "not_a_product" };
         throw e;
       }
     },

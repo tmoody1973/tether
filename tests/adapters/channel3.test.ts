@@ -93,10 +93,35 @@ describe("channel3 adapter", () => {
     expect(await createChannel3(f.sdk).search("q", ["bestbuy.com"])).toEqual([]);
   });
 
-  it("lookup returns null on 422", async () => {
+  it("lookup returns not_a_product on 422", async () => {
     const f = fakeSdk();
     f.lookup.mockRejectedValue(err(422));
-    expect(await createChannel3(f.sdk).lookup("https://x.com/a", ["bestbuy.com"])).toBeNull();
+    expect(await createChannel3(f.sdk).lookup("https://x.com/a", ["bestbuy.com"])).toEqual({ kind: "not_a_product" });
+  });
+
+  it("lookup reports shop_not_allowed with the offer domains", async () => {
+    const f = fakeSdk();
+    f.lookup.mockResolvedValue({ product: prod("p1", [offer("cdw.com", 10), offer("macys.com", 12)]) });
+    expect(await createChannel3(f.sdk).lookup("https://cdw.com/a", ["bestbuy.com"])).toEqual({
+      kind: "shop_not_allowed",
+      domains: ["cdw.com", "macys.com"],
+    });
+  });
+
+  it("malformed offers are skipped, not thrown or NaN", async () => {
+    const f = fakeSdk();
+    f.search.mockResolvedValue({
+      data: [
+        prod("p1", [
+          { url: "u", domain: "bestbuy.com", availability: "InStock" } as never,
+          { ...offer("bestbuy.com", 1), price: { price: NaN, currency: "USD" } },
+          offer("bestbuy.com", 20),
+        ]),
+        prod("p2", [{ url: "u", domain: "bestbuy.com", availability: "InStock" } as never]),
+      ],
+    });
+    const out = await createChannel3(f.sdk).search("q", ["bestbuy.com"]);
+    expect(out.map((p) => [p.id, p.priceCents])).toEqual([["p1", 2000]]);
   });
 
   it("lookup rethrows unexpected errors", async () => {
@@ -107,8 +132,8 @@ describe("channel3 adapter", () => {
 
   it("lookup sets sourceUrl", async () => {
     const url = "https://www.bestbuy.com/site/abc";
-    const p = await createChannel3(fakeSdk().sdk).lookup(url, ["bestbuy.com"]);
-    expect(p?.sourceUrl).toBe(url);
+    const r = await createChannel3(fakeSdk().sdk).lookup(url, ["bestbuy.com"]);
+    expect(r.kind === "ok" && r.product.sourceUrl).toBe(url);
   });
 
   it("retrieve returns null on 404 and passes website_ids", async () => {
