@@ -12,6 +12,8 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.97",
+    "ai": "^7.0.163",
     "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
