@@ -95,7 +95,7 @@ Guardrails:
 ### D7 — One sandbox business account stands in for every shop, unless a day-1 test says otherwise (Claude's call)
 A wallet saved with `usage_type: MERCHANT` is, per PayPal's reference, "used for future transaction directly with a merchant." Separately, PayPal's **"Pay another account"** page (labelled *Direct merchant*) says a regular merchant can send an order's money to a different account by adding a `payee` object with that account's `email_address` or `merchant_id`. **Not documented:** whether `payee` works together with a saved wallet (`payment_source.paypal.vault_id`). Day-1 spike (≈10 minutes in sandbox): charge the saved wallet with `payee` set to a second sandbox business account.
 - **If it works:** each demo shop can be its own sandbox business account, and receipts show genuinely different merchants.
-- **If it doesn't:** **Tether's sandbox business account receives every charge**, and the receipt records which shop it stood in for. On screen: *"Sandbox: payments go to a stand-in merchant. In production, Tether pays shops as a PayPal platform partner, or through shops' own agent checkouts (PayPal Agent Ready)."*
+- **If it doesn't:** **Tether's sandbox business account receives every charge**, and the receipt records which shop it stood in for. On screen: *"Sandbox: payments go to a stand-in merchant. In production, Tether pays shops as a PayPal platform partner, or through shops' own agent checkouts (PayPal Agent Ready)."* Spike result (2026-11-05): `payee.email_address` set to a second sandbox business account is accepted together with `vault_id` (order and capture both `COMPLETED`, no error), so per-shop payees are possible in sandbox; a vault charge needs no separate capture call.
 
 ### D8 — One sponsor prize: Channel3 (Claude's call)
 Only one sponsor prize can be won. Channel3 ($1,500) is load-bearing for the product (D6, and turning a pasted link into a real cart), and requires the project to actually call it. AG Grid, Astropods and Zapier are out of this build. Alpaca is in (D13), but it isn't a sponsor and carries no prize.
@@ -151,7 +151,7 @@ Roadmap slide: *"Level 4: savings can be invested. Zoe proposes, Amara approves,
 
 ### D14 — Amara's savings as a second PayPal account: a day-1 test, not a promise (Claude's call; Tarik's idea)
 PayPal US allows "1 Personal account and 1 Business account" per person, so a second *personal* account is out; a *business* account is allowed. If the D7 spike shows a saved-wallet charge can be sent to another account, a weekly charge can move Zoe's unspent allowance from Amara's PayPal into a sandbox account labelled "Zoe's savings (Amara's)". That fixes D3's weak spot — savings would be real money set aside, not a promise. Label on screen: *"In production this goes to Amara's PayPal Savings goal, which has no API today. This is the API we'd ask PayPal for."*
-Unverified: whether PayPal treats a charge between one person's own personal and business accounts as a problem in production.
+Unverified: whether PayPal treats a charge between one person's own personal and business accounts as a problem in production. Spike result (2026-11-05): the vault plus `payee` charge to a second business account succeeded (capture `COMPLETED`), so the second-account savings idea is viable as a charge target; balance arrival at that account was not verified.
 
 ### D16 — Investing screens: borrow Greenlight's mechanics, not its hype (Claude's call; prompted by Tarik's Greenlight screenshots)
 | Greenlight element | Tether | Why |
