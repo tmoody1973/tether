@@ -9,6 +9,8 @@
 2. **A labelled simulation on a paper-trading account.** Cost: 2–3 hours, and it's fake in a submission whose strength is honesty.
 3. **Roadmap slide only.** Cost: no investing on screen.
 
+**Update, 2026-11-05 (Tarik):** the sandbox refused custodial accounts, so investing is built now on an ordinary sandbox account labelled as a stand-in; the custodial path stays behind a one-setting switch (`ALPACA_CUSTODIAL_ENABLED`).
+
 **Final decision, 2026-11-05 (Tarik):** investing is a **Must** and will not be cut. The day-1 Alpaca checks now decide *how* it's built, not *whether*. If the sandbox won't create a custodial account and Alpaca support hasn't enabled one by Sunday 8 Nov, a regular sandbox account stands in, labelled on screen as a stand-in. (This file keeps its original name so the history stays readable.)
 
 **Earlier revision, same day (joint):** Tarik brought a plan that fixes two of the costs in option 1. The teen proposes and the parent approves, so the parent places the trade as the law requires. The parent keeps an allowlist of funds, so Tether recommends nothing. Investing is now a **one-day stretch**, attempted only if two 15-minute day-1 checks pass: a free Alpaca sandbox signup works, and the sandbox accepts a custodial account. Otherwise it falls back to option 3. Details: design doc, D13.

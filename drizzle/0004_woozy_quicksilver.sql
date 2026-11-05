@@ -1,0 +1,1 @@
+ALTER TABLE "merchants" ADD COLUMN "added_by_family_id" text;
