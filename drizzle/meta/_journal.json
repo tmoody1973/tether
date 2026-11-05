@@ -64,6 +64,13 @@
       "when": 1793915112110,
       "tag": "0008_guardian_token",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793918364655,
+      "tag": "0009_purchase_token",
+      "breakpoints": true
     }
   ]
 }

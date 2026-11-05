@@ -31,7 +31,11 @@ function flash(sp: Search): { text: string; warn?: boolean } | null {
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
   if (one("link") === "reset") return { text: "The old link has stopped working. Send the new one." };
   const adv = one("advanced");
-  if (adv === "1" || adv === "7") return { text: `Demo clock moved forward ${adv === "1" ? "1 day" : "1 week"}.` };
+  const moved: Record<string, string> = { day: "1 day", week: "1 week", endOfWeek: "to the end of the week", endOfMonth: "to the end of the month" };
+  if (adv && moved[adv]) return { text: `Demo clock moved forward ${moved[adv]}.` };
+  const decided = one("decided");
+  if (decided === "approved") return { text: "Approved. Zoe can go ahead." };
+  if (decided === "declined") return { text: "Done. Zoe will see “Amara said not this time.”" };
   return null;
 }
 
@@ -109,9 +113,14 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
               Demo only: time is fast-forwarded for the demo. Demo date: <b>{formatDay(h.now)}</b>.
             </p>
             <form action={advanceClockAction} className="g-btnrow">
-              <button type="submit" name="days" value="1" className="g-btn g-btn--ghost">Advance 1 day</button>
-              <button type="submit" name="days" value="7" className="g-btn g-btn--ghost">Advance 1 week</button>
+              <button type="submit" name="to" value="day" className="g-btn g-btn--ghost">Advance 1 day</button>
+              <button type="submit" name="to" value="week" className="g-btn g-btn--ghost">Advance 1 week</button>
+              <button type="submit" name="to" value="endOfWeek" className="g-btn g-btn--ghost">Advance to end of week</button>
+              <button type="submit" name="to" value="endOfMonth" className="g-btn g-btn--ghost">Advance to end of month</button>
             </form>
+            <p className="g-note" style={{ marginTop: 8 }}>
+              Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly review.
+            </p>
           </section>
         </div>
       </div>

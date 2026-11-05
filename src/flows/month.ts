@@ -1,24 +1,29 @@
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
 import * as t from "@/db/schema";
-import { appendJournal, getActiveGrant } from "@/db/repo";
-import { reviewMonth, type Level, type Review } from "@/engine/ladder";
+import { appendJournal, getActiveGrant, getLatestGrant } from "@/db/repo";
+import type { Db } from "@/db/client";
+import { commitmentKept, reviewMonth, type Level, type Review, type WeekRecord } from "@/engine/ladder";
 import { savingsCents, weekRecords } from "@/ledger/ledger";
 import { GrantError, installLevel, withFamilyLock } from "@/flows/grant";
 import type { Deps } from "@/flows/purchase";
 
+/** Weeks that count toward the next review: only those closed after the latest level change, so one streak promotes once. */
+export async function reviewWeeks(db: Db, familyId: string): Promise<WeekRecord[]> {
+  const [last] = await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId)).orderBy(desc(t.levelChanges.at)).limit(1);
+  const fresh = last
+    ? new Set((await db.select({ k: t.weeks.weekKey }).from(t.weeks)
+      .where(and(eq(t.weeks.familyId, familyId), gt(t.weeks.closedAt, last.at)))).map((r) => r.k))
+    : null;
+  return (await weekRecords(db, familyId)).filter((w) => !fresh || fresh.has(w.weekKey));
+}
+
 export type MonthResult = Review & { release?: { releaseId: string; savedCents: number; matchCents: number } };
 
-export async function runMonthReview(deps: Deps, familyId: string): Promise<MonthResult> {
+export async function runMonthReview(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<MonthResult> {
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getActiveGrant(tx, familyId);
     if (!cur) throw new GrantError("no active grant to review");
-    // Only weeks closed after the latest level change count, so one streak promotes once.
-    const [last] = await tx.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId)).orderBy(desc(t.levelChanges.at)).limit(1);
-    const fresh = last
-      ? new Set((await tx.select({ k: t.weeks.weekKey }).from(t.weeks)
-        .where(and(eq(t.weeks.familyId, familyId), gt(t.weeks.closedAt, last.at)))).map((r) => r.k))
-      : null;
-    const weeks = (await weekRecords(tx, familyId)).filter((w) => !fresh || fresh.has(w.weekKey));
+    const weeks = await reviewWeeks(tx, familyId);
     const review = reviewMonth(weeks, cur.level as Level);
     if (review.action !== "PROMOTE") return review;
     const next = (cur.level + 1) as Level;
@@ -40,13 +45,55 @@ export async function runMonthReview(deps: Deps, familyId: string): Promise<Mont
 }
 
 /** Marks the release confirmed and journals the saved amount out of savings. Safe to call twice. */
-export async function confirmRelease(deps: Deps, releaseId: string): Promise<void> {
+export async function confirmRelease(deps: Pick<Deps, "db" | "now">, releaseId: string, familyId?: string): Promise<void> {
   const [r] = await deps.db.select().from(t.releases).where(eq(t.releases.id, releaseId));
-  if (!r) throw new GrantError(`unknown release ${releaseId}`);
+  if (!r || (familyId !== undefined && r.familyId !== familyId)) throw new GrantError(`unknown release ${releaseId}`);
   await withFamilyLock(deps, r.familyId, async (tx, now) => {
     const [won] = await tx.update(t.releases).set({ confirmedAt: now })
       .where(and(eq(t.releases.id, releaseId), isNull(t.releases.confirmedAt))).returning();
     if (!won) return; // already confirmed
     await appendJournal(tx, { familyId: r.familyId, kind: "release", amountCents: r.savedCents, ref: releaseId, at: now });
   });
+}
+
+export interface ReviewView {
+  teenName: string; level: Level | null; stopped: boolean;
+  /** The latest level change, if any: an engine promotion shows as "moved up, on evidence". */
+  latestChange: { fromLevel: number; toLevel: number; by: "engine" | "guardian"; reason: string; at: Date } | null;
+  /** The weeks behind the latest promotion, or, otherwise, the weeks counting toward the next review (last 4). */
+  evidence: { weeks: number; kept: number; insideBudget: number; savedCents: number; allowanceCents: number };
+  next: Review | null;
+  release: { id: string; savedCents: number; matchCents: number } | null;
+}
+
+/** Read model for the monthly review page: the same weeks runMonthReview reads, without changing anything. */
+export async function monthReviewView(db: Db, familyId: string): Promise<ReviewView> {
+  const [fam] = await db.select().from(t.families).where(eq(t.families.id, familyId));
+  if (!fam) throw new GrantError(`unknown family ${familyId}`);
+  const [latest, [change], [release]] = await Promise.all([
+    getLatestGrant(db, familyId),
+    db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId)).orderBy(desc(t.levelChanges.at)).limit(1),
+    db.select().from(t.releases).where(and(eq(t.releases.familyId, familyId), isNull(t.releases.confirmedAt))).limit(1),
+  ]);
+  const level = latest ? (latest.level as Level) : null;
+  let weeks: WeekRecord[];
+  if (change?.by === "engine") {
+    const before = new Set((await db.select({ k: t.weeks.weekKey }).from(t.weeks)
+      .where(and(eq(t.weeks.familyId, familyId), lte(t.weeks.closedAt, change.at)))).map((r) => r.k));
+    weeks = (await weekRecords(db, familyId)).filter((w) => before.has(w.weekKey)).slice(-4);
+  } else {
+    weeks = (await reviewWeeks(db, familyId)).slice(-4);
+  }
+  return {
+    teenName: fam.teenName, level, stopped: latest?.status === "revoked",
+    latestChange: change ? { fromLevel: change.fromLevel, toLevel: change.toLevel, by: change.by, reason: change.reason, at: change.at } : null,
+    evidence: {
+      weeks: weeks.length, kept: weeks.filter(commitmentKept).length,
+      insideBudget: weeks.filter((w) => w.spentCents <= w.allowanceCents).length,
+      savedCents: weeks.reduce((s, w) => s + Math.max(0, w.allowanceCents - w.spentCents), 0),
+      allowanceCents: weeks.reduce((s, w) => s + w.allowanceCents, 0),
+    },
+    next: level ? reviewMonth(await reviewWeeks(db, familyId), level) : null,
+    release: release ? { id: release.id, savedCents: release.savedCents, matchCents: release.matchCents } : null,
+  };
 }

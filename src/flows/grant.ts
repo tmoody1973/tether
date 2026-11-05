@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, max } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
-import { getActiveGrant, getVault } from "@/db/repo";
+import { getActiveGrant, getLatestGrant, getVault } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
 import { grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
 import type { Grant } from "@/engine/types";
@@ -59,9 +59,9 @@ export async function shopsForLevel(db: Db, familyId: string, level: Level, now:
   return ids.map((id) => names.get(id) ?? id);
 }
 
-/** New grant at `level`, keeping the active grant's settings (or defaults). Caller holds the family lock. */
+/** New grant at `level`, keeping the latest grant's settings (or defaults), even after a revoke. Caller holds the family lock. */
 export async function installLevel(tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>): Promise<Grant> {
-  const cur = (await getActiveGrant(tx, familyId))?.body;
+  const cur = (await getLatestGrant(tx, familyId))?.body;
   const base: Settings = {
     commitmentFloorPct: s?.commitmentFloorPct ?? cur?.commitmentFloorPct ?? 10,
     matchPct: s?.matchPct ?? cur?.matchPct ?? 100,
@@ -72,14 +72,15 @@ export async function installLevel(tx: Db, familyId: string, level: Level, now: 
 
 /**
  * Amara signs a grant at `level`. Settings she leaves out keep the active grant's values.
- * Moving Zoe to a different level than her active grant is an override, so it needs a reason (recorded).
+ * Moving Zoe to a different level than her latest grant (active, ended or revoked) is an override,
+ * so it needs a reason (recorded). After a revoke she keeps her level; signing again doesn't reset her to Level 1.
  */
 export async function signGrant(
   deps: Pick<Deps, "db" | "now">, familyId: string, draft: { level: Level; reason?: string } & Partial<Settings>,
 ): Promise<Grant> {
   const why = typeof draft.reason === "string" ? draft.reason.trim() : "";
   return withFamilyLock(deps, familyId, async (tx, now) => {
-    const cur = await getActiveGrant(tx, familyId);
+    const cur = await getLatestGrant(tx, familyId);
     const changesLevel = cur !== null && cur.level !== draft.level;
     if (changesLevel && !why) throw new ReasonRequiredError();
     const body = await installLevel(tx, familyId, draft.level, now, {
@@ -108,11 +109,11 @@ export async function renewGrant(deps: Deps, familyId: string): Promise<Grant> {
   });
 }
 
-export async function guardianSetLevel(deps: Deps, familyId: string, level: Level, reason: string): Promise<Grant> {
+export async function guardianSetLevel(deps: Pick<Deps, "db" | "now">, familyId: string, level: Level, reason: string): Promise<Grant> {
   const why = typeof reason === "string" ? reason.trim() : "";
   if (!why) throw new ReasonRequiredError();
   return withFamilyLock(deps, familyId, async (tx, now) => {
-    const cur = await getActiveGrant(tx, familyId);
+    const cur = await getLatestGrant(tx, familyId);
     const body = await installLevel(tx, familyId, level, now);
     await tx.insert(t.levelChanges).values({
       id: crypto.randomUUID(), familyId, fromLevel: cur?.level ?? 0, toLevel: level, by: "guardian", reason: why, at: now,
@@ -135,7 +136,7 @@ export async function setCommitment(deps: Deps, familyId: string, cents: number)
 export type RevokeResult = { revoked: true; paypalTokenDeleted: boolean; error?: string; reason?: "no_vault" };
 
 /** Fail closed: the local revoke is committed first and stands even if PayPal's delete fails. */
-export async function revoke(deps: Deps, familyId: string): Promise<RevokeResult> {
+export async function revoke(deps: Pick<Deps, "db" | "now" | "paypal">, familyId: string): Promise<RevokeResult> {
   await withFamilyLock(deps, familyId, (tx) =>
     tx.update(t.grants).set({ status: "revoked" }).where(and(eq(t.grants.familyId, familyId), eq(t.grants.status, "active"))));
   const vault = await getVault(deps.db, familyId);

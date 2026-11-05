@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { getActiveGrant } from "@/db/repo";
+import { getLatestGrant } from "@/db/repo";
 import { shopsForLevel } from "@/flows/grant";
 import { guardianHome } from "@/flows/home";
 import type { Level } from "@/engine/ladder";
@@ -26,7 +26,7 @@ async function Grant() {
   const db = await getDb();
   const now = await clockNow(db, familyId);
   const [h, cur, l1, l2, l3] = await Promise.all([
-    guardianHome(db, familyId, now), getActiveGrant(db, familyId),
+    guardianHome(db, familyId, now), getLatestGrant(db, familyId), // after a stop she keeps her level
     shopsForLevel(db, familyId, 1, now), shopsForLevel(db, familyId, 2, now), shopsForLevel(db, familyId, 3, now),
   ]);
   return (

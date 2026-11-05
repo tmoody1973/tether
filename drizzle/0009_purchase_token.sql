@@ -1,0 +1,2 @@
+ALTER TABLE "consumed_tokens" ADD COLUMN "purchase_id" text;--> statement-breakpoint
+ALTER TABLE "consumed_tokens" ADD CONSTRAINT "consumed_tokens_purchase_id_purchases_id_fk" FOREIGN KEY ("purchase_id") REFERENCES "public"."purchases"("id") ON DELETE no action ON UPDATE no action;

@@ -94,7 +94,7 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   if (d.outcome !== "ALLOW") return refuse(ctx, firstReason(d), STATUS[d.outcome]);
 
   const token = mintToken(d, grant.body, fresh, now, deps.secret);
-  if (!(await consumeToken(db, token.tokenId))) return refuse(ctx, "REPLAY");
+  if (!(await consumeToken(db, token.tokenId, p.id))) return refuse(ctx, "REPLAY");
 
   const debited = await debit(ctx, grant.body, fresh);
   if ("status" in debited) return debited;

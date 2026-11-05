@@ -82,11 +82,16 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
 
 const SANDBOX_HOST = "api-m.sandbox.paypal.com";
 
-/** PayPal client from env. Refuses anything but the sandbox: this build never touches real money. */
-export function paypalFromEnv(): PaypalHttp {
-  const { PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: secret, PAYPAL_BASE_URL } = process.env;
+/**
+ * PayPal client from env. Refuses anything but the sandbox: this build never touches real money.
+ * Outside production a localhost base URL is also accepted, for the e2e suite's fake PayPal (never real money either).
+ */
+export function paypalFromEnv(env: NodeJS.ProcessEnv = process.env): PaypalHttp {
+  const { PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: secret, PAYPAL_BASE_URL } = env;
   if (!clientId || !secret) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set");
   const baseUrl = PAYPAL_BASE_URL || `https://${SANDBOX_HOST}`;
-  if (new URL(baseUrl).hostname !== SANDBOX_HOST) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
+  const host = new URL(baseUrl).hostname;
+  const localTest = env.NODE_ENV !== "production" && (host === "localhost" || host === "127.0.0.1");
+  if (host !== SANDBOX_HOST && !localTest) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
   return paypalHttp({ baseUrl, clientId, secret });
 }

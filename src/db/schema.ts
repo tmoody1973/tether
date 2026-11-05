@@ -78,6 +78,8 @@ export const approvals = pgTable("approvals", {
 export const consumedTokens = pgTable("consumed_tokens", {
   tokenId: text("token_id").primaryKey(),
   consumedAt: createdAt("consumed_at"),
+  // R35: PayPal's custom_field carries the token id, so this is how a PayPal row is tied back to one family's purchase.
+  purchaseId: text("purchase_id").references(() => purchases.id),
 });
 
 export const receipts = pgTable("receipts", {

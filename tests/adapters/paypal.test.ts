@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { paypalHttp, type PaypalHttp } from "@/adapters/paypal/http";
+import { paypalFromEnv, paypalHttp, type PaypalHttp } from "@/adapters/paypal/http";
 import { chargeVaulted } from "@/adapters/paypal/orders";
 import { createPaymentToken, createSetupToken, deletePaymentToken } from "@/adapters/paypal/vault";
 import { verifyWebhook } from "@/adapters/paypal/webhooks";
@@ -178,5 +178,31 @@ describe("transactions", () => {
   it('listTransactions converts "12.50" to 1250', async () => {
     const f = mockFetch(() => json({ transaction_details: [{ transaction_info: { transaction_id: "TX1", transaction_amount: { value: "12.50" }, transaction_status: "S" } }] }));
     expect(await listTransactions(client(f), now, now)).toEqual([{ id: "TX1", amountCents: 1250, status: "S" }]);
+  });
+
+  it("listTransactions keeps custom_field / reference id and reads every page", async () => {
+    const f = mockFetch((u) => {
+      const page = new URL(u).searchParams.get("page");
+      const info = page === "1"
+        ? { transaction_id: "TX1", transaction_amount: { value: "6.00" }, transaction_status: "S", custom_field: "tok-1" }
+        : { transaction_id: "TX2", transaction_amount: { value: "-6.00" }, transaction_status: "S", custom_field: "tok-1", paypal_reference_id: "TX1" };
+      return json({ transaction_details: [{ transaction_info: info }], total_pages: 2 });
+    });
+    expect(await listTransactions(client(f), now, now)).toEqual([
+      { id: "TX1", amountCents: 600, status: "S", customField: "tok-1" },
+      { id: "TX2", amountCents: -600, status: "S", customField: "tok-1", referenceId: "TX1" },
+    ]);
+    expect(apiCalls(f)).toHaveLength(2);
+  });
+});
+
+describe("paypalFromEnv", () => {
+  const creds = { PAYPAL_CLIENT_ID: "c", PAYPAL_CLIENT_SECRET: "s" };
+  it("accepts only the sandbox, plus localhost outside production (the e2e fake)", () => {
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production" })).not.toThrow();
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production", PAYPAL_BASE_URL: "https://api-m.paypal.com" })).toThrow(/sandbox/);
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production", PAYPAL_BASE_URL: "http://localhost:3101" })).toThrow(/sandbox/);
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "test", PAYPAL_BASE_URL: "http://localhost:3101" })).not.toThrow();
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "test", PAYPAL_BASE_URL: "https://evil.example" })).toThrow(/sandbox/);
   });
 });
