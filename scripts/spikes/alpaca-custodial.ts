@@ -1,6 +1,7 @@
 // Spike: Alpaca Broker sandbox auth + custodial account. Never prints secrets.
 const B = process.env.ALPACA_BROKER_BASE_URL!;
 let H: Record<string, string> = {};
+type Loose = { id?: string; status?: string; account_type?: string };
 // Broker sandbox auth: Basic -> 401; OAuth client-credentials at authx works (token ~15 min, never printed).
 async function auth() {
   const r = await fetch("https://authx.sandbox.alpaca.markets/v1/oauth2/token", {
