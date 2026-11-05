@@ -3,13 +3,16 @@ const B = process.env.ALPACA_BROKER_BASE_URL!;
 const basic = Buffer.from(`${process.env.ALPACA_BROKER_KEY}:${process.env.ALPACA_BROKER_SECRET}`).toString("base64");
 const H = { Authorization: `Basic ${basic}`, "Content-Type": "application/json" };
 
+// Loose shape for the fields the spike reads from Alpaca responses (body may also be a plain string).
+interface Loose { id?: string; status?: string; account_type?: string }
+
 async function call(method: string, url: string, body?: unknown) {
   const r = await fetch(url, { method, headers: H, body: body ? JSON.stringify(body) : undefined });
   const t = await r.text();
-  let j: any = t; try { j = JSON.parse(t); } catch { /* text */ }
-  return { status: r.status, body: j };
+  let j: unknown = t; try { j = JSON.parse(t); } catch { /* text */ }
+  return { status: r.status, body: j as Loose };
 }
-const show = (l: string, r: { status: number; body: any }) =>
+const show = (l: string, r: { status: number; body: unknown }) =>
   console.log(l, r.status, typeof r.body === "string" ? r.body.slice(0, 300) : JSON.stringify(r.body).slice(0, 600));
 
 async function main() {

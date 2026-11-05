@@ -19,6 +19,9 @@ async function token(): Promise<string> {
   return ((await r.json()) as { access_token: string }).access_token;
 }
 
+// Loose shape for the fields the spike reads from PayPal responses.
+interface PP { transaction_details?: unknown[]; id?: string; status?: string; name?: string; message?: string; details?: unknown; links?: { rel: string; href: string }[]; customer?: { id?: string }; purchase_units?: { payments?: { captures?: { id?: string; status?: string }[] } }[] }
+
 async function api(tok: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) {
   const r = await fetch(`${BASE}${path}`, {
     method,
@@ -26,13 +29,13 @@ async function api(tok: string, method: string, path: string, body?: unknown, ex
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
-  let json: any = {};
+  let json: PP = {};
   try { json = JSON.parse(text); } catch { /* non-json */ }
   return { status: r.status, json };
 }
 
 async function charge(tok: string, vaultId: string, payee?: string) {
-  const unit: any = { amount: { currency_code: "USD", value: "1.00" } };
+  const unit: Record<string, unknown> = { amount: { currency_code: "USD", value: "1.00" } };
   if (payee) unit.payee = { email_address: payee };
   const o = await api(tok, "POST", "/v2/checkout/orders",
     { intent: "CAPTURE", purchase_units: [unit], payment_source: { paypal: { vault_id: vaultId } } },
@@ -60,7 +63,7 @@ if (cmd === "start") {
       experience_context: { return_url: "https://example.com/return", cancel_url: "https://example.com/cancel" } } },
   }, { "PayPal-Request-Id": randomUUID() });
   console.log("setup-token http", r.status, "id", r.json.id);
-  console.log("approve url:", r.json.links?.find((l: any) => l.rel === "approve")?.href);
+  console.log("approve url:", r.json.links?.find((l: { rel: string; href: string }) => l.rel === "approve")?.href);
   if (r.json.id) save({ setupTokenId: r.json.id });
   else console.log(JSON.stringify(r.json));
 } else if (cmd === "finish") {
