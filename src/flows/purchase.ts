@@ -16,6 +16,7 @@ import type { PaypalHttp } from "@/adapters/paypal/http";
 import { chargeVaulted, type ChargeResult } from "@/adapters/paypal/orders";
 import type { Channel3Adapter } from "@/adapters/channel3/client";
 import type { Classifier } from "@/ai/classifier";
+import { expireStale } from "@/flows/approvals";
 
 export type Deps = {
   db: Db; paypal: PaypalHttp; channel3: Channel3Adapter; classifier: Classifier;
@@ -67,8 +68,10 @@ type Ctx = { deps: Deps; p: PurchaseRow; now: Date; approval: Approval };
 
 export async function settlePurchase(deps: Deps, purchaseId: string): Promise<SettleResult> {
   const { db } = deps;
-  const p = await getPurchase(db, purchaseId);
-  if (!p) throw new Error(`unknown purchase ${purchaseId}`);
+  const found = await getPurchase(db, purchaseId);
+  if (!found) throw new Error(`unknown purchase ${purchaseId}`);
+  await expireStale(deps, found.familyId);
+  const p = (await getPurchase(db, purchaseId)) ?? found; // status may have just become `expired`
   const now = await deps.now(p.familyId);
   const approval = await getValidApproval(db, purchaseId, p.cartHash, now);
   const approvable = p.status === "needs_approval" || p.status === "approved";
