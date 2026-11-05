@@ -76,6 +76,11 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
     })) as T;
   }
 
+  /** Authenticated GET to any Alpaca host (market data shares the broker bearer token). */
+  async function getAbsolute<T>(url: string): Promise<T> {
+    return (await raw(url, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } })) as T;
+  }
+
   const contactOf = (g: GuardianKyc) => ({
     email_address: g.email, phone_number: g.phone, street_address: [g.street], city: g.city, state: g.state,
     postal_code: g.postalCode, country: "USA",
@@ -92,6 +97,11 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
   });
 
   return {
+    getAbsolute,
+    /** Active US equities as Alpaca returns them (caller filters tradable). */
+    listAssets: () => call<Array<{ symbol: string; name: string; exchange: string; tradable: boolean; fractionable: boolean }>>(
+      "GET", "/v1/assets?status=active&asset_class=us_equity"),
+
     /** Custodial only when ALPACA_CUSTODIAL_ENABLED === 'true'; otherwise an ordinary sandbox trading account (stand-in). */
     async createCustodialAccount(guardian: GuardianKyc, minor: MinorIdentity): Promise<{ accountId: string; custodial: boolean }> {
       const custodial = cfg.custodialEnabled === true;
