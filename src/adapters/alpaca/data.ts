@@ -8,6 +8,7 @@ export interface MarketCompare { thisFund: Change; market: Change }
 const DAY_MS = 86_400_000;
 const ASSET_TTL_MS = 24 * 3_600_000;
 const LIMIT = 20;
+const MAX_PAGES = 20;
 
 export class NotEnoughHistoryError extends Error {
   constructor(readonly symbol: string) {
@@ -30,7 +31,7 @@ export const compareSentence = (m: MarketCompare) =>
   `Over 5 years, $100 became: this $${hundredBecame(m.thisFund)}, the whole market $${hundredBecame(m.market)}.`;
 
 function rank(a: { symbol: string; name: string }, q: string): number {
-  const sym = a.symbol.toLowerCase(), name = a.name.toLowerCase();
+  const sym = a.symbol.toLowerCase(), name = (a.name ?? "").toLowerCase();
   if (sym === q) return 0;
   if (sym.startsWith(q)) return 1;
   if (name.startsWith(q)) return 2;
@@ -56,7 +57,7 @@ export function alpacaMarket(broker: AlpacaBroker, dataBaseUrl: string, now: () 
     return (await assets())
       .map((a) => ({ a, r: rank(a, q) }))
       .filter((x) => x.r >= 0)
-      .sort((x, y) => x.r - y.r || x.a.symbol.localeCompare(y.a.symbol))
+      .sort((x, y) => x.r - y.r || (x.a.symbol < y.a.symbol ? -1 : x.a.symbol > y.a.symbol ? 1 : 0))
       .slice(0, LIMIT)
       .map((x) => x.a);
   }
@@ -66,7 +67,7 @@ export function alpacaMarket(broker: AlpacaBroker, dataBaseUrl: string, now: () 
   async function bars(symbol: string, start: Date, end: Date): Promise<number[]> {
     const closes: number[] = [];
     let token: string | undefined;
-    do {
+    for (let page = 0; page < MAX_PAGES; page++) {
       const qs = new URLSearchParams({
         timeframe: "1Day", adjustment: "all", feed: "iex", start: start.toISOString(), end: end.toISOString(), limit: "10000",
         ...(token ? { page_token: token } : {}),
@@ -75,7 +76,8 @@ export function alpacaMarket(broker: AlpacaBroker, dataBaseUrl: string, now: () 
         `${dataBaseUrl}/v2/stocks/${encodeURIComponent(symbol)}/bars?${qs}`);
       for (const b of r.bars ?? []) closes.push(b.c);
       token = r.next_page_token ?? undefined;
-    } while (token);
+      if (!token) break;
+    }
     return closes;
   }
 

@@ -34,7 +34,7 @@ function fakeFetch(bars: Bars = {}) {
 }
 const market = (bars?: Bars) => {
   const { f, calls } = fakeFetch(bars);
-  return { m: alpacaMarket(alpacaBroker({ baseUrl: "https://b.test", key: "k", secret: "s" }, f), DATA), calls };
+  return { m: alpacaMarket(alpacaBroker({ baseUrl: "https://b.test", key: "k", secret: "s", dataBaseUrl: DATA }, f), DATA), calls };
 };
 const asOf = new Date("2026-11-05T00:00:00Z");
 
@@ -56,6 +56,14 @@ describe("searchAssets", () => {
     const { m, calls } = market();
     await m.searchAssets("vt"); await m.searchAssets("vti");
     expect(calls.filter((u) => u.includes("/v1/assets"))).toHaveLength(1);
+  });
+});
+
+describe("getAbsolute", () => {
+  it("to another host throws", async () => {
+    const { f } = fakeFetch();
+    const b = alpacaBroker({ baseUrl: "https://b.test", key: "k", secret: "s", dataBaseUrl: DATA }, f);
+    await expect(b.getAbsolute("https://evil.test/x")).rejects.toThrow(/unlisted host/);
   });
 });
 

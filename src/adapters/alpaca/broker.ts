@@ -26,6 +26,8 @@ export interface MinorIdentity {
 }
 export interface AlpacaConfig {
   baseUrl: string; key: string; secret: string;
+  /** Market-data origin; getAbsolute may call it with the same bearer token. */
+  dataBaseUrl?: string;
   authUrl?: string;
   /** Sandbox firm account id; when set, deposits are instant JNLC journals, otherwise ACH. */
   firmAccountId?: string;
@@ -78,6 +80,8 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
 
   /** Authenticated GET to any Alpaca host (market data shares the broker bearer token). */
   async function getAbsolute<T>(url: string): Promise<T> {
+    const allowed = [cfg.baseUrl, cfg.dataBaseUrl].filter((u): u is string => !!u).map((u) => new URL(u).origin);
+    if (!allowed.includes(new URL(url).origin)) throw new AlpacaError(0, "refusing to send credentials to an unlisted host");
     return (await raw(url, { method: "GET", headers: { Authorization: `Bearer ${await bearer()}` } })) as T;
   }
 
@@ -179,5 +183,5 @@ export type AlpacaBroker = ReturnType<typeof alpacaBroker>;
 export function alpacaFromEnv(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): AlpacaBroker {
   const { ALPACA_BROKER_KEY: key, ALPACA_BROKER_SECRET: secret, ALPACA_BROKER_BASE_URL: baseUrl } = env;
   if (!key || !secret || !baseUrl) throw new Error("ALPACA_BROKER_KEY, ALPACA_BROKER_SECRET, ALPACA_BROKER_BASE_URL are required");
-  return alpacaBroker({ baseUrl, key, secret, firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID, custodialEnabled: env.ALPACA_CUSTODIAL_ENABLED === "true" }, fetchImpl);
+  return alpacaBroker({ baseUrl, key, secret, firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID, custodialEnabled: env.ALPACA_CUSTODIAL_ENABLED === "true", dataBaseUrl: env.ALPACA_DATA_BASE_URL ?? "https://data.sandbox.alpaca.markets" }, fetchImpl);
 }
