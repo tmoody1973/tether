@@ -107,6 +107,35 @@ describe("proposeInvestment / settleInvestment", () => {
     expect((await row(id)).receiptNote).toBe("This money now belongs to Zoe and can't be taken back.");
   });
 
+  it("retry whose POST response is lost is adopted on the next retry, one order POST per n", async () => {
+    const fam = await seed();
+    const dead = mk(fakeFetch(() => NONE(), "rejected"));
+    const id = await approvedInvestment(dead.d, fam);
+    expect((await settleInvestment(dead.d, id)).status).toBe("cash_held");
+    let accepted = false;
+    const lossy = fakeFetch((p, i) => {
+      if (p.includes("by_client_order_id")) return accepted ? json({ id: "ord-lost", status: "accepted" }) : json({ message: "nf" }, 404);
+      if (p.endsWith("/orders") && i.method === "POST") { accepted = true; throw new TypeError("response lost"); }
+      return NONE();
+    });
+    const m = mk(lossy);
+    expect((await retryInvestment(m.d, id)).status).toBe("cash_held");
+    expect((await retryInvestment(m.d, id)).status).toBe("queued");
+    expect((await row(id)).orderId).toBe("ord-lost");
+    expect(lossy.mock.calls.filter(([u, i]) => String(u).endsWith("/orders") && (i as RequestInit).method === "POST")).toHaveLength(1);
+    expect(bodyOf(lossy, "/orders").client_order_id).toBe(`${id}:retry:1`);
+  });
+
+  it("a same-amount CANCELED transfer is ignored => needs_review", async () => {
+    const fam = await seed();
+    const down = mk(fakeFetch((p) => { if (p.endsWith("/transfers")) throw new TypeError("fetch failed"); return NONE(); }));
+    const id = await approvedInvestment(down.d, fam);
+    await settleInvestment(down.d, id);
+    const up = mk(fakeFetch((p, i) => (p.endsWith("/transfers") && i.method === "GET"
+      ? json([{ id: "tr-x", amount: "25", created_at: new Date().toISOString(), direction: "INCOMING", status: "CANCELED" }]) : NONE())));
+    expect((await resumeInvestment(up.d, id)).status).toBe("needs_review");
+  });
+
   it("deposit 4xx => reversal, savings restored", async () => {
     const fam = await seed();
     const { d } = mk(fakeFetch((p) => (p.endsWith("/transfers") ? json({ message: "bad relationship" }, 422) : NONE())));
@@ -194,7 +223,7 @@ describe("proposeInvestment / settleInvestment", () => {
     await settleInvestment(down.d, id);
     const created = new Date().toISOString();
     const up = mk(fakeFetch((p, i) => (p.endsWith("/transfers") && i.method === "GET"
-      ? json([{ id: "tr-found", amount: "25", created_at: created, direction: "INCOMING" }]) : NONE())));
+      ? json([{ id: "tr-found", amount: "25", created_at: created, direction: "INCOMING", status: "COMPLETE" }]) : NONE())));
     expect((await resumeInvestment(up.d, id)).status).toBe("queued");
     expect((await row(id)).transferId).toBe("tr-found");
   });

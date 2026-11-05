@@ -161,5 +161,6 @@ export const investments = pgTable("investments", {
   orderId: text("order_id"),
   debitedAt: ts("debited_at"), // real time of the debit; transfers are matched against it when a deposit outcome is unknown
   receiptNote: text("receipt_note"),
+  retryCount: integer("retry_count").notNull().default(0), // index of the latest retry order client id
   error: text("error"), // last Alpaca error when the outcome is unknown or the order was rejected
 });

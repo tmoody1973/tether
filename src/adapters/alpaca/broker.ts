@@ -152,9 +152,9 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
       }
     },
 
-    async listTransfers(accountId: string): Promise<Array<{ transferId: string; amount: number; createdAt: number; incoming: boolean }>> {
-      const rows = await call<Array<{ id: string; amount: string; created_at: string; direction: string }>>("GET", `/v1/accounts/${accountId}/transfers`);
-      return rows.map((r) => ({ transferId: r.id, amount: Number(r.amount), createdAt: Date.parse(r.created_at), incoming: r.direction === "INCOMING" }));
+    async listTransfers(accountId: string): Promise<Array<{ transferId: string; amount: number; createdAt: number; incoming: boolean; status: string }>> {
+      const rows = await call<Array<{ id: string; amount: string; created_at: string; direction: string; status: string }>>("GET", `/v1/accounts/${accountId}/transfers`);
+      return rows.map((r) => ({ transferId: r.id, amount: Number(r.amount), createdAt: Date.parse(r.created_at), incoming: r.direction === "INCOMING", status: r.status }));
     },
 
     async getOrder(accountId: string, orderId: string): Promise<{ status: string }> {

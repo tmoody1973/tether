@@ -245,6 +245,9 @@ async function refreshOrder(deps: InvestDeps, inv: Inv): Promise<SettleInvestmen
   }
 }
 
+/** Cancelled, rejected or returned transfers never moved money, so they can't be our deposit. */
+const LIVE_TRANSFER = new Set(["QUEUED", "APPROVAL_PENDING", "PENDING", "SENT_TO_CLEARING", "APPROVED", "COMPLETE"]);
+
 /** `depositing` with no transferId is ambiguous: find our transfer by amount + time, or flag it. Never re-deposits. */
 async function reconcileDeposit(deps: InvestDeps, inv: Inv): Promise<SettleInvestmentResult> {
   let found: { transferId: string } | undefined;
@@ -253,7 +256,7 @@ async function reconcileDeposit(deps: InvestDeps, inv: Inv): Promise<SettleInves
       .where(and(eq(t.investments.familyId, inv.familyId), isNotNull(t.investments.transferId)))).map((r) => r.x));
     const since = (inv.debitedAt?.getTime() ?? 0) - 60_000;
     found = (await deps.alpaca.listTransfers(inv.alpacaAccountId!))
-      .find((x) => x.incoming && !used.has(x.transferId) && x.createdAt >= since && x.amount === Number(dollars(inv.amountCents)));
+      .find((x) => x.incoming && LIVE_TRANSFER.has(x.status) && !used.has(x.transferId) && x.createdAt >= since && x.amount === Number(dollars(inv.amountCents)));
   } catch (e) {
     await patch(deps.db, inv.id, { error: errText(e) });
     return { status: inv.status };
@@ -276,7 +279,13 @@ export async function retryInvestment(deps: InvestDeps, investmentId: string): P
     if (inv.status !== "cash_held") return { status: inv.status };
     const d = { ...deps, db: tx };
     try {
-      const o = await d.alpaca.placeNotionalOrder(inv.alpacaAccountId!, inv.symbol, inv.amountCents, `${inv.id}:retry:${Date.now()}`);
+      const acct = inv.alpacaAccountId!;
+      // A previous retry whose response was lost may already have an order under the current client id: adopt it.
+      const prior = inv.retryCount > 0 ? await d.alpaca.findOrderByClientId(acct, `${inv.id}:retry:${inv.retryCount}`) : null;
+      if (prior && prior.orderId !== inv.orderId) return await applyOrder(d, inv, prior.orderId, prior.status);
+      const n = inv.retryCount + 1;
+      await patch(tx, inv.id, { retryCount: n }); // persisted BEFORE the POST so a lost response is findable
+      const o = await d.alpaca.placeNotionalOrder(acct, inv.symbol, inv.amountCents, `${inv.id}:retry:${n}`);
       return await applyOrder(d, inv, o.orderId, o.status);
     } catch (e) {
       await patch(tx, inv.id, { error: errText(e) }); // stays cash_held
