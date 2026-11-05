@@ -31,7 +31,7 @@ export function normaliseDomain(input: string): string {
 }
 
 export async function requestApproval(
-  deps: Deps, familyId: string, subject: Subject, subjectId: string, cartHash: string | null, note: string | null = null,
+  deps: Pick<Deps, "db" | "now">, familyId: string, subject: Subject, subjectId: string, cartHash: string | null, note: string | null = null,
 ): Promise<{ approvalId: string }> {
   const { db } = deps;
   await expireStale(deps, familyId);
@@ -57,7 +57,7 @@ export async function requestApproval(
   return { approvalId: raced.id };
 }
 
-export async function decideApproval(deps: Deps, approvalId: string, result: "approved" | "declined"): Promise<void> {
+export async function decideApproval(deps: Pick<Deps, "db" | "now">, approvalId: string, result: "approved" | "declined"): Promise<void> {
   const [a] = await deps.db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
   if (!a) throw new ApprovalError(`unknown approval ${approvalId}`);
   // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
@@ -70,6 +70,8 @@ export async function decideApproval(deps: Deps, approvalId: string, result: "ap
     if (!won) throw new ApprovalError("approval is not open (already decided or expired)");
     if (a.subject === "purchase") await decidePurchase(tx, a.subjectId, result);
     else if (a.subject === "shop" && result === "approved") await applyShop(tx, a.familyId, a.subjectId, now);
+    else if (a.subject === "investment") await decideInvestmentRow(tx, a.subjectId, result);
+    else if (a.subject === "fund") await decideFund(tx, a.familyId, a.subjectId, result);
   });
 }
 
@@ -84,6 +86,20 @@ async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "
   }
   const decision = { ...p.decision, outcome: "REFUSE" as const, reasons: [{ constraint: "DECLINED", detail: "Guardian declined" }] };
   await db.update(t.purchases).set({ status: "refused", decision }).where(eq(t.purchases.id, purchaseId));
+}
+
+async function decideInvestmentRow(db: Db, investmentId: string, result: "approved" | "declined") {
+  const moved = await db.update(t.investments).set({ status: result === "approved" ? "approved" : "rejected" })
+    .where(and(eq(t.investments.id, investmentId), eq(t.investments.status, "proposed"))).returning({ id: t.investments.id });
+  if (moved.length === 0) throw new ApprovalError(`investment ${investmentId} is not awaiting approval`);
+}
+
+/** Approving a fund proposal is the only way a symbol reaches fund_allowlist. */
+async function decideFund(db: Db, familyId: string, proposalId: string, result: "approved" | "declined") {
+  const [prop] = await db.update(t.fundProposals).set({ status: result })
+    .where(and(eq(t.fundProposals.id, proposalId), eq(t.fundProposals.status, "proposed"))).returning();
+  if (!prop) throw new ApprovalError(`fund proposal ${proposalId} is not awaiting approval`);
+  if (result === "approved") await db.insert(t.fundAllowlist).values({ familyId, symbol: prop.symbol }).onConflictDoNothing();
 }
 
 /** Past-expiry approvals keep result=null; their unsettled purchases become `expired`. */

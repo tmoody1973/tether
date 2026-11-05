@@ -14,6 +14,7 @@ export const families = pgTable("families", {
   teenName: text("teen_name").notNull(),
   commitmentCents: integer("commitment_cents").notNull().default(0),
   pendingCommitmentCents: integer("pending_commitment_cents"), // takes effect at the next week close
+  alpacaAccountId: text("alpaca_account_id"), // the family's one investing account, created once and reused
 });
 
 export const merchants = pgTable("merchants", {
@@ -158,4 +159,5 @@ export const investments = pgTable("investments", {
   alpacaAccountId: text("alpaca_account_id"),
   transferId: text("transfer_id"),
   orderId: text("order_id"),
+  error: text("error"), // last Alpaca error when the outcome is unknown or the order was rejected
 });
