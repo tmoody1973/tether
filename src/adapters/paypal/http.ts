@@ -79,3 +79,14 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
     },
   };
 }
+
+const SANDBOX_HOST = "api-m.sandbox.paypal.com";
+
+/** PayPal client from env. Refuses anything but the sandbox: this build never touches real money. */
+export function paypalFromEnv(): PaypalHttp {
+  const { PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: secret, PAYPAL_BASE_URL } = process.env;
+  if (!clientId || !secret) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set");
+  const baseUrl = PAYPAL_BASE_URL || `https://${SANDBOX_HOST}`;
+  if (new URL(baseUrl).hostname !== SANDBOX_HOST) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
+  return paypalHttp({ baseUrl, clientId, secret });
+}

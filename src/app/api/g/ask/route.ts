@@ -29,7 +29,7 @@ export async function POST(req: Request): Promise<Response> {
     const result = await askAboutMonth({
       model: createAnthropic({ apiKey })("claude-haiku-5-5"),
       paypalTools: readOnlyPaypalTools({ clientId, clientSecret, sandbox: true }),
-      db: getDb(),
+      db: await getDb(),
     }, familyId, question);
     return Response.json(result);
   } catch (err) {

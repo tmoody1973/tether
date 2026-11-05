@@ -17,7 +17,7 @@ export type ReceiptRow = Row<typeof t.receipts>;
 
 export async function insertFamily(
   db: Db,
-  v: Pick<Family, "name" | "teenToken" | "guardianName" | "teenName"> & Partial<Pick<Family, "id" | "clockOffsetMs">>,
+  v: Pick<Family, "name" | "teenToken" | "guardianName" | "teenName"> & Partial<Pick<Family, "id" | "clockOffsetMs" | "guardianToken">>,
 ): Promise<Family> {
   const [row] = await db.insert(t.families).values({ ...v, id: v.id ?? id() }).returning();
   return plain(row);
@@ -25,6 +25,15 @@ export async function insertFamily(
 
 export async function getFamilyByTeenToken(db: Db, teenToken: string): Promise<Family | null> {
   return one(await db.select().from(t.families).where(eq(t.families.teenToken, teenToken)).limit(1));
+}
+
+export async function getFamily(db: Db, familyId: string): Promise<Family | null> {
+  return one(await db.select().from(t.families).where(eq(t.families.id, familyId)).limit(1));
+}
+
+export async function getFamilyByGuardianToken(db: Db, guardianToken: string): Promise<Family | null> {
+  if (!guardianToken) return null;
+  return one(await db.select().from(t.families).where(eq(t.families.guardianToken, guardianToken)).limit(1));
 }
 
 export async function getActiveGrant(db: Db, familyId: string): Promise<GrantRow | null> {
@@ -91,6 +100,12 @@ export async function getMerchant(db: Db, merchantId: string): Promise<Row<typeo
 export async function getVault(db: Db, familyId: string): Promise<Row<typeof t.vault> | null> {
   return one(await db.select().from(t.vault)
     .where(and(eq(t.vault.familyId, familyId), isNull(t.vault.deletedAt))).limit(1));
+}
+
+/** Stores (or replaces) the family's saved-PayPal reference; a new save clears an earlier revoke. */
+export async function saveVault(db: Db, familyId: string, paymentTokenId: string): Promise<void> {
+  await db.insert(t.vault).values({ familyId, paymentTokenId })
+    .onConflictDoUpdate({ target: t.vault.familyId, set: { paymentTokenId, deletedAt: null, createdAt: sql`now()` } });
 }
 
 /** A guardian approval for this purchase and exact cart that has not expired at `now`. */

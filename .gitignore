@@ -11,3 +11,6 @@ coverage/
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# local dev / e2e database (PGlite on disk)
+.pglite/

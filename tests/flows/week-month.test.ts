@@ -247,9 +247,24 @@ describe("grant management", () => {
 
   it("signGrant creates the first active grant with defaults", async () => {
     const { familyId } = await seed();
-    await signGrant(deps(), familyId, { level: 2 });
+    await signGrant(deps(), familyId, { level: 2, reason: "ready for more" });
     expect(await active(familyId)).toMatchObject({ level: 2, version: 2 });
     expect((await active(familyId)).body).toMatchObject({ commitmentFloorPct: 10, matchPct: 100, fundAllowlist: [] });
+  });
+
+  it("signGrant keeps the fund list and records a level change only with a reason", async () => {
+    const { familyId } = await seed();
+    await db.update(t.grants).set({ body: { ...(await active(familyId)).body, fundAllowlist: ["VTI"] } })
+      .where(eq(t.grants.familyId, familyId));
+    await signGrant(deps(), familyId, { level: 1, commitmentFloorPct: 20, matchPct: 50 });
+    expect((await active(familyId)).body).toMatchObject({ level: 1, commitmentFloorPct: 20, matchPct: 50, fundAllowlist: ["VTI"] });
+    await expect(signGrant(deps(), familyId, { level: 2 })).rejects.toBeInstanceOf(GrantError);
+    await expect(signGrant(deps(), familyId, { level: 2, reason: "  " })).rejects.toBeInstanceOf(GrantError);
+    expect((await active(familyId)).level).toBe(1);
+    await signGrant(deps(), familyId, { level: 2, reason: "she earned it early" });
+    expect((await active(familyId)).level).toBe(2);
+    const lc = await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId));
+    expect(lc).toEqual([expect.objectContaining({ fromLevel: 1, toLevel: 2, by: "guardian", reason: "she earned it early" })]);
   });
 
   it("revoke deletes vault token and refuses next purchase", async () => {

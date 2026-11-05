@@ -19,7 +19,7 @@ export async function POST(req: Request): Promise<Response> {
   }
   const event = JSON.parse(body) as { event_type?: string; resource?: { id?: unknown } };
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED" && typeof event.resource?.id === "string") {
-    await onCaptureCompleted({ db: getDb() }, event.resource.id);
+    await onCaptureCompleted({ db: await getDb() }, event.resource.id);
   }
   return new Response(null, { status: 200 });
 }

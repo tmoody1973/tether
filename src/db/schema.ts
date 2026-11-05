@@ -1,5 +1,6 @@
 import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import type { Cart, Decision, Grant } from "@/engine/types";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -9,6 +10,8 @@ export const families = pgTable("families", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   teenToken: text("teen_token").notNull().unique(),
+  // Amara's private way in (R32): /g/enter/<guardianToken> sets her session cookie.
+  guardianToken: text("guardian_token").notNull().unique().$defaultFn(() => randomBytes(24).toString("base64url")),
   clockOffsetMs: bigint("clock_offset_ms", { mode: "number" }).notNull().default(0),
   guardianName: text("guardian_name").notNull(),
   teenName: text("teen_name").notNull(),

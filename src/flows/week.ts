@@ -22,7 +22,7 @@ function mondayOfKey(key: string): Date {
  * records it, journals the unspent allowance as savings. The pending commitment is promoted after
  * the first week closed in this call. No-op when nothing has ended since the last close.
  */
-export async function closeWeek(deps: Deps, familyId: string): Promise<{ closed: boolean; weekKeys: string[] }> {
+export async function closeWeek(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<{ closed: boolean; weekKeys: string[] }> {
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const thisMonday = weekStart(now);
     const [fam] = await tx.select().from(t.families).where(eq(t.families.id, familyId));

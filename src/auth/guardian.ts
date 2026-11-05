@@ -1,9 +1,19 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-// Guardian (Amara) session cookie: `familyId.expiryMs.hmac`. Task 17's entry step sets it with
-// HttpOnly, SameSite=Lax, Path=/ and Secure in production.
+// Guardian (Amara) session cookie: `familyId.expiryMs.hmac`. /g/enter/[key] sets it with guardianCookieOptions().
 export const GUARDIAN_COOKIE = "tether_g";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** HttpOnly, SameSite=Lax set explicitly (PayPal's redirect back is a top-level GET, which Lax allows), Path=/, Secure in production. */
+export function guardianCookieOptions() {
+  return { httpOnly: true, sameSite: "lax" as const, path: "/", secure: process.env.NODE_ENV === "production", maxAge: TTL_MS / 1000 };
+}
+
+/** One cookie's raw value from a request's Cookie header, or null. */
+export function readCookie(req: Request, name: string): string | null {
+  const raw = (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim()).find((c) => c.startsWith(`${name}=`));
+  return raw ? decodeURIComponent(raw.slice(name.length + 1)) : null;
+}
 
 export class GuardianAuthError extends Error {
   readonly status = 401;
@@ -36,9 +46,8 @@ export function verifyGuardianCookie(value: string, now: Date): string | null {
 export function requireGuardian(req: Request, now: Date = new Date()): string {
   let familyId: string | null = null;
   try {
-    const raw = (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim())
-      .find((c) => c.startsWith(`${GUARDIAN_COOKIE}=`));
-    familyId = raw ? verifyGuardianCookie(decodeURIComponent(raw.slice(GUARDIAN_COOKIE.length + 1)), now) : null;
+    const raw = readCookie(req, GUARDIAN_COOKIE);
+    familyId = raw ? verifyGuardianCookie(raw, now) : null;
   } catch { familyId = null; } // any malformed cookie is simply "not signed in"
   if (!familyId) throw new GuardianAuthError();
   return familyId;

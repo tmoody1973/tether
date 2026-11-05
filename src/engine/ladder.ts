@@ -24,10 +24,13 @@ export function streak(weeks: WeekRecord[]): number {
   return n;
 }
 
+/** The least Zoe may commit to save each week: Amara's floor, as a share of the allowance. */
+export const commitmentFloorCents = (weeklyCents: Cents, floorPct: number): Cents => Math.ceil((weeklyCents * floorPct) / 100);
+
 export function validateCommitment(
   commitmentCents: Cents, weeklyCents: Cents, floorPct: number,
 ): { ok: true } | { ok: false; minCents: Cents } {
-  const minCents = Math.ceil((weeklyCents * floorPct) / 100);
+  const minCents = commitmentFloorCents(weeklyCents, floorPct);
   return Number.isInteger(commitmentCents) && commitmentCents >= 0 && commitmentCents >= minCents
     ? { ok: true } : { ok: false, minCents };
 }

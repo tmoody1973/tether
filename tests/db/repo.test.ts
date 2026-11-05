@@ -39,6 +39,26 @@ describe("repo", () => {
     expect(await repo.getFamilyByTeenToken(db, "nope")).toBeNull();
   });
 
+  it("every family gets its own random guardian token; lookup by it", async () => {
+    const { family } = await seed();
+    const other = (await seed()).family;
+    expect(family.guardianToken).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(family.guardianToken).not.toBe(other.guardianToken);
+    expect((await repo.getFamilyByGuardianToken(db, family.guardianToken))?.id).toBe(family.id);
+    expect(await repo.getFamilyByGuardianToken(db, "nope")).toBeNull();
+    expect(await repo.getFamilyByGuardianToken(db, "")).toBeNull();
+  });
+
+  it("saveVault upserts the family's payment token and clears a revoke", async () => {
+    const { family } = await seed();
+    await repo.saveVault(db, family.id, "PT1");
+    expect((await repo.getVault(db, family.id))?.paymentTokenId).toBe("PT1");
+    await db.execute(sql`update vault set deleted_at = now() where family_id = ${family.id}`);
+    expect(await repo.getVault(db, family.id)).toBeNull();
+    await repo.saveVault(db, family.id, "PT2");
+    expect((await repo.getVault(db, family.id))?.paymentTokenId).toBe("PT2");
+  });
+
   it("getActiveGrant returns latest active version", async () => {
     const { family } = await seed();
     await repo.insertGrant(db, {

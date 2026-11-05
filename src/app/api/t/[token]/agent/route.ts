@@ -19,7 +19,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   if (!apiKey) return Response.json({ error: "agent not configured" }, { status: 500 });
 
   const { token } = await ctx.params;
-  const db = getDb();
+  const db = await getDb();
   const family = await getFamilyByTeenToken(db, token);
   if (!family) return Response.json({ error: "not found" }, { status: 404 });
   const row = await getActiveGrant(db, family.id);

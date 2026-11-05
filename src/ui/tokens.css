@@ -1,0 +1,63 @@
+/* Tether tokens — canonical values from doc/screens.html :root, scale from doc/Tether — design system §1, §3, §4.
+   Two audiences, one ink scale: teen = indigo scoreboard, guardian = deep-teal document. No red anywhere. */
+:root {
+  /* shared ink */
+  --ink: #14121F;
+  --ink-2: #4B4A5A;
+  --ink-3: #8A8899;
+  --ink-3-text: #6E6C80; /* --ink-3 darkened just enough for 4.5:1 on white when it carries small text */
+  --line: #E6E4EF;
+
+  /* teen surface (Task 18) */
+  --t-canvas: #F6F5FB;
+  --t-surface: #FFFFFF;
+  --t-accent: #5B4BFF;
+  --t-accent-soft: #EEEBFF;
+  --t-ok: #12B76A;
+  --t-warn: #F79009;      /* needs approval — refusals are amber, never red */
+  --t-warn-soft: #FFF4E6;
+  --t-warn-deep: #9A5B00; /* refused text and icon */
+  --t-gold: #FFB020;
+
+  /* guardian surface — deliberately calmer */
+  --g-canvas: #F4F5F7;
+  --g-surface: #FFFFFF;
+  --g-accent: #0B6B5B;
+  --g-accent-soft: #E8F2EF;
+  --g-accent-deep: #08483E;
+  --g-line: #E3E6EA;
+  --g-ink: #1A1D21;
+  --g-goal: #C99A2E;      /* the savings bar on the guardian side (screens.html mock 8) */
+
+  /* type */
+  --font-sans: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif; /* the signed clause only */
+  --fs-hero: 60px;
+  --fs-display: 34px;
+  --fs-h1: 28px;
+  --fs-h2: 20px;
+  --fs-body: 16px;
+  --fs-body-sm: 14px;
+  --fs-label: 12px;
+
+  /* space (4px base) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+
+  /* radius */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 99px;
+
+  /* elevation */
+  --shadow-rest: 0 1px 2px rgba(20, 18, 31, .05), 0 0 0 1px rgba(20, 18, 31, .045);
+  --shadow-raised: 0 1px 3px rgba(20, 18, 31, .12);
+}
+
+/* Money: tabular figures everywhere, never animated, symbol and amount never split. */
+.money {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+}
