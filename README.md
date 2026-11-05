@@ -35,6 +35,144 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 | **Channel3** | Product search scoped to the parent's allowed shops; turns a pasted link into a real cart. |
 | **Alpaca Broker API** (sandbox) | Investing: account, deposit, dollar-amount orders; market search and price history. |
 
+## The AI: two agents, three checked calls
+
+Tether uses AI where judgement helps and keeps it away from anything that decides or moves money. Only two pieces are agents (a model that loops, calling tools); the other three are single model calls whose output is checked by code. Every one has a plain code fallback, so the app works with the model switched off.
+
+**Who can touch money.** Every AI piece sits on the left. Nothing on the left has a path to PayPal or Alpaca except through code that checks the signed rules and a human approval.
+
+```mermaid
+flowchart LR
+  subgraph AI["AI: proposes, explains, answers"]
+    A1[Shopping agent]
+    A2["Is it a book? check"]
+    A3[Refusal sentences]
+    A4[Fund descriptions]
+    A5[Month assistant]
+  end
+  subgraph CODE["Code: decides"]
+    R[Rule engine<br/>signed rules]
+    AP[Amara's approvals]
+    TK[Permission slip<br/>single use, 120 s]
+  end
+  subgraph MONEY["Money: moves"]
+    PP[PayPal<br/>charge saved wallet]
+    AL[Alpaca<br/>deposit and order]
+  end
+  A1 -- proposed carts --> R
+  A2 -- can only tighten --> R
+  R --> AP
+  R --> TK
+  AP --> TK
+  TK --> PP
+  TK --> AL
+  A3 -. reads decisions .-> R
+  A5 -. reads only .-> PP
+```
+
+```mermaid
+flowchart LR
+  Z[Zoe asks for something] --> A[Shopping agent<br/>proposes 2-3 carts]
+  A --> G1{Gate 1: rule engine<br/>plain code}
+  G1 -->|allowed| G2{Gate 2: AI check<br/>can only tighten}
+  G1 -->|refused| E[Refusal sentence]
+  G1 -->|needs OK| M[Amara approves<br/>one tap]
+  G2 -->|still allowed| T[Single-use permission slip<br/>120 s, bound to this cart]
+  G2 -->|tightened| M
+  M --> T
+  T --> P[PayPal charges<br/>Amara's saved wallet]
+```
+
+### 1. Shopping agent (agent) — `src/ai/agent.ts`
+
+- **What it's for:** Zoe types "headphones under $30" or pastes a product link.
+- **What it can see and do:** two tools — search the shops Amara allowed (Channel3), and look up a pasted product link. At most 6 tool calls, then it must answer.
+- **What it returns:** 2–3 proposed carts, each with a reason of at most 80 characters. Each cart is run through the rule engine and labelled *fits*, *needs Amara's OK* or *over budget* before Zoe sees it.
+- **What it cannot do:** buy anything, mint a permission slip, approve anything, change a rule, or touch PayPal. A test fails the build if this file imports anything that can. Product titles from shops are treated as untrusted data, never instructions. It can only propose items its own tools returned.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Zoe
+  participant App as Tether server
+  participant Model as Claude (shopping agent)
+  participant Search as Tool: search allowed shops
+  participant Lookup as Tool: look up a link
+  participant C3 as Channel3
+  participant Rules as Rule engine (code)
+  Zoe->>App: "headphones under $30"
+  App->>Model: request + allowed shop list (no rules, no money)
+  loop at most 6 tool calls
+    Model->>Search: query, max price
+    Search->>C3: search, filtered to Amara's shops only
+    C3-->>Search: products and offers
+    Search-->>Model: id, title, price (titles are untrusted data)
+    opt Zoe pasted a link
+      Model->>Lookup: product URL
+      Lookup->>C3: lookup
+      Lookup-->>Model: product, or "not available from your shops"
+    end
+  end
+  Model-->>App: 2-3 proposals (product ids + short reason)
+  App->>App: drop any id the tools never returned
+  App->>Rules: each proposed cart vs the signed rules
+  Rules-->>App: fits / needs Amara's OK / over budget
+  App-->>Zoe: cards with labels (nothing bought yet)
+```
+
+### 2. "Is it a book?" check (gate 2, single call) — `src/ai/classifier.ts`, `src/engine/gate2.ts`
+
+- **What it's for:** rules code can't judge, like Level 2's "the bookshop, for books only" — Barnes & Noble also sells toys and games.
+- **How it decides:** the model returns a probability; code turns it into an outcome using fixed thresholds.
+- **What it cannot do:** loosen anything. Its outcome is combined with gate 1 so the stricter one wins. *"A model may add friction. Only code may remove it."*
+- **When the model fails:** a 4-second timeout, an error or a nonsense answer all count as **refuse**, not allow.
+
+### 3. Refusal sentences (single call) — `src/ai/explain.ts`
+
+- **What it's for:** turning the rule engine's reasons into one kitchen-table sentence for Zoe, plus two ways forward (ask Amara, or wait).
+- **Checks:** it may restate only the dollar amounts the engine gave it; it may never say a purchase is approved; it is capped at 240 characters. Anything else falls back to a fixed template.
+
+### 4. Fund descriptions (single call) — `src/ai/fundWords.ts`
+
+- **What it's for:** one plain sentence about what a fund is, on Zoe's investing screen.
+- **Checks:** the model never sees prices and may write no numbers, no comparisons ("beat the market"), and no selling words ("great investment", "top pick"). The price lines are written by code. Anything off falls back to a template. Tether recommends nothing.
+
+### 5. "Ask about the month" (agent) — `src/ai/monthAssistant.ts`
+
+- **What it's for:** Amara asks things like "How much at the bookshop in October?"
+- **What it can see:** two read-only tools — PayPal's transaction list (through the **PayPal Agent Toolkit**, configured with only `list_transactions`) and Tether's own receipts for the month. At most 5 steps.
+- **Family-only:** every family's charges land in Tether's one PayPal account, so the PayPal tool is wrapped: the server picks the dates, keeps only rows whose payment id matches this family's receipts, and passes only date, amount and status. The model never sees other families, balances or free-text notes.
+- **What it cannot do:** move money. No write tool exists in its toolset, and the toolkit can be imported only in this one file (enforced by lint). If the data isn't there it says "I can't see that."
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Amara
+  participant App as Tether server
+  participant Model as Claude (month assistant)
+  participant Rec as Tool: tether_record
+  participant Tx as Tool: list_transactions (wrapper)
+  participant Kit as PayPal Agent Toolkit
+  participant PP as PayPal Transaction Search
+  Amara->>App: "How much at the bookshop in October?"
+  App->>App: check sign-in cookie, family id comes from it
+  App->>Model: question + 2 read-only tools
+  loop at most 5 steps
+    Model->>Rec: month "2026-10"
+    Rec-->>Model: this family's receipts (shop, amount, rule version, how allowed)
+    Model->>Tx: month "2026-10" (no dates, no ids)
+    Tx->>Kit: server-chosen start and end dates
+    Kit->>PP: list transactions (read only)
+    PP-->>Kit: every transaction on Tether's account
+    Kit-->>Tx: raw rows
+    Tx->>Tx: keep only this family's payment ids, keep date, amount, status
+    Tx-->>Model: filtered rows
+  end
+  Model-->>App: answer
+  App->>App: tools used are all on the allowed list? any rows at all?
+  App-->>Amara: answer, or "I can't see that."
+```
+
 ## Tech stack
 
 | Layer | Technology |
