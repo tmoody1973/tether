@@ -6,7 +6,9 @@ import type { PaypalHttp } from "@/adapters/paypal/http";
 import { listTransactions } from "@/adapters/paypal/transactions";
 
 const DAY_MS = 86_400_000;
-const MAX_WINDOW_MS = 31 * DAY_MS; // Transaction Search refuses a wider range
+// ponytail: one 31-day search (Transaction Search's widest range) from the month's first slip; a month whose slips
+// span more than 31 real days would miss late rows — split into several searches if that ever happens.
+const MAX_WINDOW_MS = 31 * DAY_MS;
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export type ReconFlag =
@@ -64,7 +66,8 @@ export async function reconcileMonth(
   ]);
 
   const flags: ReconFlag[] = [
-    ...rows.filter((r) => r.customField && mine.has(r.customField) && r.amountCents > 0 && !captures.has(r.id))
+    // a reversed charge (status V) took no money in the end, so it isn't "charged without a receipt"
+    ...rows.filter((r) => r.customField && mine.has(r.customField) && r.amountCents > 0 && r.status !== "V" && !captures.has(r.id))
       .map((r): ReconFlag => ({ kind: "paypal_only", captureId: r.id, amountCents: r.amountCents })),
     ...receipts.flatMap((r): ReconFlag[] => {
       const base = { captureId: r.captureId, amountCents: r.amountCents, shop: r.shop };

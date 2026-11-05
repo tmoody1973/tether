@@ -1,4 +1,5 @@
 import { Channel3 } from "@channel3/sdk";
+import { isE2eLocal } from "@/adapters/paypal/http";
 import type { Cents } from "@/engine/types";
 
 export interface Product {
@@ -90,7 +91,10 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
   if (!client) {
     const apiKey = process.env.CHANNEL3_API_KEY;
     if (!apiKey) throw new Error("CHANNEL3_API_KEY is not set; add it to .env.local");
-    const real: Channel3Like = new Channel3({ apiKey }); // no cast: compile-time check against the real SDK
+    // e2e only: the local fake Channel3 (same TETHER_E2E gate as PayPal's); otherwise the SDK's own default.
+    const fake = process.env.CHANNEL3_BASE_URL;
+    const baseUrl = fake && isE2eLocal(new URL(fake)) ? fake : undefined;
+    const real: Channel3Like = new Channel3({ apiKey, ...(baseUrl ? { baseUrl } : {}) }); // no cast: compile-time check against the real SDK
     client = real;
   }
   const c = client;

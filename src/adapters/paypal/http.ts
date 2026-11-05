@@ -82,16 +82,21 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
 
 const SANDBOX_HOST = "api-m.sandbox.paypal.com";
 
+/** The e2e suite's local fakes: only with TETHER_E2E=1 (set by playwright.config only), only outside production. */
+export function isE2eLocal(url: URL, env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.TETHER_E2E === "1" && env.NODE_ENV !== "production" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+}
+
 /**
- * PayPal client from env. Refuses anything but the sandbox: this build never touches real money.
- * Outside production a localhost base URL is also accepted, for the e2e suite's fake PayPal (never real money either).
+ * PayPal client from env. Refuses anything but the sandbox over https: this build never touches real money.
+ * The one exception is the e2e suite's local fake PayPal (see isE2eLocal), which can't move money either.
  */
 export function paypalFromEnv(env: NodeJS.ProcessEnv = process.env): PaypalHttp {
   const { PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: secret, PAYPAL_BASE_URL } = env;
   if (!clientId || !secret) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set");
   const baseUrl = PAYPAL_BASE_URL || `https://${SANDBOX_HOST}`;
-  const host = new URL(baseUrl).hostname;
-  const localTest = env.NODE_ENV !== "production" && (host === "localhost" || host === "127.0.0.1");
-  if (host !== SANDBOX_HOST && !localTest) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
+  const url = new URL(baseUrl);
+  const sandbox = url.protocol === "https:" && url.hostname === SANDBOX_HOST;
+  if (!sandbox && !isE2eLocal(url, env)) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
   return paypalHttp({ baseUrl, clientId, secret });
 }

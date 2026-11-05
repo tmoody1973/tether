@@ -4,12 +4,13 @@ import { redirect } from "next/navigation";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { clockFor } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { paypalFromEnv, type PaypalHttp } from "@/adapters/paypal/http";
 import { ApprovalError, decideApproval } from "@/flows/approvals";
+import { approveAndSettle } from "@/flows/approve";
 import { ADVANCES, advanceDemoClock, type Advance } from "@/flows/demo";
-import { GrantError, ReasonRequiredError, guardianSetLevel, resetTeenLink, revoke, signGrant } from "@/flows/grant";
+import { GrantError, ReasonRequiredError, RulesStoppedError, guardianSetLevel, resetTeenLink, revoke, signGrant } from "@/flows/grant";
 import { confirmRelease } from "@/flows/month";
 import type { Level } from "@/engine/ladder";
+import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
 
 const SIGNED_OUT = "Open your Tether link to continue.";
 
@@ -64,20 +65,26 @@ export async function advanceClockAction(form: FormData): Promise<void> {
   redirect(review?.action === "PROMOTE" ? "/g/review?promoted=1" : `/g?advanced=${to}`);
 }
 
-/** One tap on a request. A closed, decided or foreign request lands on the same calm "closed" page. */
+/**
+ * One tap on a request (R36): approving also charges the purchase or places the investment. A closed,
+ * decided or foreign request lands on the same calm "closed" page.
+ */
 export async function decideRequestAction(form: FormData): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");
   const id = String(form.get("approvalId") ?? "").slice(0, 100);
   const result = form.get("result");
   if (result !== "approved" && result !== "declined") redirect(`/g/requests/${encodeURIComponent(id)}`);
+  let code: string;
   try {
-    await decideApproval(g.deps, id, result, g.familyId);
+    code = result === "approved"
+      ? await approveAndSettle(paymentDeps(g.deps.db), g.familyId, id)
+      : (await decideApproval(g.deps, id, "declined", g.familyId), "declined");
   } catch (err) {
     if (!(err instanceof ApprovalError)) throw err;
     redirect(`/g/requests/${encodeURIComponent(id)}`);
   }
-  redirect(`/g?decided=${result}`);
+  redirect(`/g?decided=${code}&req=${encodeURIComponent(id)}`);
 }
 
 /** "I've sent it": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
@@ -106,19 +113,11 @@ export async function setLevelAction(_prev: LevelState, form: FormData): Promise
   try {
     await guardianSetLevel(g.deps, g.familyId, level as Level, reason);
   } catch (err) {
+    if (err instanceof RulesStoppedError) return { error: "Her rules are stopped. Sign new rules to change her level." };
     console.error("guardianSetLevel failed", err);
     return { error: "The level couldn't be changed. Nothing changed." };
   }
   redirect(`/g/review?level=${level}`);
-}
-
-/** PayPal for the revoke step; when it isn't configured the delete simply fails and the page says so honestly. */
-function paypalOrUnavailable(): PaypalHttp {
-  try {
-    return paypalFromEnv();
-  } catch {
-    return { request: async () => { throw new Error("PayPal is not configured here"); } };
-  }
 }
 
 /** Stop Zoe's rules (after the page's confirm step). The rules stop even if PayPal won't remove the saved wallet. */
@@ -127,5 +126,6 @@ export async function revokeAction(): Promise<void> {
   if (!g) redirect("/g");
   const r = await revoke({ ...g.deps, paypal: paypalOrUnavailable() }, g.familyId);
   if (r.error) console.error("revoke: PayPal delete failed", r.error);
-  redirect(`/g/review?stopped=${r.paypalTokenDeleted ? "wallet-removed" : "wallet-kept"}`);
+  const how = r.paypalTokenDeleted ? "wallet-removed" : r.reason === "no_vault" ? "no-wallet" : "wallet-kept";
+  redirect(`/g/review?stopped=${how}`);
 }

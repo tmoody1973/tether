@@ -60,7 +60,7 @@ export async function requestApproval(
 /** `familyId`, when given (every guardian surface gives it), must own the approval: another family's id is "unknown". */
 export async function decideApproval(
   deps: Pick<Deps, "db" | "now">, approvalId: string, result: "approved" | "declined", familyId?: string,
-): Promise<void> {
+): Promise<{ subject: Subject; subjectId: string }> {
   const [a] = await deps.db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
   if (!a || (familyId !== undefined && a.familyId !== familyId)) throw new ApprovalError(`unknown approval ${approvalId}`);
   // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
@@ -76,6 +76,7 @@ export async function decideApproval(
     else if (a.subject === "investment") await decideInvestmentRow(tx, a.subjectId, result);
     else if (a.subject === "fund") await decideFund(tx, a.familyId, a.subjectId, result);
   });
+  return { subject: a.subject, subjectId: a.subjectId };
 }
 
 async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "declined") {

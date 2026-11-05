@@ -9,6 +9,8 @@ import { FLAG_WORDS, LAG_NOTE, MONTH_RE, reconcileMonth, type Reconciliation } f
 import { formatCents, formatDay, formatMonth, formatWhen } from "@/ui/grantWords";
 import { INVEST_STATUS } from "@/ui/investWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
+import { resumePayingPurchases } from "@/flows/purchase";
+import { paymentDeps } from "../flowDeps";
 import { AskBox } from "./AskBox";
 
 // Mocks 11 + 14: dashboard on top, audit trail below, the proof behind every payment. Guardian-only.
@@ -33,6 +35,7 @@ async function Record({ searchParams }: { searchParams: Promise<Record<string, s
   const thisMonth = now.toISOString().slice(0, 7);
   const asked = (await searchParams).month;
   const month = typeof asked === "string" && MONTH_RE.test(asked) && asked <= thisMonth ? asked : thisMonth;
+  await resumePayingPurchases(paymentDeps(db), familyId); // R37: settle any PayPal outcome that was unknown
   const r = await guardianRecord(db, familyId, month, now);
   const h = r.home;
   const approvals = h.needsYou.filter((n) => n.kind === "approval").length;
@@ -113,12 +116,21 @@ function Payments({ r, thisMonth }: { r: RecordView; thisMonth: string }) {
           {r.month < thisMonth && <Link className="g-textlink" href={`/g/record?month=${next}`}>{formatMonth(next)} ›</Link>}
         </nav>
       </div>
-      {r.receipts.length === 0 ? (
+      {r.receipts.length === 0 && r.unreceipted.length === 0 ? (
         <p className="g-muted">No payments in {formatMonth(r.month)}.</p>
       ) : (
         <table className="g-table g-table--cards">
           <thead><tr><th style={{ width: 110 }}>When</th><th style={{ width: 150 }}>Shop</th><th>Allowed by</th><th style={{ width: 150 }}>Proof</th></tr></thead>
-          <tbody>{r.receipts.map((p) => <PaymentRow key={p.captureId} p={p} />)}</tbody>
+          <tbody>
+            {r.unreceipted.map((u) => (
+              <tr key={u.purchaseId}>
+                <td>{formatWhen(u.at)}</td>
+                <td><b>{u.shop}</b><Money cents={u.amountCents} /></td>
+                <td colSpan={2}><span className="g-chip">Paying… no receipt yet</span> <span className="g-muted">Tether is checking with PayPal.</span></td>
+              </tr>
+            ))}
+            {r.receipts.map((p) => <PaymentRow key={p.captureId} p={p} />)}
+          </tbody>
         </table>
       )}
       <p className="g-note" style={{ marginTop: 10 }}>Every payment keeps its permission slip attached — exportable if a charge is ever questioned.</p>

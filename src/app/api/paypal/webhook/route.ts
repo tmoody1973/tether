@@ -17,9 +17,10 @@ export async function POST(req: Request): Promise<Response> {
   if (!(await verifyWebhook(p, PAYPAL_WEBHOOK_ID, req.headers, body))) {
     return new Response("invalid signature", { status: 400 });
   }
-  const event = JSON.parse(body) as { event_type?: string; resource?: { id?: unknown } };
+  const event = JSON.parse(body) as { event_type?: string; resource?: { id?: unknown; custom_id?: unknown } };
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED" && typeof event.resource?.id === "string") {
-    await onCaptureCompleted({ db: await getDb() }, event.resource.id);
+    const customId = typeof event.resource.custom_id === "string" ? event.resource.custom_id : undefined;
+    await onCaptureCompleted({ db: await getDb() }, event.resource.id, customId);
   }
   return new Response(null, { status: 200 });
 }

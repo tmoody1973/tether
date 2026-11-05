@@ -1,10 +1,17 @@
 import { verifyToken, type AuthToken } from "@/engine/token";
 import type { Cart } from "@/engine/types";
-import type { PaypalHttp } from "./http";
+import { PaypalError, type PaypalHttp } from "./http";
 
+/**
+ * R37: a failed charge is either `declined` (PayPal answered with a business error: no money moved, safe to
+ * reverse) or `unknown` (timeout, network, 5xx, or no terminal answer: money MAY have moved, never reverse;
+ * re-send with the same PayPal-Request-Id, which returns the same order instead of charging twice).
+ */
 export type ChargeResult =
   | { ok: true; orderId: string; captureId: string; status: "COMPLETED" | "PENDING" }
-  | { ok: false; error: string };
+  | { ok: false; outcome: "declined" | "unknown"; error: string };
+
+export interface ChargeArgs { vaultId: string; payeeEmail?: string; description: string }
 
 interface Capture { id: string; status: string }
 interface OrderResponse {
@@ -14,18 +21,34 @@ interface OrderResponse {
 }
 
 const firstCapture = (o: OrderResponse): Capture | undefined => o.purchase_units?.[0]?.payments?.captures?.[0];
+const DECLINED_CAPTURE = new Set(["DECLINED", "FAILED"]);
+
+/** PayPal's 4xx answers (except timeout / rate limit) mean the request was refused: nothing was charged. */
+function classify(err: unknown): ChargeResult {
+  if (err instanceof PaypalError && err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429) {
+    return { ok: false, outcome: "declined", error: err.message };
+  }
+  return { ok: false, outcome: "unknown", error: err instanceof Error ? err.message : "PAYPAL_ERROR" };
+}
 
 /**
  * The ONLY place a PayPal order is created. Requires a valid permission slip.
  * Defence in depth: consumption (single use) is the flow's job, so it is not re-checked here.
  */
 export async function chargeVaulted(
-  token: AuthToken, cart: Cart, secret: string, now: Date, p: PaypalHttp,
-  args: { vaultId: string; payeeEmail?: string; description: string },
+  token: AuthToken, cart: Cart, secret: string, now: Date, p: PaypalHttp, args: ChargeArgs,
 ): Promise<ChargeResult> {
   const v = verifyToken(token, cart, now, secret, () => false);
-  if (!v.ok) return { ok: false, error: `TOKEN_${v.reason}` };
+  if (!v.ok) return { ok: false, outcome: "declined", error: `TOKEN_${v.reason}` }; // nothing was sent
+  return sendOrder(token, p, args);
+}
 
+/**
+ * Creates (or, re-sent with the same token, fetches back) the order and captures it. Idempotent: the
+ * PayPal-Request-Id is the token id for create and `<tokenId>-capture` for capture. Only chargeVaulted
+ * (fresh slip) and resumePayingPurchase (re-sending a slip already verified and debited) call this.
+ */
+export async function sendOrder(token: AuthToken, p: PaypalHttp, args: ChargeArgs): Promise<ChargeResult> {
   try {
     const unit: Record<string, unknown> = {
       reference_id: token.cartHash.slice(0, 32),
@@ -49,12 +72,13 @@ export async function chargeVaulted(
       order = cap.data;
       capture = firstCapture(order);
     }
-    if (!capture) return { ok: false, error: "NO_CAPTURE_IN_RESPONSE" };
+    if (!capture) return { ok: false, outcome: "unknown", error: "NO_CAPTURE_IN_RESPONSE" };
+    if (DECLINED_CAPTURE.has(capture.status)) return { ok: false, outcome: "declined", error: `CAPTURE_${capture.status}` };
     if (capture.status !== "COMPLETED" && capture.status !== "PENDING") {
-      return { ok: false, error: `CAPTURE_${capture.status}` };
+      return { ok: false, outcome: "unknown", error: `CAPTURE_${capture.status}` };
     }
     return { ok: true, orderId: order.id, captureId: capture.id, status: capture.status };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "PAYPAL_ERROR" };
+    return classify(err);
   }
 }

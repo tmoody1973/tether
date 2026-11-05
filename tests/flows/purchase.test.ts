@@ -8,7 +8,7 @@ import type { Channel3Adapter, Product } from "@/adapters/channel3/client";
 import type { Classifier } from "@/ai/classifier";
 import type { Cart, Constraint, Grant } from "@/engine/types";
 import { cartHash } from "@/engine/hash";
-import { onCaptureCompleted, proposePurchase, settlePurchase, type Deps } from "@/flows/purchase";
+import { onCaptureCompleted, proposePurchase, resumePayingPurchase, resumePayingPurchases, settlePurchase, type Deps } from "@/flows/purchase";
 import { POST } from "@/app/api/paypal/webhook/route";
 
 const NOW = new Date("2026-11-04T12:00:00Z"); // 2026-W45
@@ -23,22 +23,32 @@ beforeAll(async () => {
 
 // ---- fakes ----------------------------------------------------------------
 
-type PayMode = "completed" | "pending" | "500";
+type PayMode = "completed" | "pending" | "500" | "timeout" | "422";
+/** Like PayPal: a repeated PayPal-Request-Id returns the order already made, never a second one. */
 function fakePaypal() {
   const orders: { requestId: string; body: unknown }[] = [];
+  const made = new Map<string, unknown>();
   let mode: PayMode = "completed";
   let n = 0;
   const http: PaypalHttp = {
     async request<T>(method: string, path: string, opts: { body?: unknown; headers?: Record<string, string> } = {}) {
       if (method !== "POST" || path !== "/v2/checkout/orders") throw new Error(`unexpected ${method} ${path}`);
-      orders.push({ requestId: opts.headers?.["PayPal-Request-Id"] ?? "", body: opts.body });
+      const requestId = opts.headers?.["PayPal-Request-Id"] ?? "";
+      orders.push({ requestId, body: opts.body });
+      if (mode === "timeout") {
+        // the order IS made at PayPal; only the answer is lost
+        if (!made.has(requestId)) made.set(requestId, order(++n, "COMPLETED"));
+        throw new PaypalError(0, "TIMEOUT", "request timed out after 15000 ms");
+      }
       if (mode === "500") throw new PaypalError(500, "INTERNAL_SERVER_ERROR", "boom");
-      const status = mode === "pending" ? "PENDING" : "COMPLETED";
-      const data = { id: `O${++n}`, status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: `CAP-${n}-${Math.random()}`, status }] } }] };
-      return { status: 201, headers: new Headers(), data: data as T };
+      if (mode === "422") throw new PaypalError(422, "UNPROCESSABLE_ENTITY", "INSTRUMENT_DECLINED");
+      if (!made.has(requestId)) made.set(requestId, order(++n, mode === "pending" ? "PENDING" : "COMPLETED"));
+      return { status: 201, headers: new Headers(), data: made.get(requestId) as T };
     },
   };
-  return { http, orders, setMode: (m: PayMode) => { mode = m; } };
+  const order = (k: number, status: string) =>
+    ({ id: `O${k}`, status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: `CAP-${k}-${Math.random()}`, status }] } }] });
+  return { http, orders, made, setMode: (m: PayMode) => { mode = m; } };
 }
 
 function fakeChannel3(prices: Record<string, number | null>) {
@@ -175,11 +185,11 @@ describe("purchase flow", () => {
     expect(await journalKinds()).toEqual([["spend", 600]]);
   });
 
-  it("PayPal 500 → failed, journal has spend + spend_reversal, token consumed, exact message", async () => {
+  it("PayPal 422 INSTRUMENT_DECLINED → failed, journal has spend + spend_reversal, token consumed, exact message", async () => {
     await seed(base);
     const { d } = deps();
     const { purchaseId } = await proposePurchase(d, familyId, cartOf("a", 600));
-    pp.setMode("500");
+    pp.setMode("422");
     expect(await settlePurchase(d, purchaseId)).toEqual({ status: "failed", message: FAIL_MSG });
     expect(await statusOf(purchaseId)).toBe("failed");
     expect(await journalKinds()).toEqual([["spend", 600], ["spend_reversal", 600]]);
@@ -187,6 +197,72 @@ describe("purchase flow", () => {
     expect(tokenId).toBeTruthy();
     expect(await db.select().from(t.consumedTokens).where(eq(t.consumedTokens.tokenId, tokenId))).toHaveLength(1);
     expect(await db.select().from(t.receipts).where(eq(t.receipts.purchaseId, purchaseId))).toHaveLength(0);
+    expect(await resumePayingPurchase(d, purchaseId)).toEqual({ status: "failed" }); // nothing to resume, no second reversal
+    expect(await journalKinds()).toEqual([["spend", 600], ["spend_reversal", 600]]);
+  });
+
+  it("R37: timeout or 500 on create → stays paying, spend kept, no reversal", async () => {
+    for (const mode of ["timeout", "500"] as const) {
+      await seed(base);
+      pp = fakePaypal();
+      const { d } = deps();
+      const { purchaseId } = await proposePurchase(d, familyId, cartOf("a", 600));
+      pp.setMode(mode);
+      expect(await settlePurchase(d, purchaseId)).toMatchObject({ status: "paying" });
+      expect(await journalKinds()).toEqual([["spend", 600]]);
+      const [row] = await db.select().from(t.purchases).where(eq(t.purchases.id, purchaseId));
+      expect(row.chargeError).toMatch(mode === "timeout" ? /TIMEOUT/ : /INTERNAL_SERVER_ERROR/);
+      expect(row.charge?.token.tokenId).toBe(pp.orders[0].requestId);
+    }
+  });
+
+  it("R37: resume re-sends the same PayPal-Request-Id → paid with one receipt and exactly one order", async () => {
+    await seed(base);
+    const { d } = deps();
+    const { purchaseId } = await proposePurchase(d, familyId, cartOf("a", 600));
+    pp.setMode("timeout");
+    await settlePurchase(d, purchaseId);
+    pp.setMode("completed");
+    expect(await resumePayingPurchase(d, purchaseId)).toEqual({ status: "paid" });
+    expect(new Set(pp.orders.map((o) => o.requestId)).size).toBe(1); // same idempotency key both times
+    expect(pp.made.size).toBe(1); // PayPal made exactly one order
+    expect(JSON.stringify(pp.orders[1].body)).toBe(JSON.stringify(pp.orders[0].body)); // same body
+    const receipts = await db.select().from(t.receipts).where(eq(t.receipts.purchaseId, purchaseId));
+    expect(receipts).toHaveLength(1);
+    expect(await journalKinds()).toEqual([["spend", 600]]);
+    await resumePayingPurchases(d, familyId); // nothing left to do
+    expect(pp.orders).toHaveLength(2);
+  });
+
+  it("R37: resume that PayPal declines → failed + one reversal; still unknown → stays paying", async () => {
+    await seed(base);
+    const { d } = deps();
+    const { purchaseId } = await proposePurchase(d, familyId, cartOf("a", 600));
+    pp.setMode("500");
+    await settlePurchase(d, purchaseId);
+    expect(await resumePayingPurchase(d, purchaseId)).toMatchObject({ status: "paying" });
+    expect(await journalKinds()).toEqual([["spend", 600]]);
+    pp.setMode("422");
+    expect(await resumePayingPurchase(d, purchaseId)).toMatchObject({ status: "failed" });
+    expect(await journalKinds()).toEqual([["spend", 600], ["spend_reversal", 600]]);
+  });
+
+  it("R37: webhook (via custom_id) then resume ⇒ one receipt", async () => {
+    await seed(base);
+    const { d } = deps();
+    const { purchaseId } = await proposePurchase(d, familyId, cartOf("a", 600));
+    pp.setMode("timeout");
+    await settlePurchase(d, purchaseId);
+    const tokenId = pp.orders[0].requestId;
+    const captureId = (pp.made.get(tokenId) as { purchase_units: { payments: { captures: { id: string }[] } }[] })
+      .purchase_units[0].payments.captures[0].id;
+    await onCaptureCompleted(d, captureId, tokenId);
+    expect(await statusOf(purchaseId)).toBe("paid");
+    pp.setMode("completed");
+    expect(await resumePayingPurchase(d, purchaseId)).toEqual({ status: "paid" });
+    await onCaptureCompleted(d, captureId, tokenId);
+    expect(await db.select().from(t.receipts).where(eq(t.receipts.purchaseId, purchaseId))).toHaveLength(1);
+    expect(pp.orders).toHaveLength(1); // resume had nothing to re-send
   });
 
   it("price changed at re-lookup → refused CART_MISMATCH, no charge", async () => {

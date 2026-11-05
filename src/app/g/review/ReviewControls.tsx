@@ -13,8 +13,8 @@ export function LevelOverride({ teenName, level }: { teenName: string; level: Le
       <fieldset className="g-fieldset">
         <legend className="g-def__k" style={{ marginBottom: 8 }}>Move {teenName} to</legend>
         <div className="g-choice">
-          {options.map((l, i) => (
-            <label key={l}><input type="radio" name="level" value={l} defaultChecked={i === 0} /> Level {l}</label>
+          {options.map((l) => (
+            <label key={l}><input type="radio" name="level" value={l} /> Level {l}</label>
           ))}
         </div>
       </fieldset>

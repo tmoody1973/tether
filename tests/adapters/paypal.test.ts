@@ -73,7 +73,7 @@ describe("chargeVaulted", () => {
   it("returns ok:false on 422 without throwing", async () => {
     const f = mockFetch(() => json({ name: "UNPROCESSABLE_ENTITY", message: "nope", debug_id: "d1" }, 422));
     const r = await chargeVaulted(token(), cart, SECRET, now, client(f), args);
-    expect(r.ok).toBe(false);
+    expect(r).toMatchObject({ ok: false, outcome: "declined" }); // PayPal refused: no money moved
     expect(!r.ok && r.error).toContain("UNPROCESSABLE_ENTITY");
   });
 
@@ -86,7 +86,7 @@ describe("chargeVaulted", () => {
       const pending = chargeVaulted(token(), cart, SECRET, now, client(f), args);
       await vi.advanceTimersByTimeAsync(15_001);
       const r = await pending;
-      expect(r.ok).toBe(false);
+      expect(r).toMatchObject({ ok: false, outcome: "unknown" }); // money may have moved: never reverse
       expect(!r.ok && r.error).toContain("TIMEOUT");
     } finally {
       vi.useRealTimers();
@@ -97,7 +97,7 @@ describe("chargeVaulted", () => {
     const f = mockFetch(() => json(completedOrder));
     const bad = { ...token(), signature: "0".repeat(64) };
     const r = await chargeVaulted(bad, cart, SECRET, now, client(f), args);
-    expect(r).toEqual({ ok: false, error: "TOKEN_BAD_SIGNATURE" });
+    expect(r).toEqual({ ok: false, outcome: "declined", error: "TOKEN_BAD_SIGNATURE" });
     expect(f).not.toHaveBeenCalled();
   });
 
@@ -124,6 +124,16 @@ describe("chargeVaulted", () => {
     const f = mockFetch(() => json(pending, 201));
     const r = await chargeVaulted(token(), cart, SECRET, now, client(f), args);
     expect(r).toMatchObject({ ok: true, status: "PENDING" });
+  });
+
+  it("5xx and a capture with no terminal status are unknown; a DECLINED capture is declined", async () => {
+    const r5 = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => json({ name: "INTERNAL_SERVER_ERROR", message: "x" }, 500))), args);
+    expect(r5).toMatchObject({ ok: false, outcome: "unknown" });
+    const noCap = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => json({ id: "O1", status: "APPROVED" }, 201))), args);
+    expect(noCap).toMatchObject({ ok: false, outcome: "unknown", error: "NO_CAPTURE_IN_RESPONSE" });
+    const declined = { id: "O1", status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: "C1", status: "DECLINED" }] } }] };
+    const rd = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => json(declined, 201))), args);
+    expect(rd).toMatchObject({ ok: false, outcome: "declined" });
   });
 
   it("payee email passed through when given", async () => {
@@ -198,11 +208,13 @@ describe("transactions", () => {
 
 describe("paypalFromEnv", () => {
   const creds = { PAYPAL_CLIENT_ID: "c", PAYPAL_CLIENT_SECRET: "s" };
-  it("accepts only the sandbox, plus localhost outside production (the e2e fake)", () => {
+  it("accepts only the https sandbox, plus localhost for the e2e fake (TETHER_E2E=1, never production)", () => {
     expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production" })).not.toThrow();
     expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production", PAYPAL_BASE_URL: "https://api-m.paypal.com" })).toThrow(/sandbox/);
-    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production", PAYPAL_BASE_URL: "http://localhost:3101" })).toThrow(/sandbox/);
-    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "test", PAYPAL_BASE_URL: "http://localhost:3101" })).not.toThrow();
-    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "test", PAYPAL_BASE_URL: "https://evil.example" })).toThrow(/sandbox/);
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production", PAYPAL_BASE_URL: "http://api-m.sandbox.paypal.com" })).toThrow(/sandbox/);
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "production", TETHER_E2E: "1", PAYPAL_BASE_URL: "http://localhost:3101" })).toThrow(/sandbox/);
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "development", PAYPAL_BASE_URL: "http://localhost:3101" })).toThrow(/sandbox/);
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "development", TETHER_E2E: "1", PAYPAL_BASE_URL: "http://localhost:3101" })).not.toThrow();
+    expect(() => paypalFromEnv({ ...creds, NODE_ENV: "development", TETHER_E2E: "1", PAYPAL_BASE_URL: "https://evil.example" })).toThrow(/sandbox/);
   });
 });

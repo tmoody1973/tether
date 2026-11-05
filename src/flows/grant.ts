@@ -19,6 +19,11 @@ export class ReasonRequiredError extends GrantError {
   constructor() { super("a reason is required to change the level"); this.name = "ReasonRequiredError"; }
 }
 
+/** Rules were stopped (revoked): a level can't be overruled on rules that aren't in force. Sign new ones instead. */
+export class RulesStoppedError extends GrantError {
+  constructor() { super("rules are stopped — sign new ones"); this.name = "RulesStoppedError"; }
+}
+
 type Settings = Pick<Grant, "commitmentFloorPct" | "matchPct" | "fundAllowlist">;
 
 /** Runs `fn` in one transaction holding the family-row lock (same lock as settlePurchase / decideApproval). */
@@ -114,6 +119,7 @@ export async function guardianSetLevel(deps: Pick<Deps, "db" | "now">, familyId:
   if (!why) throw new ReasonRequiredError();
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getLatestGrant(tx, familyId);
+    if (cur?.status === "revoked") throw new RulesStoppedError(); // stopped rules stay stopped until Amara signs again
     const body = await installLevel(tx, familyId, level, now);
     await tx.insert(t.levelChanges).values({
       id: crypto.randomUUID(), familyId, fromLevel: cur?.level ?? 0, toLevel: level, by: "guardian", reason: why, at: now,

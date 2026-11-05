@@ -82,6 +82,11 @@ export async function insertReceipt(db: Db, v: Omit<typeof t.receipts.$inferInse
   return plain(row);
 }
 
+/** Idempotent on capture id (unique index): the webhook and a resume can never write two receipts for one capture. */
+export async function insertReceiptOnce(db: Db, v: Omit<typeof t.receipts.$inferInsert, "id" | "createdAt">): Promise<void> {
+  await db.insert(t.receipts).values({ ...v, id: id() }).onConflictDoNothing({ target: t.receipts.captureId });
+}
+
 export async function getReceiptByCaptureId(db: Db, captureId: string): Promise<ReceiptRow | null> {
   return one(await db.select().from(t.receipts).where(eq(t.receipts.captureId, captureId)).limit(1));
 }

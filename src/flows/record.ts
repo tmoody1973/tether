@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { receiptsForMonth, type MonthReceipt } from "@/db/repo";
@@ -25,6 +25,8 @@ export interface RecordView {
   investments: { id: string; symbol: string; amountCents: number; status: (typeof t.investments.$inferSelect)["status"] }[];
   /** Up to the last 4 closed weeks (guardian-only weekly spend). */
   weeks: WeekRecord[];
+  /** Money left the budget this month but PayPal hasn't answered yet (no receipt). */
+  unreceipted: { purchaseId: string; at: Date; shop: string; amountCents: number }[];
 }
 
 const payees = (g: Grant): string[] =>
@@ -32,7 +34,7 @@ const payees = (g: Grant): string[] =>
 
 /** Read model for Amara's record of one month (`month` = 'YYYY-MM', demo clock). Family always from the caller. */
 export async function guardianRecord(db: Db, familyId: string, month: string, now: Date): Promise<RecordView> {
-  const [home, grantRows, receipts, merchants, investments, weeks] = await Promise.all([
+  const [home, grantRows, receipts, merchants, investments, weeks, paying] = await Promise.all([
     guardianHome(db, familyId, now),
     db.select().from(t.grants).where(eq(t.grants.familyId, familyId)).orderBy(desc(t.grants.version)),
     receiptsForMonth(db, familyId, month),
@@ -40,6 +42,9 @@ export async function guardianRecord(db: Db, familyId: string, month: string, no
     db.select({ id: t.investments.id, symbol: t.investments.symbol, amountCents: t.investments.amountCents, status: t.investments.status })
       .from(t.investments).where(eq(t.investments.familyId, familyId)),
     weekRecords(db, familyId),
+    db.select({ p: t.purchases, at: t.journal.at }).from(t.purchases)
+      .innerJoin(t.journal, and(eq(t.journal.kind, "spend"), eq(t.journal.ref, t.purchases.id)))
+      .where(and(eq(t.purchases.familyId, familyId), eq(t.purchases.status, "paying"))),
   ]);
   const name = new Map(merchants.map((m) => [m.id, m.name]));
   const grants = grantRows.map((g): RecordGrant => ({
@@ -48,8 +53,12 @@ export async function guardianRecord(db: Db, familyId: string, month: string, no
     shops: payees(g.body).map((id) => name.get(id) ?? id),
   }));
   const byId = new Map(grantRows.map((g) => [g.id, g]));
+  const receipted = new Set(receipts.map((r) => r.purchaseId));
+  const unreceipted = paying
+    .filter(({ p, at }) => at.toISOString().startsWith(month) && !receipted.has(p.id))
+    .map(({ p, at }) => ({ purchaseId: p.id, at, shop: name.get(p.cart.merchantId) ?? "a shop", amountCents: p.cart.totalCents }));
   return {
-    home, month, grants, investments, weeks: weeks.slice(-4),
+    home, month, grants, investments, weeks: weeks.slice(-4), unreceipted,
     receipts: receipts.slice().reverse().map((r) => {
       const g = byId.get(r.grantId);
       const clause = g ? clauseText(grantClause({

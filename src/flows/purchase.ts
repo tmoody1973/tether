@@ -1,22 +1,24 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import {
   appendJournal, consumeToken, getActiveGrant, getMerchant, getPurchase, getReceiptByCaptureId, getValidApproval, getVault,
-  insertPurchase, insertReceipt, transitionPurchase, updatePurchaseStatus,
+  insertPurchase, insertReceiptOnce, transitionPurchase, updatePurchaseStatus,
   type PurchaseRow, type PurchaseStatus,
 } from "@/db/repo";
 import { ledgerView } from "@/ledger/ledger";
 import { decide } from "@/engine/decide";
 import { cartHash } from "@/engine/hash";
-import { mintToken, type AuthToken } from "@/engine/token";
+import { mintToken, verifyToken, type AuthToken } from "@/engine/token";
 import { BOOKS_ONLY, bandOf, compose } from "@/engine/gate2";
 import type { ApprovalGrant, Cart, Decision, Grant, Outcome } from "@/engine/types";
 import type { PaypalHttp } from "@/adapters/paypal/http";
-import { chargeVaulted, type ChargeResult } from "@/adapters/paypal/orders";
+import { chargeVaulted, sendOrder, type ChargeArgs, type ChargeResult } from "@/adapters/paypal/orders";
+import type { ChargeIntent } from "@/db/schema";
 import type { Channel3Adapter } from "@/adapters/channel3/client";
 import type { Classifier } from "@/ai/classifier";
 import { expireStale } from "@/flows/approvals";
+import { withFamilyLock } from "@/flows/grant";
 
 export type Deps = {
   db: Db; paypal: PaypalHttp; channel3: Channel3Adapter; classifier: Classifier;
@@ -31,6 +33,7 @@ export type StoredDecision = Decision & { gate2: Gate2Finding[] };
 export type SettleResult = { status: PurchaseStatus; reason?: string; message?: string };
 
 export const CHARGE_FAILED_MESSAGE = "We couldn't charge — nothing was spent.";
+export const CHARGE_UNKNOWN_MESSAGE = "PayPal hasn't confirmed this payment yet.";
 
 const STATUS: Record<Outcome, PurchaseStatus> = { ALLOW: "proposed", NEEDS_APPROVAL: "needs_approval", REFUSE: "refused" };
 const NO_GRANT: Decision = {
@@ -72,8 +75,9 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   const { db } = deps;
   const found = await getPurchase(db, purchaseId);
   if (!found) throw new Error(`unknown purchase ${purchaseId}`);
+  await resumePayingPurchases(deps, found.familyId); // R37: finish earlier unknown outcomes before anything new
   await expireStale(deps, found.familyId);
-  const p = (await getPurchase(db, purchaseId)) ?? found; // status may have just become `expired`
+  const p = (await getPurchase(db, purchaseId)) ?? found; // status may have just become `expired` or `paid`
   const now = await deps.now(p.familyId);
   const approval = await getValidApproval(db, purchaseId, p.cartHash, now);
   const approvable = p.status === "needs_approval" || p.status === "approved";
@@ -96,15 +100,17 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   const token = mintToken(d, grant.body, fresh, now, deps.secret);
   if (!(await consumeToken(db, token.tokenId, p.id))) return refuse(ctx, "REPLAY");
 
-  const debited = await debit(ctx, grant.body, fresh);
-  if ("status" in debited) return debited;
-
-  const charge = await chargeVaulted(token, fresh, deps.secret, now, deps.paypal, {
+  const args: ChargeArgs = {
     vaultId: vault.paymentTokenId,
     payeeEmail: merchant.paypalPayeeEmail ?? undefined,
     description: `Tether: ${fresh.items.map((i) => i.title).join(", ")}`.slice(0, 127),
-  }).catch((e: unknown): ChargeResult => ({ ok: false, error: e instanceof Error ? e.message : "CHARGE_THREW" }));
-  return settleCharge(ctx, token, debited.decision, charge);
+  };
+  const debited = await debit(ctx, grant.body, fresh, token, args);
+  if ("status" in debited) return debited;
+
+  const charge = await chargeVaulted(token, fresh, deps.secret, now, deps.paypal, args)
+    .catch((e: unknown): ChargeResult => ({ ok: false, outcome: "unknown", error: e instanceof Error ? e.message : "CHARGE_THREW" }));
+  return settleCharge(db, p.id, debited.intent, charge, now);
 }
 
 /** Fresh unit prices from Channel3 for every item; null if any item is no longer sold by the shop. */
@@ -130,10 +136,13 @@ async function gates(db: Db, ctx: Ctx, grant: Grant, cart: Cart): Promise<Stored
 
 /**
  * R14: one transaction, serialised per family by the row lock. Budget is re-read under the lock,
- * so two settles can never both spend the same remaining dollars.
+ * so two settles can never both spend the same remaining dollars. The charge intent is stored with the
+ * debit (R37) so an unknown PayPal outcome can be re-sent later with the same PayPal-Request-Id.
  */
-async function debit(ctx: Ctx, grant: Grant, cart: Cart): Promise<SettleResult | { decision: StoredDecision }> {
-  const { deps, p, now } = ctx;
+async function debit(
+  ctx: Ctx, grant: Grant, cart: Cart, token: AuthToken, args: ChargeArgs,
+): Promise<SettleResult | { intent: ChargeIntent }> {
+  const { deps, p, now, approval } = ctx;
   return deps.db.transaction(async (tx) => {
     await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, p.familyId)).for("update");
     const cur = await getPurchase(tx, p.id);
@@ -148,28 +157,42 @@ async function debit(ctx: Ctx, grant: Grant, cart: Cart): Promise<SettleResult |
       await updatePurchaseStatus(tx, p.id, STATUS[d.outcome]);
       return { status: STATUS[d.outcome], reason: firstReason(d) };
     }
+    const intent: ChargeIntent = { token, args, decision: d, approvalId: approval?.id ?? null };
     await appendJournal(tx, { familyId: p.familyId, kind: "spend", amountCents: cart.totalCents, at: now, ref: p.id, note: null });
-    await updatePurchaseStatus(tx, p.id, "paying");
-    return { decision: d };
+    await tx.update(t.purchases).set({ status: "paying", charge: intent, chargeError: null }).where(eq(t.purchases.id, p.id));
+    return { intent };
   });
 }
 
-async function settleCharge(ctx: Ctx, token: AuthToken, decision: StoredDecision, charge: ChargeResult): Promise<SettleResult> {
-  const { deps: { db }, p, now, approval } = ctx;
-  if (!charge.ok) {
-    await db.transaction(async (tx) => {
-      await appendJournal(tx, { familyId: p.familyId, kind: "spend_reversal", amountCents: token.amountCents, at: now, ref: p.id, note: charge.error.slice(0, 200) });
-      await updatePurchaseStatus(tx, p.id, "failed");
+/**
+ * R37. completed ⇒ receipt (idempotent) + paid; declined ⇒ reversal + failed (once: only from `paying`);
+ * unknown ⇒ the money may have moved, so the spend stays, the purchase stays `paying` and the error is kept.
+ */
+async function settleCharge(db: Db, purchaseId: string, intent: ChargeIntent, charge: ChargeResult, now: Date): Promise<SettleResult> {
+  if (charge.ok) {
+    await insertReceiptOnce(db, {
+      purchaseId, captureId: charge.captureId, grantId: intent.token.grantId, grantVersion: intent.token.grantVersion,
+      cartHash: intent.token.cartHash, decision: intent.decision, approvalId: intent.approvalId,
     });
-    return { status: "failed", message: CHARGE_FAILED_MESSAGE };
+    if (charge.status !== "COMPLETED") return { status: "paying" };
+    await transitionPurchase(db, purchaseId, "paying", "paid");
+    return { status: (await getPurchase(db, purchaseId))?.status ?? "paid" };
   }
-  await insertReceipt(db, {
-    purchaseId: p.id, captureId: charge.captureId, grantId: token.grantId, grantVersion: token.grantVersion,
-    cartHash: token.cartHash, decision, approvalId: approval?.id ?? null,
+  if (charge.outcome === "unknown") {
+    await db.update(t.purchases).set({ chargeError: charge.error.slice(0, 200) })
+      .where(and(eq(t.purchases.id, purchaseId), eq(t.purchases.status, "paying")));
+    return { status: "paying", message: CHARGE_UNKNOWN_MESSAGE };
+  }
+  const reversed = await db.transaction(async (tx) => {
+    const moved = await transitionPurchase(tx, purchaseId, "paying", "failed");
+    if (!moved) return false;
+    await appendJournal(tx, {
+      familyId: moved.familyId, kind: "spend_reversal", amountCents: intent.token.amountCents, at: now, ref: purchaseId, note: charge.error.slice(0, 200),
+    });
+    return true;
   });
-  if (charge.status !== "COMPLETED") return { status: "paying" };
-  await transitionPurchase(db, p.id, "paying", "paid");
-  return { status: "paid" };
+  if (!reversed) return { status: (await getPurchase(db, purchaseId))?.status ?? "failed" };
+  return { status: "failed", message: CHARGE_FAILED_MESSAGE };
 }
 
 async function refuse(ctx: Ctx, reason: string, status: PurchaseStatus = "refused"): Promise<SettleResult> {
@@ -180,10 +203,65 @@ async function refuse(ctx: Ctx, reason: string, status: PurchaseStatus = "refuse
 
 const firstReason = (d: Decision) => d.reasons[0]?.constraint ?? "checkout.semantic_category";
 
+// ---- resume (R37) -----------------------------------------------------------
+
+/**
+ * Re-sends a `paying` purchase that has no receipt with the SAME PayPal-Request-Id and body: PayPal returns
+ * the order it already made (never a second charge), so the outcome becomes known. Under the family lock.
+ * A purchase still mid-charge (slip not yet expired, no error recorded) is left to its own settle.
+ */
+export async function resumePayingPurchase(deps: Deps, purchaseId: string): Promise<SettleResult> {
+  const found = await getPurchase(deps.db, purchaseId);
+  if (!found) throw new Error(`unknown purchase ${purchaseId}`);
+  if (found.status !== "paying" || !found.charge) return { status: found.status };
+  return withFamilyLock(deps, found.familyId, async (tx, now) => {
+    const p = await getPurchase(tx, purchaseId);
+    const intent = p?.charge;
+    if (!p || p.status !== "paying" || !intent) return { status: p?.status ?? found.status };
+    const [receipt] = await tx.select({ id: t.receipts.id }).from(t.receipts).where(eq(t.receipts.purchaseId, p.id)).limit(1);
+    if (receipt) return { status: "paying" }; // PayPal said PENDING; its webhook finishes it
+    const inFlight = p.chargeError === null && now.getTime() <= Date.parse(intent.token.expiresAt);
+    if (inFlight) return { status: "paying" };
+    // The slip was verified and debited when first sent; check it is still ours and untampered before re-sending.
+    if (!verifyToken(intent.token, p.cart, new Date(intent.token.issuedAt), deps.secret, () => false).ok) {
+      await tx.update(t.purchases).set({ chargeError: "SLIP_CHECK_FAILED" }).where(eq(t.purchases.id, p.id));
+      return { status: "paying" };
+    }
+    const charge = await sendOrder(intent.token, deps.paypal, intent.args);
+    return settleCharge(tx, p.id, intent, charge, now);
+  });
+}
+
+/** Resumes every receipt-less `paying` purchase of the family; one failure never stops the others. */
+export async function resumePayingPurchases(deps: Deps, familyId: string): Promise<void> {
+  const rows = await deps.db.select({ id: t.purchases.id }).from(t.purchases)
+    .where(and(eq(t.purchases.familyId, familyId), eq(t.purchases.status, "paying"), isNotNull(t.purchases.charge)));
+  for (const { id } of rows) {
+    await resumePayingPurchase(deps, id).catch((err: unknown) => {
+      console.error("resumePayingPurchase failed", id, err instanceof Error ? err.message : err);
+    });
+  }
+}
+
 // ---- webhook ----------------------------------------------------------------
 
-/** PAYMENT.CAPTURE.COMPLETED: paying -> paid. Idempotent; unknown capture ids are ignored. */
-export async function onCaptureCompleted(deps: Pick<Deps, "db">, captureId: string): Promise<void> {
-  const receipt = await getReceiptByCaptureId(deps.db, captureId);
-  if (receipt) await transitionPurchase(deps.db, receipt.purchaseId, "paying", "paid");
+/**
+ * PAYMENT.CAPTURE.COMPLETED: paying -> paid. Idempotent; unknown capture ids are ignored. If Tether never got
+ * PayPal's answer (no receipt yet), the capture's custom_id (our slip id) finds the purchase and the receipt is
+ * written from its stored charge intent; the capture-id unique index keeps webhook + resume to one receipt.
+ */
+export async function onCaptureCompleted(deps: Pick<Deps, "db">, captureId: string, customId?: string): Promise<void> {
+  const { db } = deps;
+  const receipt = await getReceiptByCaptureId(db, captureId);
+  if (receipt) {
+    await transitionPurchase(db, receipt.purchaseId, "paying", "paid");
+    return;
+  }
+  if (!customId) return;
+  const [p] = await db.select().from(t.purchases)
+    .innerJoin(t.consumedTokens, eq(t.consumedTokens.purchaseId, t.purchases.id))
+    .where(and(eq(t.consumedTokens.tokenId, customId), eq(t.purchases.status, "paying")));
+  const intent = p?.purchases.charge;
+  if (!intent || intent.token.tokenId !== customId) return;
+  await settleCharge(db, p.purchases.id, intent, { ok: true, orderId: "", captureId, status: "COMPLETED" }, new Date());
 }

@@ -6,6 +6,7 @@ import { monthReviewView, type ReviewView } from "@/flows/month";
 import { LEVELS, type Level } from "@/engine/ladder";
 import { approvalWords, formatCents } from "@/ui/grantWords";
 import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
+import { PendingButton } from "@/ui/PendingButton";
 import { confirmReleaseAction } from "../actions";
 import { LevelOverride, StopRules } from "./ReviewControls";
 
@@ -24,6 +25,7 @@ const WALLET_KEPT =
 function flash(sp: Record<string, string | string[] | undefined>, zoe: string): { text: string; warn?: boolean } | null {
   if (sp.stopped === "wallet-removed") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones, and PayPal removed your saved wallet.` };
   if (sp.stopped === "wallet-kept") return { text: WALLET_KEPT, warn: true };
+  if (sp.stopped === "no-wallet") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones. There was no saved PayPal to remove.` };
   if (sp.sent === "1") return { text: "Recorded as sent by you. Tether can't see the money move, and the record says so." };
   if (typeof sp.level === "string" && /^[123]$/.test(sp.level)) return { text: `${zoe} is now at Level ${sp.level}. Your reason is on the record.` };
   if (sp.promoted === "1") return { text: "The month closed and the review ran." };
@@ -80,7 +82,7 @@ async function Review({ searchParams }: { searchParams: Promise<Record<string, s
               </p>
               <form action={confirmReleaseAction} style={{ marginTop: 12 }}>
                 <input type="hidden" name="releaseId" value={v.release.id} />
-                <button type="submit" className="g-btn g-btn--block">I&apos;ve sent it</button>
+                <PendingButton label="I've sent it" pendingLabel="Recording…" className="g-btn g-btn--block" />
               </form>
             </section>
           )}

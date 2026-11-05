@@ -10,7 +10,7 @@ export default defineConfig({
   webServer: [
     {
       command: "pnpm tsx tests/e2e/fake-paypal.ts",
-      url: `http://localhost:${E2E.paypalPort}/health`,
+      url: `http://localhost:${E2E.fakePort}/health`,
       reuseExistingServer: false,
     },
     {
@@ -18,10 +18,12 @@ export default defineConfig({
       url: `${baseURL}/g`,
       reuseExistingServer: false,
       timeout: 180_000,
-      // PayPal = the local fake (paypalFromEnv accepts localhost outside production only): e2e never calls PayPal.
+      // PayPal and Channel3 = the local fakes. TETHER_E2E=1 is set ONLY here; without it (and outside production
+      // only) paypalFromEnv / createChannel3 refuse a localhost address. e2e never calls PayPal or Channel3.
       env: {
-        DATABASE_URL: E2E.dbUrl, APP_BASE_URL: baseURL,
-        PAYPAL_BASE_URL: `http://localhost:${E2E.paypalPort}`, PAYPAL_CLIENT_ID: "e2e-fake", PAYPAL_CLIENT_SECRET: "e2e-fake",
+        DATABASE_URL: E2E.dbUrl, APP_BASE_URL: baseURL, TETHER_E2E: "1",
+        PAYPAL_BASE_URL: `http://localhost:${E2E.fakePort}`, PAYPAL_CLIENT_ID: "e2e-fake", PAYPAL_CLIENT_SECRET: "e2e-fake",
+        CHANNEL3_BASE_URL: `http://localhost:${E2E.fakePort}`, CHANNEL3_API_KEY: "e2e-fake",
       },
     },
   ],

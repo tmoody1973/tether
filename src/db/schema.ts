@@ -2,6 +2,11 @@ import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey, uniqueInd
 import { sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type { Cart, Decision, Grant } from "@/engine/types";
+import type { AuthToken } from "@/engine/token";
+import type { ChargeArgs } from "@/adapters/paypal/orders";
+
+/** The permission slip and order details a charge was sent with, plus the decision and approval it was debited under. */
+export interface ChargeIntent { token: AuthToken; args: ChargeArgs; decision: Decision; approvalId: string | null }
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const createdAt = (name = "created_at") => ts(name).notNull().defaultNow();
@@ -59,6 +64,9 @@ export const purchases = pgTable("purchases", {
     enum: ["proposed", "needs_approval", "approved", "refused", "paying", "paid", "failed", "expired"],
   }).notNull(),
   createdAt: createdAt(),
+  // R37: what was sent to PayPal, kept so an unknown outcome can be re-sent with the same PayPal-Request-Id.
+  charge: jsonb("charge").$type<ChargeIntent>(),
+  chargeError: text("charge_error"), // last unknown-outcome error while the purchase stays `paying`
 });
 
 export const approvals = pgTable("approvals", {
@@ -92,7 +100,7 @@ export const receipts = pgTable("receipts", {
   decision: jsonb("decision").$type<Decision>().notNull(),
   approvalId: text("approval_id").references(() => approvals.id),
   createdAt: createdAt(),
-});
+}, (r) => [uniqueIndex("receipts_capture_uq").on(r.captureId)]); // webhook + resume can never write two
 
 export const journalKinds = ["spend", "spend_reversal", "week_close", "release", "invest", "invest_reversal"] as const;
 export const journal = pgTable("journal", {

@@ -9,6 +9,7 @@ import { formatCents, formatDay } from "@/ui/grantWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "../../invest/FundFacts";
 import { decideRequestAction } from "../../actions";
+import { DecideButtons } from "./DecideButtons";
 
 // Mock 10: one tap, with the budget consequence shown first. Requests arrive as a deep link, not a place.
 export default function RequestPage({ params }: PageProps<"/g/requests/[id]">) {
@@ -145,10 +146,7 @@ function Open({ v }: { v: RequestView }) {
 
       <form action={decideRequestAction} style={{ display: "grid", gap: 9 }}>
         <input type="hidden" name="approvalId" value={v.id} />
-        <div className="g-btnrow">
-          <button type="submit" name="result" value="approved" className="g-btn">{approveLabel(v)}</button>
-          <button type="submit" name="result" value="declined" className="g-btn g-btn--ghost">Not this time</button>
-        </div>
+        <DecideButtons approveLabel={approveLabel(v)} />
         <p className="g-note" style={{ textAlign: "center" }}>
           Open until {formatDay(v.expiresAt)}.{" "}
           {v.purchase && <Link className="g-textlink" href="/g/grant">or change her limit instead</Link>}

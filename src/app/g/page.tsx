@@ -4,8 +4,12 @@ import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { guardianHome, type NeedsYou } from "@/flows/home";
+import { teenMessage } from "@/flows/approvals";
+import { APPROVE_CODES, approvedPurchase, type ApproveCode } from "@/flows/approve";
+import { approveWords } from "@/ui/approveWords";
 import { formatCents, formatDay } from "@/ui/grantWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
+import { PendingButton } from "@/ui/PendingButton";
 import { advanceClockAction } from "./actions";
 import { appBaseUrl } from "./connect-paypal/setup";
 import { ResetLink } from "./ResetLink";
@@ -21,7 +25,9 @@ export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
 
 type Search = Record<string, string | string[] | undefined>;
 
-function flash(sp: Search): { text: string; warn?: boolean } | null {
+type Flash = { text: string; warn?: boolean; connectPaypal?: boolean };
+
+function flash(sp: Search, names: { teen: string; guardian: string }, paid: Parameters<typeof approveWords>[2]): Flash | null {
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
   const signed = one("signed");
   if (signed && /^\d+$/.test(signed)) return { text: `Signed. Rules v${signed} are in force now.` };
@@ -34,8 +40,8 @@ function flash(sp: Search): { text: string; warn?: boolean } | null {
   const moved: Record<string, string> = { day: "1 day", week: "1 week", endOfWeek: "to the end of the week", endOfMonth: "to the end of the month" };
   if (adv && moved[adv]) return { text: `Demo clock moved forward ${moved[adv]}.` };
   const decided = one("decided");
-  if (decided === "approved") return { text: "Approved. Zoe can go ahead." };
-  if (decided === "declined") return { text: "Done. Zoe will see “Amara said not this time.”" };
+  if (decided === "declined") return { text: `Done. ${names.teen} will see “${teenMessage(names.guardian)}”` };
+  if (decided && (APPROVE_CODES as readonly string[]).includes(decided)) return approveWords(decided as ApproveCode, names.teen, paid);
   return null;
 }
 
@@ -44,7 +50,9 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   if (!familyId) return <SignedOut />;
   const db = await getDb();
   const h = await guardianHome(db, familyId, await clockNow(db, familyId));
-  const note = flash(await searchParams);
+  const sp = await searchParams;
+  const paid = sp.decided === "paid" && typeof sp.req === "string" ? await approvedPurchase(db, familyId, sp.req) : null;
+  const note = flash(sp, { teen: h.teenName, guardian: h.guardianName }, paid);
   const zoe = h.teenName;
 
   return (
@@ -61,7 +69,11 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
         <h1 className="g-title">{zoe}</h1>
         {h.level && <span className="g-chip g-chip--accent">Level {h.level}</span>}
       </div>
-      {note && <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">{note.text}</p>}
+      {note && (
+        <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">
+          {note.text}{note.connectPaypal && <> <a className="g-textlink" href="/g/connect-paypal">Save your PayPal</a></>}
+        </p>
+      )}
 
       <div className="g-two">
         <div className="g-stack">
@@ -113,10 +125,8 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
               Demo only: time is fast-forwarded for the demo. Demo date: <b>{formatDay(h.now)}</b>.
             </p>
             <form action={advanceClockAction} className="g-btnrow">
-              <button type="submit" name="to" value="day" className="g-btn g-btn--ghost">Advance 1 day</button>
-              <button type="submit" name="to" value="week" className="g-btn g-btn--ghost">Advance 1 week</button>
-              <button type="submit" name="to" value="endOfWeek" className="g-btn g-btn--ghost">Advance to end of week</button>
-              <button type="submit" name="to" value="endOfMonth" className="g-btn g-btn--ghost">Advance to end of month</button>
+              {([["day", "Advance 1 day"], ["week", "Advance 1 week"], ["endOfWeek", "Advance to end of week"], ["endOfMonth", "Advance to end of month"]] as const)
+                .map(([to, label]) => <PendingButton key={to} name="to" value={to} label={label} pendingLabel="Moving the clock…" className="g-btn g-btn--ghost" />)}
             </form>
             <p className="g-note" style={{ marginTop: 8 }}>
               Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly review.
