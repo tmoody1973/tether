@@ -6,9 +6,10 @@ import * as t from "@/db/schema";
 import { PaypalError, type PaypalHttp } from "@/adapters/paypal/http";
 import type { Channel3Adapter } from "@/adapters/channel3/client";
 import type { Cart } from "@/engine/types";
-import { grantForLevel } from "@/engine/ladder";
+import { commitmentKept, grantForLevel } from "@/engine/ladder";
 import { proposePurchase, type Deps } from "@/flows/purchase";
-import { savingsCents } from "@/ledger/ledger";
+import { savingsCents, weekRecords } from "@/ledger/ledger";
+import { now as clockNow } from "@/clock/clock";
 import { proposeShop, decideApproval } from "@/flows/approvals";
 import { closeWeek } from "@/flows/week";
 import { confirmRelease, runMonthReview } from "@/flows/month";
@@ -176,7 +177,7 @@ describe("week close and commitment", () => {
     const r = await closeWeek(deps(), familyId);
     expect(r.weekKeys).toEqual(["2026-W45", "2026-W46", "2026-W47"]);
     const ws = (await db.select().from(t.weeks).where(eq(t.weeks.familyId, familyId))).sort((a, b) => a.weekKey.localeCompare(b.weekKey));
-    expect(ws.map((w) => w.commitmentCents)).toEqual([0, 500, 500]); // pending applies after the first closed week
+    expect(ws.map((w) => w.commitmentCents)).toEqual([200, 500, 500]); // unset counts as the 10% floor; pending applies after the first closed week
     expect((await closeWeek(deps(), familyId)).closed).toBe(false);
   });
 
@@ -212,6 +213,36 @@ describe("week close and commitment", () => {
     await closeWeek(deps(), familyId);
     const [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
     expect(f.commitmentCents).toBe(400);
+  });
+
+  it("unset commitment counts as the signed floor", async () => {
+    const { familyId } = await seed("2026-11-10T09:00:00Z"); // closes W45 of a $20 L1 week, 10% floor
+    await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 1900, at: new Date("2026-11-05T10:00:00Z") });
+    await closeWeek(deps(), familyId);
+    const [w] = await weekRecords(db, familyId);
+    expect(w).toMatchObject({ weekKey: "2026-W45", commitmentCents: 200 });
+    expect(commitmentKept(w)).toBe(false); // $1 left is not the $2 she was signed up to save
+  });
+
+  it("raising the floor takes effect from the next closed week", async () => {
+    const { familyId } = await seed("2026-11-10T09:00:00Z");
+    await closeWeek(deps(), familyId); // W45 under the 10% floor
+    await signGrant(deps(), familyId, { level: 1, commitmentFloorPct: 25 }); // during W46
+    nowMs = new Date("2026-11-17T09:00:00Z").getTime();
+    await closeWeek(deps(), familyId); // W46 under the 25% floor
+    expect((await weekRecords(db, familyId)).map((w) => [w.weekKey, w.commitmentCents]))
+      .toEqual([["2026-W45", 200], ["2026-W46", 500]]);
+  });
+
+  it("a locked flow reads the demo clock inside its own transaction (no pre-read, no PGlite deadlock)", async () => {
+    const { familyId } = await seed("2026-11-10T09:00:00Z");
+    await db.update(t.families).set({ clockOffsetMs: 3 * 86_400_000 }).where(eq(t.families.id, familyId));
+    const real = { ...deps(), now: (id: string, conn: Db = db) => clockNow(conn, id) };
+    const g = await Promise.race([
+      signGrant(real, familyId, { level: 1 }),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("deadlocked")), 5000)),
+    ]);
+    expect(new Date(g.signedAt).getTime()).toBeGreaterThan(Date.now() + 2 * 86_400_000); // the family's offset was applied
   });
 
   it("setCommitment below floor throws with minCents", async () => {

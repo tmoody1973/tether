@@ -31,6 +31,9 @@ test("home shows \"Nothing needs you today.\" with no approvals", async ({ page 
   await expect(page.getByText("$0.00 of $20.00").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Send Zoe her link" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Advance 1 day" })).toBeVisible();
+  await page.getByRole("button", { name: "Reset Zoe's link" }).click(); // asks first
+  await expect(page.getByRole("button", { name: "Yes, reset" })).toBeVisible();
+  await page.getByRole("button", { name: "Keep it" }).click();
   await page.getByRole("button", { name: "Send Zoe her link" }).click();
   await expect(page.getByLabel("Zoe's link")).toHaveValue(new RegExp(`/t/${E2E.teenToken}$`));
 });

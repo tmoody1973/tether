@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import * as t from "@/db/schema";
 import { appendJournal } from "@/db/repo";
 import { weekKey, weekRecords } from "@/ledger/ledger";
+import { commitmentFloorCents } from "@/engine/ladder";
 import { GrantError, withFamilyLock } from "@/flows/grant";
 import type { Deps } from "@/flows/purchase";
 
@@ -39,7 +40,9 @@ export async function closeWeek(deps: Pick<Deps, "db" | "now">, familyId: string
       const end = new Date(monday.getTime() + WEEK_MS);
       const grant = [...grants].reverse().find((g) => g.signedAt < end) ?? grants[0]; // grant in force that week
       const ins = await tx.insert(t.weeks).values({
-        familyId, weekKey: key, allowanceCents: grant.body.weeklyCents, commitmentCents: commitment, closedAt: now,
+        familyId, weekKey: key, allowanceCents: grant.body.weeklyCents, closedAt: now,
+        // R33: never less than the floor Amara signed for that week, so an unset commitment can't count as kept.
+        commitmentCents: Math.max(commitment, commitmentFloorCents(grant.body.weeklyCents, grant.body.commitmentFloorPct)),
       }).onConflictDoNothing().returning({ k: t.weeks.weekKey });
       if (ins.length === 0) continue;
       const rec = (await weekRecords(tx, familyId)).find((w) => w.weekKey === key)!;

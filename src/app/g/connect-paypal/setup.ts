@@ -6,4 +6,9 @@ export const setupCookieOptions = () => ({
   httpOnly: true, sameSite: "lax" as const, path: SETUP_COOKIE_PATH, secure: process.env.NODE_ENV === "production", maxAge: 60 * 60,
 });
 
-export const appBaseUrl = (): string => (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
+/** Where PayPal sends Amara back and what Zoe's link points at. Required in production; localhost only for dev. */
+export function appBaseUrl(): string {
+  const url = process.env.APP_BASE_URL;
+  if (!url && process.env.NODE_ENV === "production") throw new Error("APP_BASE_URL is not set");
+  return (url || "http://localhost:3000").replace(/\/$/, "");
+}

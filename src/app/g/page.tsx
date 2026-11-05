@@ -6,8 +6,9 @@ import { getDb } from "@/db/client";
 import { guardianHome, type NeedsYou } from "@/flows/home";
 import { formatCents, formatDay } from "@/ui/grantWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
-import { advanceClockAction, resetTeenLinkAction } from "./actions";
+import { advanceClockAction } from "./actions";
 import { appBaseUrl } from "./connect-paypal/setup";
+import { ResetLink } from "./ResetLink";
 import { TeenLink } from "./TeenLink";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
@@ -99,10 +100,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
           <section className="g-card" aria-labelledby="link-h">
             <h2 className="g-label" id="link-h">{zoe}&apos;s way in</h2>
             <TeenLink url={`${appBaseUrl()}/t/${h.teenToken}`} teenName={zoe} />
-            <form action={resetTeenLinkAction} style={{ marginTop: 12 }}>
-              <button type="submit" className="g-btn g-btn--ghost g-btn--block">Reset {zoe}&apos;s link</button>
-              <p className="g-note" style={{ marginTop: 6 }}>If her link gets shared, reset it: the old one stops working at once.</p>
-            </form>
+            <ResetLink teenName={zoe} />
           </section>
 
           <section className="g-card g-demo" aria-labelledby="demo-h">

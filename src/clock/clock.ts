@@ -14,3 +14,6 @@ export async function advance(db: Db, familyId: string, ms: number): Promise<voi
     .set({ clockOffsetMs: sql`${families.clockOffsetMs} + ${ms}` })
     .where(eq(families.id, familyId));
 }
+
+/** Deps.now for app code: reads the family's offset on `conn` (the transaction, when inside one), else on `db`. */
+export const clockFor = (db: Db) => (familyId: string, conn: Db = db): Promise<Date> => now(conn, familyId);

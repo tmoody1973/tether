@@ -63,7 +63,7 @@ export async function decideApproval(deps: Pick<Deps, "db" | "now">, approvalId:
   // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
   await deps.db.transaction(async (tx) => {
     await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, a.familyId)).for("update");
-    const now = await deps.now(a.familyId);
+    const now = await deps.now(a.familyId, tx);
     const [won] = await tx.update(t.approvals).set({ result, decidedAt: now })
       .where(and(eq(t.approvals.id, approvalId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now)))
       .returning();

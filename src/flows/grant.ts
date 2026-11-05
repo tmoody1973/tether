@@ -14,6 +14,11 @@ export class GrantError extends Error {
   constructor(message: string, readonly minCents?: number) { super(message); this.name = "GrantError"; }
 }
 
+/** A level change without a reason: only Amara can change a level, and it goes on the record. */
+export class ReasonRequiredError extends GrantError {
+  constructor() { super("a reason is required to change the level"); this.name = "ReasonRequiredError"; }
+}
+
 type Settings = Pick<Grant, "commitmentFloorPct" | "matchPct" | "fundAllowlist">;
 
 /** Runs `fn` in one transaction holding the family-row lock (same lock as settlePurchase / decideApproval). */
@@ -21,7 +26,7 @@ export async function withFamilyLock<T>(deps: Pick<Deps, "db" | "now">, familyId
   return deps.db.transaction(async (tx) => {
     const rows = await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, familyId)).for("update");
     if (rows.length === 0) throw new GrantError(`unknown family ${familyId}`);
-    return fn(tx, await deps.now(familyId));
+    return fn(tx, await deps.now(familyId, tx)); // R34: the clock is read on the locked connection
   });
 }
 
@@ -76,7 +81,7 @@ export async function signGrant(
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getActiveGrant(tx, familyId);
     const changesLevel = cur !== null && cur.level !== draft.level;
-    if (changesLevel && !why) throw new GrantError("a reason is required to change the level");
+    if (changesLevel && !why) throw new ReasonRequiredError();
     const body = await installLevel(tx, familyId, draft.level, now, {
       commitmentFloorPct: draft.commitmentFloorPct, matchPct: draft.matchPct, fundAllowlist: draft.fundAllowlist,
     });
@@ -105,7 +110,7 @@ export async function renewGrant(deps: Deps, familyId: string): Promise<Grant> {
 
 export async function guardianSetLevel(deps: Deps, familyId: string, level: Level, reason: string): Promise<Grant> {
   const why = typeof reason === "string" ? reason.trim() : "";
-  if (!why) throw new GrantError("a reason is required to change the level");
+  if (!why) throw new ReasonRequiredError();
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getActiveGrant(tx, familyId);
     const body = await installLevel(tx, familyId, level, now);

@@ -20,7 +20,9 @@ import { expireStale } from "@/flows/approvals";
 
 export type Deps = {
   db: Db; paypal: PaypalHttp; channel3: Channel3Adapter; classifier: Classifier;
-  secret: string; now: (familyId: string) => Promise<Date>;
+  secret: string;
+  /** Demo-clock time for the family. Inside a transaction, pass `conn` (the tx): PGlite has one connection. */
+  now: (familyId: string, conn?: Db) => Promise<Date>;
 };
 
 export interface Gate2Finding { rule: string; probability: number | null; model: string; modelVersion: string; band: Outcome }

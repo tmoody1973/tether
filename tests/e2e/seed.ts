@@ -5,7 +5,7 @@ import path from "node:path";
 import { closeDb, openDb } from "@/db/client";
 import { insertFamily, saveVault } from "@/db/repo";
 import * as t from "@/db/schema";
-import { now as clockNow } from "@/clock/clock";
+import { clockFor } from "@/clock/clock";
 import { signGrant } from "@/flows/grant";
 import { E2E } from "./fixtures";
 
@@ -25,8 +25,7 @@ async function main() {
     name: "Amara & Zoe", guardianName: "Amara", teenName: "Zoe", teenToken: E2E.teenToken, guardianToken: E2E.guardianKey,
   });
   await saveVault(db, fam.id, "e2e-placeholder-token"); // never charged: e2e makes no PayPal calls
-  const at = await clockNow(db, fam.id); // resolved first: the flow's transaction holds PGlite's only connection
-  await signGrant({ db, now: async () => at }, fam.id, { level: 1 });
+  await signGrant({ db, now: clockFor(db) }, fam.id, { level: 1 });
   await closeDb(db);
 }
 

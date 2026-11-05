@@ -69,3 +69,16 @@ describe("connect PayPal", () => {
     expect(vaultCalls).toEqual(["SETUP-1"]);
   });
 });
+
+describe("appBaseUrl", () => {
+  it("defaults to localhost in dev, but production must set APP_BASE_URL", async () => {
+    const { appBaseUrl } = await import("@/app/g/connect-paypal/setup");
+    vi.stubEnv("APP_BASE_URL", "");
+    expect(appBaseUrl()).toBe("http://localhost:3000");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(() => appBaseUrl()).toThrow(/APP_BASE_URL/);
+    vi.stubEnv("APP_BASE_URL", "https://tether.example/");
+    expect(appBaseUrl()).toBe("https://tether.example");
+    vi.unstubAllEnvs();
+  });
+});

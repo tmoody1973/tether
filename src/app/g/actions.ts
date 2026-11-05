@@ -2,9 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { guardianFamilyId } from "@/auth/guardianSession";
-import { advance, now as clockNow } from "@/clock/clock";
+import { advance, clockFor } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { GrantError, resetTeenLink, signGrant } from "@/flows/grant";
+import { GrantError, ReasonRequiredError, resetTeenLink, signGrant } from "@/flows/grant";
 import { closeWeek } from "@/flows/week";
 import type { Level } from "@/engine/ladder";
 
@@ -15,9 +15,7 @@ async function guardianDeps() {
   const familyId = await guardianFamilyId();
   if (!familyId) return null;
   const db = await getDb();
-  // Read the demo clock up front: flows call now() inside their family-row transaction, and PGlite has one connection.
-  const at = await clockNow(db, familyId);
-  return { familyId, deps: { db, now: async () => at } };
+  return { familyId, deps: { db, now: clockFor(db) } };
 }
 
 const int = (v: FormDataEntryValue | null): number => (typeof v === "string" && /^\d{1,3}$/.test(v) ? Number(v) : NaN);
@@ -39,9 +37,8 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   try {
     ({ version } = await signGrant(g.deps, g.familyId, { level: level as Level, commitmentFloorPct: floorPct, matchPct, reason }));
   } catch (err) {
-    if (err instanceof GrantError) {
-      return { error: err.message.includes("reason") ? "Say why you're changing her level — it goes on the record." : "Those rules couldn't be signed." };
-    }
+    if (err instanceof ReasonRequiredError) return { error: "Say why you're changing her level — it goes on the record." };
+    if (err instanceof GrantError) return { error: "Those rules couldn't be signed. Nothing changed." };
     console.error("signGrant failed", err);
     return { error: "Those rules couldn't be signed. Nothing changed." };
   }
@@ -62,9 +59,8 @@ export async function advanceClockAction(form: FormData): Promise<void> {
   const days = int(form.get("days"));
   if (days !== 1 && days !== 7) redirect("/g");
   await advance(g.deps.db, g.familyId, days * DAY_MS);
-  const at = await clockNow(g.deps.db, g.familyId);
   try {
-    await closeWeek({ db: g.deps.db, now: async () => at }, g.familyId);
+    await closeWeek(g.deps, g.familyId);
   } catch (err) {
     if (!(err instanceof GrantError)) throw err; // no grant yet: nothing to close
   }
