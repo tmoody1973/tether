@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "./client";
 import * as t from "./schema";
 
@@ -66,5 +66,40 @@ export async function appendJournal(
 export async function insertReceipt(db: Db, v: Omit<typeof t.receipts.$inferInsert, "id" | "createdAt">): Promise<ReceiptRow> {
   const [row] = await db.insert(t.receipts).values({ ...v, id: id() }).returning();
   return plain(row);
+}
+
+export async function getReceiptByCaptureId(db: Db, captureId: string): Promise<ReceiptRow | null> {
+  return one(await db.select().from(t.receipts).where(eq(t.receipts.captureId, captureId)).limit(1));
+}
+
+export async function getPurchase(db: Db, purchaseId: string): Promise<PurchaseRow | null> {
+  return one(await db.select().from(t.purchases).where(eq(t.purchases.id, purchaseId)).limit(1));
+}
+
+/** Compare-and-set: moves the purchase only if it is currently in `from`. Null if it was not. */
+export async function transitionPurchase(
+  db: Db, purchaseId: string, from: PurchaseStatus, to: PurchaseStatus,
+): Promise<PurchaseRow | null> {
+  return one(await db.update(t.purchases).set({ status: to })
+    .where(and(eq(t.purchases.id, purchaseId), eq(t.purchases.status, from))).returning());
+}
+
+export async function getMerchant(db: Db, merchantId: string): Promise<Row<typeof t.merchants> | null> {
+  return one(await db.select().from(t.merchants).where(eq(t.merchants.id, merchantId)).limit(1));
+}
+
+export async function getVault(db: Db, familyId: string): Promise<Row<typeof t.vault> | null> {
+  return one(await db.select().from(t.vault)
+    .where(and(eq(t.vault.familyId, familyId), isNull(t.vault.deletedAt))).limit(1));
+}
+
+/** A guardian approval for this purchase and exact cart that has not expired at `now`. */
+export async function getValidApproval(
+  db: Db, purchaseId: string, cartHash: string, now: Date,
+): Promise<Row<typeof t.approvals> | null> {
+  return one(await db.select().from(t.approvals).where(and(
+    eq(t.approvals.subject, "purchase"), eq(t.approvals.subjectId, purchaseId),
+    eq(t.approvals.cartHash, cartHash), eq(t.approvals.result, "approved"), gt(t.approvals.expiresAt, now),
+  )).orderBy(desc(t.approvals.expiresAt)).limit(1));
 }
 

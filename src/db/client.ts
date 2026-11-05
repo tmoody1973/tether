@@ -29,3 +29,14 @@ export async function migrateDb(db: Db): Promise<void> {
     await migrateNeon(db as unknown as Parameters<typeof migrateNeon>[0], config);
   }
 }
+
+let shared: Db | undefined;
+/** Process-wide DB for route handlers, from DATABASE_URL. */
+export function getDb(): Db {
+  if (!shared) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL is not set; add it to .env.local");
+    shared = createDb(url);
+  }
+  return shared;
+}
