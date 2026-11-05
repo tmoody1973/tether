@@ -6,45 +6,66 @@ const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFin
 const ids = (v: unknown): string[] | null =>
   Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
 
+const malformed = (type: string): Reason =>
+  ({ constraint: "malformed_constraint", detail: `Malformed ${type} constraint - failing closed` });
+
+/** Constraint types that may yield NEEDS_APPROVAL (and only these). */
+export const APPROVAL_CONSTRAINTS: ReadonlySet<string> = new Set([
+  "approval.over_amount",
+  "approval.first_time_merchant",
+]);
+
 /**
  * Returns a Reason when the constraint is violated, else null.
- * Fail closed: every check is written as a positive "ok if ..." test, so a
- * malformed known constraint (missing/NaN fields) is a violation, never a pass.
- * `checkout.semantic_category` never fails here; it is Gate 2's job.
+ * Fail closed: unknown types => `unknown_constraint`; known types with bad
+ * fields => `malformed_constraint`. Neither is an approval reason, so an
+ * approval can never clear them. `checkout.semantic_category` never fails on
+ * the cart here (that is Gate 2's job) but must be well-formed.
  */
 export function evaluate(constraint: Constraint, cart: Cart, ledger: LedgerView, now: Date): Reason | null {
   const c = constraint as Loose;
+  if (typeof c?.type !== "string") {
+    return { constraint: "unknown_constraint", detail: "UNKNOWN CONSTRAINT TYPE (missing type) - failing closed" };
+  }
+  const type = c.type;
   const total = cart.totalCents;
-  switch (constraint.type) {
+  switch (type) {
     case "payment.amount_range":
-      if (isNum(c.minCents) && isNum(c.maxCents) && total >= c.minCents && total <= c.maxCents) return null;
-      return { constraint: constraint.type, detail: `Cart total ${total} is outside the allowed range`,
-        numbers: { cartCents: total, minCents: c.minCents as number, maxCents: c.maxCents as number } };
+      if (!isNum(c.minCents) || !isNum(c.maxCents)) return malformed(type);
+      if (total >= c.minCents && total <= c.maxCents) return null;
+      return { constraint: type, detail: `Cart total ${total} is outside the allowed range`,
+        numbers: { cartCents: total, minCents: c.minCents, maxCents: c.maxCents } };
     case "payment.budget": {
+      if (!isNum(c.maxCents) || c.period !== "WEEKLY") return malformed(type);
       const spent = ledger.spentThisWeekCents;
-      if (isNum(c.maxCents) && c.period === "WEEKLY" && spent + total <= c.maxCents) return null;
-      const max = isNum(c.maxCents) ? c.maxCents : 0;
-      return { constraint: constraint.type, detail: "Purchase would exceed the weekly budget",
-        numbers: { remainingCents: Math.max(0, max - spent), spentCents: spent, maxCents: max, cartCents: total } };
+      if (spent + total <= c.maxCents) return null;
+      return { constraint: type, detail: "Purchase would exceed the weekly budget",
+        numbers: { remainingCents: Math.max(0, c.maxCents - spent), spentCents: spent, maxCents: c.maxCents, cartCents: total } };
     }
-    case "payment.allowed_payees":
-      if (ids(c.merchantIds)?.includes(cart.merchantId)) return null;
-      return { constraint: constraint.type, detail: `Merchant ${cart.merchantId} is not an allowed payee` };
+    case "payment.allowed_payees": {
+      const list = ids(c.merchantIds);
+      if (!list) return malformed(type);
+      return list.includes(cart.merchantId) ? null
+        : { constraint: type, detail: `Merchant ${cart.merchantId} is not an allowed payee` };
+    }
     case "payment.execution_date": {
+      const from = Date.parse(String(c.notBefore));
+      const to = Date.parse(String(c.notAfter));
+      if (Number.isNaN(from) || Number.isNaN(to)) return malformed(type);
       const t = now.getTime();
-      if (t >= Date.parse(String(c.notBefore)) && t <= Date.parse(String(c.notAfter))) return null;
-      return { constraint: constraint.type, detail: "Grant is not valid at this time" };
+      return t >= from && t <= to ? null : { constraint: type, detail: "Grant is not valid at this time" };
     }
     case "approval.over_amount":
-      if (isNum(c.overCents) && total <= c.overCents) return null;
-      return { constraint: constraint.type, detail: "Purchase is over the amount that needs approval",
-        numbers: { cartCents: total, overCents: isNum(c.overCents) ? c.overCents : 0 } };
+      if (!isNum(c.overCents)) return malformed(type);
+      if (total <= c.overCents) return null;
+      return { constraint: type, detail: "Purchase is over the amount that needs approval",
+        numbers: { cartCents: total, overCents: c.overCents } };
     case "approval.first_time_merchant":
-      if (ledger.merchantsUsed.has(cart.merchantId)) return null;
-      return { constraint: constraint.type, detail: `First purchase from ${cart.merchantId}` };
+      return ledger.merchantsUsed.has(cart.merchantId) ? null
+        : { constraint: type, detail: `First purchase from ${cart.merchantId}` };
     case "checkout.semantic_category":
-      return null;
+      return ids(c.merchantIds) ? null : malformed(type);
     default:
-      return { constraint: constraint.type, detail: "UNKNOWN CONSTRAINT TYPE - failing closed" };
+      return { constraint: "unknown_constraint", detail: `UNKNOWN CONSTRAINT TYPE ${type} - failing closed` };
   }
 }

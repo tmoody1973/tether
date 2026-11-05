@@ -182,3 +182,58 @@ describe("cartHash", () => {
     expect(cartHash(a)).not.toBe(cartHash(b));
   });
 });
+
+describe("fail closed on unknown and malformed constraints", () => {
+  const goodApproval = (c: Cart): ApprovalGrant => ({ cartHash: cartHash(c), expiresAt: week(1) });
+  const refused = (extra: Constraint[], c = cart(500), ap?: ApprovalGrant) => {
+    const d = decide({ ...grant(), constraints: [...baseConstraints(), ...extra] }, c, ledger(), NOW, ap);
+    expect(d.outcome).toBe("REFUSE");
+    return d;
+  };
+
+  it("unknown approval.* type refuses, even with a valid approval", () => {
+    const typo: Constraint = { type: "approval.over_ammount", overCents: 1 };
+    const d = refused([typo]);
+    expect(d.reasons.at(-1)?.constraint).toBe("unknown_constraint");
+    expect(d.reasons.at(-1)?.detail).toContain("approval.over_ammount");
+    refused([typo], cart(500), goodApproval(cart(500)));
+  });
+
+  it("malformed known approval constraint refuses and cannot be approved away", () => {
+    for (const bad of [{ type: "approval.over_amount" }, { type: "approval.over_amount", overCents: NaN }]) {
+      expect(refused([bad]).reasons.at(-1)?.constraint).toBe("malformed_constraint");
+      refused([bad], cart(500), goodApproval(cart(500)));
+    }
+  });
+
+  it("budget missing maxCents refuses", () => {
+    expect(refused([{ type: "payment.budget", period: "WEEKLY" }]).reasons.at(-1)?.constraint).toBe("malformed_constraint");
+  });
+
+  it("budget with period MONTHLY refuses", () => {
+    refused([{ type: "payment.budget", maxCents: 9999, period: "MONTHLY" }]);
+  });
+
+  it("NaN cart total refuses", () => {
+    const d = refused([], { ...cart(500), totalCents: NaN });
+    expect(reasons(d)).toContain("malformed_cart");
+  });
+
+  it("unparseable notAfter refuses", () => {
+    refused([{ type: "payment.execution_date", notBefore: NOW.toISOString(), notAfter: "not a date" }]);
+  });
+
+  it("non-array merchantIds on allowed_payees refuses", () => {
+    refused([{ type: "payment.allowed_payees", merchantIds: "m_corner_store" }]);
+  });
+
+  it("malformed semantic_category refuses", () => {
+    const d = refused([{ type: "checkout.semantic_category", merchantIds: "m_bookshop", rule: "BOOKS_ONLY" }]);
+    expect(d.reasons.at(-1)?.constraint).toBe("malformed_constraint");
+  });
+
+  it("constraint with no type refuses instead of throwing", () => {
+    const d = refused([{} as unknown as Constraint]);
+    expect(d.reasons.at(-1)?.constraint).toBe("unknown_constraint");
+  });
+});
