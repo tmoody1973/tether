@@ -19,3 +19,9 @@ Dated entries. Each answers: what did we expect, what happened, what do we now b
 **Expected:** Our partners research said Alpaca's Broker API "does not support paper trading at all," citing an Alpaca forum post, so investing looked impossible to demo.
 **What happened:** The forum post was about giving *end users* paper accounts. Alpaca's own setup page says the Broker API sandbox is free, self-serve, and "all trades … are simulated" with the paper-trading engine.
 **What we now believe:** Check that a citation actually says what the sentence claims, especially when it's the reason something gets ruled out. (We still left investing out, for other reasons — see decision 006.)
+
+## 2026-11-05 — "Retry safely" has an expiry date
+
+**Expected:** Sending each PayPal charge with a request ID (an idempotency key: a label that makes a repeated request return the original result instead of charging again) would make retries safe forever, so Tether could keep re-asking PayPal about a charge it wasn't sure of.
+**What happened:** A reviewer flagged it from memory and PayPal's own migration guide confirmed it: in the current Orders API, PayPal remembers a request ID for only 6 hours by default. After that, the same request silently becomes a brand-new charge, with no error to warn you.
+**What we now believe:** Every safety mechanism has limits; read the fine print on the one you lean on most. Tether now re-sends only within 5 real hours, and after that only *looks up* what happened, never charges again.
