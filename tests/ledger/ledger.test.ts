@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, migrateDb, type Db } from "@/db/client";
 import * as repo from "@/db/repo";
 import * as t from "@/db/schema";
@@ -8,10 +8,13 @@ import type { Cart, Decision } from "@/engine/types";
 let db: Db;
 let familyId: string;
 const now = new Date("2026-11-04T12:00:00Z"); // 2026-W45
-beforeEach(async () => {
+beforeAll(async () => {
   db = createDb("pglite:memory");
   await migrateDb(db);
-  familyId = (await repo.insertFamily(db, { name: "F", teenToken: "tok", guardianName: "G", teenName: "Z" })).id;
+});
+let n = 0; // one DB per file; a fresh family per test
+beforeEach(async () => {
+  familyId = (await repo.insertFamily(db, { name: "F", teenToken: `tok${++n}`, guardianName: "G", teenName: "Z" })).id;
 });
 
 const j = (kind: (typeof t.journalKinds)[number], amountCents: number, at = now) =>

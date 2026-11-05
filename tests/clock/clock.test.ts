@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, migrateDb, type Db } from "@/db/client";
 import { insertFamily } from "@/db/repo";
 import { advance, now } from "@/clock/clock";
@@ -7,10 +7,13 @@ const DAY = 86_400_000;
 const REAL = Date.UTC(2026, 10, 5);
 let db: Db;
 let familyId: string;
-beforeEach(async () => {
+beforeAll(async () => {
   db = createDb("pglite:memory");
   await migrateDb(db);
-  familyId = (await insertFamily(db, { name: "F", teenToken: "t", guardianName: "G", teenName: "T" })).id;
+});
+let n = 0; // one DB per file; a fresh family per test
+beforeEach(async () => {
+  familyId = (await insertFamily(db, { name: "F", teenToken: `t${++n}`, guardianName: "G", teenName: "T" })).id;
 });
 
 describe("clock", () => {

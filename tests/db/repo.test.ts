@@ -1,14 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { createDb, migrateDb, type Db } from "@/db/client";
 import * as repo from "@/db/repo";
 import type { Cart, Decision, Grant } from "@/engine/types";
 
 let db: Db;
-beforeEach(async () => {
+beforeAll(async () => {
   db = createDb("pglite:memory");
   await migrateDb(db);
 });
+let n = 0; // one DB per file; unique tokens keep tests isolated
 
 const cart: Cart = { merchantId: "m1", items: [], totalCents: 500 };
 const decision: Decision = { outcome: "ALLOW", reasons: [], semanticRules: [] };
@@ -18,7 +19,7 @@ const grantBody = (familyId: string, version: number): Grant => ({
 });
 
 async function seed() {
-  const family = await repo.insertFamily(db, { name: "Fam", teenToken: "tok", guardianName: "G", teenName: "T" });
+  const family = await repo.insertFamily(db, { name: "Fam", teenToken: `tok${++n}`, guardianName: "G", teenName: "T" });
   const grant = await repo.insertGrant(db, {
     familyId: family.id, version: 1, level: 1, body: grantBody(family.id, 1),
     signedAt: new Date("2026-01-01"), expiresAt: new Date("2027-01-01"), status: "active",
@@ -34,7 +35,7 @@ describe("repo", () => {
 
   it("finds a family by teen token", async () => {
     const { family } = await seed();
-    expect((await repo.getFamilyByTeenToken(db, "tok"))?.id).toBe(family.id);
+    expect((await repo.getFamilyByTeenToken(db, `tok${n}`))?.id).toBe(family.id);
     expect(await repo.getFamilyByTeenToken(db, "nope")).toBeNull();
   });
 
