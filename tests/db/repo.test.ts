@@ -69,7 +69,7 @@ describe("repo", () => {
 
   it("journal rows cannot be updated or deleted", async () => {
     const { family } = await seed();
-    const row = await repo.appendJournal(db, { familyId: family.id, kind: "spend", amountCents: 500, ref: "p1", note: null });
+    const row = await repo.appendJournal(db, { familyId: family.id, kind: "spend", amountCents: 500, ref: "p1", note: null, at: new Date("2026-11-04T12:00:00Z") });
     expect(Object.keys(repo)).not.toContain("updateJournal");
     await expect(db.execute(sql`UPDATE journal SET amount_cents = 1 WHERE id = ${row.id}`)).rejects.toThrow();
     await expect(db.execute(sql`DELETE FROM journal WHERE id = ${row.id}`)).rejects.toThrow();

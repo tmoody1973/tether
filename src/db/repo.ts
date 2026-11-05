@@ -57,7 +57,7 @@ export async function consumeToken(db: Db, tokenId: string): Promise<boolean> {
 
 export async function appendJournal(
   db: Db,
-  v: Omit<typeof t.journal.$inferInsert, "id" | "at"> & { at?: Date },
+  v: Omit<typeof t.journal.$inferInsert, "id" | "at"> & { at: Date }, // demo-clock time, always caller-supplied
 ): Promise<JournalRow> {
   const [row] = await db.insert(t.journal).values({ ...v, id: id() }).returning();
   return plain(row);
