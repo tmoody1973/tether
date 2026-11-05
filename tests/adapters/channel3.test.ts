@@ -108,6 +108,18 @@ describe("channel3 adapter", () => {
     });
   });
 
+  it("lookup returns unavailable when an allowed shop's offer is out of stock", async () => {
+    const f = fakeSdk();
+    f.lookup.mockResolvedValue({ product: prod("p1", [offer("bestbuy.com", 10, { availability: "OutOfStock" })]) });
+    expect(await createChannel3(f.sdk).lookup("https://bestbuy.com/a", ["bestbuy.com"])).toEqual({ kind: "unavailable" });
+  });
+
+  it.each([404, 500, 504])("lookup returns not_a_product on %i", async (code) => {
+    const f = fakeSdk();
+    f.lookup.mockRejectedValue(err(code));
+    expect(await createChannel3(f.sdk).lookup("https://x.com/a", ["bestbuy.com"])).toEqual({ kind: "not_a_product" });
+  });
+
   it("malformed offers are skipped, not thrown or NaN", async () => {
     const f = fakeSdk();
     f.search.mockResolvedValue({

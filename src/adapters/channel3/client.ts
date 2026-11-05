@@ -47,6 +47,7 @@ export interface Channel3Like {
 export type LookupResult =
   | { kind: "ok"; product: Product }
   | { kind: "not_a_product" }
+  | { kind: "unavailable" }
   | { kind: "shop_not_allowed"; domains: string[] };
 
 const DEFAULT_LIMIT = 10;
@@ -106,6 +107,8 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
         const p = toProduct(product, allowedDomains);
         if (p) return { kind: "ok", product: { ...p, sourceUrl: url } };
         const domains = [...new Set((product.offers ?? []).map((o) => o.domain))];
+        // An allowed shop sells it but no offer qualifies (out of stock / non-USD / bad price).
+        if (domains.some((d) => allowedDomains.includes(d))) return { kind: "unavailable" };
         return { kind: "shop_not_allowed", domains };
       } catch (e) {
         const s = statusOf(e);
