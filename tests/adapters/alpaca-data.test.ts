@@ -79,6 +79,14 @@ describe("changeOver", () => {
     expect(u.searchParams.get("adjustment")).toBe("all");
     expect(u.searchParams.get("timeframe")).toBe("1Day");
     expect(u.searchParams.get("end")).toBe(asOf.toISOString());
+    expect(u.searchParams.get("feed")).toBe("sip");
+  });
+  it("full-market bars end at least 15 minutes ago (free plan)", async () => {
+    const { m, calls } = market({ VTI: [[1, 2]] });
+    const now = Date.now();
+    await m.changeOver("VTI", 1, new Date(now));
+    const end = new Date(new URL(calls.find((c) => c.includes("/bars"))!).searchParams.get("end")!).getTime();
+    expect(end).toBeLessThanOrEqual(now - 15 * 60_000);
   });
   it("follows page_token", async () => {
     const { m } = market({ VTI: [[10], [20]] });

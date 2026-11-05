@@ -9,6 +9,8 @@ const DAY_MS = 86_400_000;
 const ASSET_TTL_MS = 24 * 3_600_000;
 const LIMIT = 20;
 const MAX_PAGES = 20;
+/** Free plan: full-market (SIP) bars are allowed only if they end at least 15 minutes ago. */
+const SIP_DELAY_MS = 16 * 60_000;
 
 export class NotEnoughHistoryError extends Error {
   constructor(readonly symbol: string) {
@@ -62,14 +64,15 @@ export function alpacaMarket(broker: AlpacaBroker, dataBaseUrl: string, now: () 
       .map((x) => x.a);
   }
 
-  // adjustment=all so splits and dividends never read as crashes. feed=iex: the default (SIP) feed is refused
-  // with 403 on the free sandbox plan for recent bars (verified live 2026-11-05).
-  async function bars(symbol: string, start: Date, end: Date): Promise<number[]> {
+  // adjustment=all so splits and dividends never read as crashes. feed=sip (every exchange, not just IEX) is
+  // free when the request ends 15+ minutes ago, so `end` is held back 16 minutes (verified live 2026-11-05).
+  async function bars(symbol: string, start: Date, wantedEnd: Date): Promise<number[]> {
+    const end = new Date(Math.min(wantedEnd.getTime(), Date.now() - SIP_DELAY_MS));
     const closes: number[] = [];
     let token: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const qs = new URLSearchParams({
-        timeframe: "1Day", adjustment: "all", feed: "iex", start: start.toISOString(), end: end.toISOString(), limit: "10000",
+        timeframe: "1Day", adjustment: "all", feed: "sip", start: start.toISOString(), end: end.toISOString(), limit: "10000",
         ...(token ? { page_token: token } : {}),
       });
       const r = await broker.getAbsolute<{ bars?: Array<{ c: number }> | null; next_page_token?: string | null }>(
