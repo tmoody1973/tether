@@ -66,6 +66,14 @@ function buildCart(products: Product[], merchantIdByDomain: Record<string, strin
   return { merchantId, items, totalCents: items.reduce((s, i) => s + i.unitCents, 0) };
 }
 
+const FALLBACK_REASON = "Matches what you asked for";
+/** Reason is model text shown to a teen: no links, no credential talk. */
+export function cleanReason(raw: unknown): string {
+  const s = typeof raw === "string" ? raw : "";
+  if (/https?:\/\/\S+|www\.\S+|password|passcode|pin code/i.test(s)) return FALLBACK_REASON;
+  return s.trim().slice(0, MAX_REASON) || FALLBACK_REASON;
+}
+
 export function outcomeLabel(d: Decision): string {
   if (d.outcome === "ALLOW") return "fits your week";
   if (d.outcome === "NEEDS_APPROVAL") return "needs approval";
@@ -120,21 +128,27 @@ export async function runAgent(
       // 6 tool steps + 1 for the structured answer + 1 spare.
       stopWhen: stepCountIs(MAX_TOOL_CALLS + 2),
     });
-    picks = result.output.proposals;
+    const out = result.output as { proposals?: unknown } | undefined;
+    picks = Array.isArray(out?.proposals) ? (out.proposals as typeof picks) : [];
   } catch (err) {
     console.error("agent: no usable output", err);
     return { proposals: [], toolCalls };
   }
 
   const proposals: Proposal[] = [];
+  const hashes = new Set<string>();
   for (const pick of picks) {
     if (proposals.length >= MAX_PROPOSALS) break;
-    const products = pick.productIds.map((id) => seen.get(id));
+    if (!Array.isArray(pick?.productIds) || !pick.productIds.every((id) => typeof id === "string")) continue;
+    const products = [...new Set(pick.productIds)].map((id) => seen.get(id)); // qty stays 1
     if (products.some((p) => !p)) continue; // id no tool returned in this run
     const cart = buildCart(products as Product[], input.merchantIdByDomain);
     if (!cart) continue;
+    const hash = cartHash(cart);
+    if (hashes.has(hash)) continue;
+    hashes.add(hash);
     proposals.push({
-      cart, cartHash: cartHash(cart), reason: String(pick.reason).slice(0, MAX_REASON),
+      cart, cartHash: hash, reason: cleanReason(pick.reason),
       decision: decide(input.grant, cart, input.ledger, input.now),
     });
   }

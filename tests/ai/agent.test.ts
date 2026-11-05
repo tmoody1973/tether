@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
-import { runAgent } from "@/ai/agent";
+import { cleanReason, runAgent } from "@/ai/agent";
 import type { Channel3Adapter, Product } from "@/adapters/channel3/client";
 import type { Constraint, Grant, LedgerView } from "@/engine/types";
 
@@ -24,7 +24,7 @@ const grant: Grant = {
 };
 const ledger: LedgerView = { spentThisWeekCents: 0, merchantsUsed: new Set(["m_bestbuy", "m_target"]), savingsCents: 0 };
 
-type Step = { calls: { name: string; input: object }[] } | { final: { productIds: string[]; reason: string }[] };
+type Step = { raw: string } | { calls: { name: string; input: object }[] } | { final: { productIds: string[]; reason: string }[] };
 const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 1, text: 1, reasoning: 0 },
@@ -34,6 +34,9 @@ function scripted(steps: Step[]) {
   const model = new MockLanguageModelV4({
     doGenerate: async () => {
       const s = steps[Math.min(i++, steps.length - 1)];
+      if ("raw" in s) {
+        return { content: [{ type: "text" as const, text: s.raw }], finishReason: { unified: "stop" as const, raw: undefined }, usage, warnings: [] };
+      }
       if ("calls" in s) {
         return {
           content: s.calls.map((c, n) => ({
@@ -144,9 +147,37 @@ describe("runAgent", () => {
     expect(r.proposals[0].decision.outcome).toBe("ALLOW");
   });
 
+  it("tolerates malformed model output without throwing", async () => {
+    const { c3 } = fakeChannel3(prods);
+    const raw = (text: string) => scripted([{ calls: [search()] }, { raw: text } as never]);
+    const r1 = await run(raw("{}"), c3);
+    expect(r1.proposals).toEqual([]);
+    expect(r1.toolCalls).toBe(1);
+    const r2 = await run(raw(JSON.stringify({ proposals: [{ productIds: "x", reason: "r" }, { productIds: ["a"], reason: "ok" }] })), c3);
+    expect(r2.proposals).toHaveLength(1);
+  });
+
+  it("dedupes ids within a pick and drops repeated carts", async () => {
+    const { c3 } = fakeChannel3(prods);
+    const model = scripted([
+      { calls: [search()] },
+      { final: [{ productIds: ["a", "a"], reason: "x" }, { productIds: ["a"], reason: "again" }, { productIds: ["b"], reason: "y" }] },
+    ]);
+    const r = await run(model, c3);
+    expect(r.proposals).toHaveLength(2);
+    expect(r.proposals[0].cart.items).toHaveLength(1);
+    expect(r.proposals[0].cart.totalCents).toBe(2000);
+  });
+
+  it("sanitises reasons: links and credential talk replaced, 80-char cap", () => {
+    expect(cleanReason("buy at https://evil.com/x")).toBe("Matches what you asked for");
+    expect(cleanReason("see www.evil.com")).toBe("Matches what you asked for");
+    expect(cleanReason("enter your PIN code")).toBe("Matches what you asked for");
+    expect(cleanReason("x".repeat(200))).toHaveLength(80);
+  });
+
   it("agent module imports nothing from the paypal adapter or token minting", () => {
     const src = readFileSync("src/ai/agent.ts", "utf8");
-    expect(src).not.toMatch(/@\/adapters\/paypal/);
-    expect(src).not.toMatch(/@\/engine\/token/);
+    expect(src).not.toMatch(/adapters\/paypal|engine\/token/);
   });
 });
