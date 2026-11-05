@@ -94,7 +94,7 @@ const dollars = (c: number) => (c / 100).toFixed(2);
 
 function recordTool(db: Db, familyId: string, onRows: (n: number) => void): Tool {
   return tool({
-    description: "Tether's receipts for this family in one month: date, shop, amount (dollars), status, rule version, whether Amara approved.",
+    description: "Tether's receipts for this family in one month: date, shop, amount (dollars), status, rule version, and how it was allowed (within the rules Amara signed, or approved by Amara one by one).",
     inputSchema: jsonSchema<{ month: string }>({
       type: "object", properties: { month: { type: "string", description: "YYYY-MM" } }, required: ["month"],
     }),
@@ -105,7 +105,7 @@ function recordTool(db: Db, familyId: string, onRows: (n: number) => void): Tool
       onRows(rows.length);
       return rows.map((r) => ({
         date: r.at.toISOString().slice(0, 10), shop: r.shop, amount: dollars(r.amountCents),
-        status: r.status, ruleVersion: r.ruleVersion, approvedByAmara: r.amaraApproved,
+        status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? "Amara approved this one" : "within the rules Amara signed",
       }));
     },
   });
