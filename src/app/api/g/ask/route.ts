@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { askAboutMonth, readOnlyPaypalTools } from "@/ai/monthAssistant";
+import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
 import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
 import { getDb } from "@/db/client";
 
@@ -14,6 +14,9 @@ export async function POST(req: Request): Promise<Response> {
     if (err instanceof GuardianAuthError) return Response.json({ error: "sign-in required" }, { status: 401 });
     console.error("ask: guardian check failed", err);
     return Response.json({ answer: "I can't see that right now." }, { status: 502 });
+  }
+  if (!req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+    return Response.json({ error: "content-type must be application/json" }, { status: 415 });
   }
   const body = (await req.json().catch(() => null)) as { question?: unknown } | null;
   const question = typeof body?.question === "string" ? body.question.trim() : "";
@@ -30,7 +33,7 @@ export async function POST(req: Request): Promise<Response> {
     }, familyId, question);
     return Response.json(result);
   } catch (err) {
-    console.error("ask: assistant failed", err);
+    console.error("ask: assistant failed", err instanceof PaypalUnavailableError ? err.message : err);
     return Response.json({ answer: "I can't see that right now." }, { status: 502 });
   }
 }

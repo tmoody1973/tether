@@ -124,3 +124,11 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
     status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
   }));
 }
+
+/** Capture ids of every receipt belonging to this family (used to filter PayPal's shared merchant account). */
+export async function captureIdsForFamily(db: Db, familyId: string): Promise<Set<string>> {
+  const rows = await db.select({ id: t.receipts.captureId }).from(t.receipts)
+    .innerJoin(t.purchases, eq(t.purchases.id, t.receipts.purchaseId))
+    .where(eq(t.purchases.familyId, familyId));
+  return new Set(rows.map((r) => r.id));
+}

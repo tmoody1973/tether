@@ -17,6 +17,7 @@ function mac(payload: string): string {
 }
 
 export function signGuardianCookie(familyId: string, now: Date): string {
+  if (!familyId || familyId.includes(".")) throw new Error("invalid familyId");
   const payload = `${familyId}.${now.getTime() + TTL_MS}`;
   return `${payload}.${mac(payload)}`;
 }
@@ -33,9 +34,12 @@ export function verifyGuardianCookie(value: string, now: Date): string | null {
 
 /** The family id from a valid guardian cookie, or throws GuardianAuthError (401). */
 export function requireGuardian(req: Request, now: Date = new Date()): string {
-  const raw = (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim())
-    .find((c) => c.startsWith(`${GUARDIAN_COOKIE}=`));
-  const familyId = raw ? verifyGuardianCookie(decodeURIComponent(raw.slice(GUARDIAN_COOKIE.length + 1)), now) : null;
+  let familyId: string | null = null;
+  try {
+    const raw = (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim())
+      .find((c) => c.startsWith(`${GUARDIAN_COOKIE}=`));
+    familyId = raw ? verifyGuardianCookie(decodeURIComponent(raw.slice(GUARDIAN_COOKIE.length + 1)), now) : null;
+  } catch { familyId = null; } // any malformed cookie is simply "not signed in"
   if (!familyId) throw new GuardianAuthError();
   return familyId;
 }
