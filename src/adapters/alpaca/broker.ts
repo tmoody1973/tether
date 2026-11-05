@@ -29,6 +29,8 @@ export interface AlpacaConfig {
   authUrl?: string;
   /** Sandbox firm account id; when set, deposits are instant JNLC journals, otherwise ACH. */
   firmAccountId?: string;
+  /** Build the custodial payload (else an ordinary sandbox trading account is the stand-in). */
+  custodialEnabled?: boolean;
 }
 
 export const dollars = (cents: Cents): string => (cents / 100).toFixed(2);
@@ -92,7 +94,7 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
   return {
     /** Custodial only when ALPACA_CUSTODIAL_ENABLED === 'true'; otherwise an ordinary sandbox trading account (stand-in). */
     async createCustodialAccount(guardian: GuardianKyc, minor: MinorIdentity): Promise<{ accountId: string; custodial: boolean }> {
-      const custodial = process.env.ALPACA_CUSTODIAL_ENABLED === "true";
+      const custodial = cfg.custodialEnabled === true;
       const body = {
         account_type: custodial ? "custodial" : "trading",
         contact: contactOf(guardian), identity: identityOf(guardian),
@@ -138,6 +140,23 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
       return { orderId: o.id, status: o.status };
     },
 
+    /** The order Tether already sent for this client id, or null (404). Used to avoid double-placing after a lost response. */
+    async findOrderByClientId(accountId: string, clientOrderId: string): Promise<{ orderId: string; status: string } | null> {
+      try {
+        const o = await call<{ id: string; status: string }>("GET",
+          `/v1/trading/accounts/${accountId}/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`);
+        return { orderId: o.id, status: o.status };
+      } catch (e) {
+        if (e instanceof AlpacaError && e.status === 404) return null;
+        throw e;
+      }
+    },
+
+    async listTransfers(accountId: string): Promise<Array<{ transferId: string; amount: number; createdAt: number; incoming: boolean }>> {
+      const rows = await call<Array<{ id: string; amount: string; created_at: string; direction: string }>>("GET", `/v1/accounts/${accountId}/transfers`);
+      return rows.map((r) => ({ transferId: r.id, amount: Number(r.amount), createdAt: Date.parse(r.created_at), incoming: r.direction === "INCOMING" }));
+    },
+
     async getOrder(accountId: string, orderId: string): Promise<{ status: string }> {
       const o = await call<{ status: string }>("GET", `/v1/trading/accounts/${accountId}/orders/${orderId}`);
       return { status: o.status };
@@ -150,5 +169,5 @@ export type AlpacaBroker = ReturnType<typeof alpacaBroker>;
 export function alpacaFromEnv(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): AlpacaBroker {
   const { ALPACA_BROKER_KEY: key, ALPACA_BROKER_SECRET: secret, ALPACA_BROKER_BASE_URL: baseUrl } = env;
   if (!key || !secret || !baseUrl) throw new Error("ALPACA_BROKER_KEY, ALPACA_BROKER_SECRET, ALPACA_BROKER_BASE_URL are required");
-  return alpacaBroker({ baseUrl, key, secret, firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID }, fetchImpl);
+  return alpacaBroker({ baseUrl, key, secret, firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID, custodialEnabled: env.ALPACA_CUSTODIAL_ENABLED === "true" }, fetchImpl);
 }

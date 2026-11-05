@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb, migrateDb, type Db } from "@/db/client";
 import * as repo from "@/db/repo";
@@ -7,11 +7,10 @@ import { alpacaBroker } from "@/adapters/alpaca/broker";
 import type { Grant } from "@/engine/types";
 import { savingsCents } from "@/ledger/ledger";
 import { decideApproval } from "@/flows/approvals";
-import { proposeFund, proposeInvestment, settleInvestment, type InvestDeps } from "@/flows/invest";
+import { proposeFund, proposeInvestment, resumeInvestment, retryInvestment, settleInvestment, type InvestDeps } from "@/flows/invest";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
-afterEach(() => { delete process.env.ALPACA_CUSTODIAL_ENABLED; });
 
 const NOW = new Date("2026-11-04T12:00:00Z");
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
@@ -49,9 +48,11 @@ async function seed(opts: { level?: 1 | 2 | 3; savings?: number; allow?: string[
   if (opts.savings !== 0) await repo.appendJournal(db, { familyId, kind: "week_close", amountCents: opts.savings ?? 10_000, at: new Date("2026-11-01T00:00:00Z") });
   return familyId;
 }
-const mk = (f = fakeFetch()): { d: InvestDeps; f: typeof f } => ({
-  f, d: { db, secret: "s", now: async () => NOW, alpaca: alpacaBroker({ baseUrl: "https://broker.test", key: "k", secret: "sec" }, f as unknown as typeof fetch) },
+const mk = (f = fakeFetch(), custodialEnabled = false): { d: InvestDeps; f: typeof f } => ({
+  f, d: { db, secret: "s", now: async () => NOW, alpaca: alpacaBroker({ baseUrl: "https://broker.test", key: "k", secret: "sec", custodialEnabled }, f as unknown as typeof fetch) },
 });
+const NONE = () => undefined as unknown as Response;
+const kindsOf = async (fam: string) => (await db.select().from(t.journal).where(eq(t.journal.familyId, fam))).map((j) => j.kind).sort();
 async function approvedInvestment(d: InvestDeps, familyId: string, amountCents = 2500) {
   await db.insert(t.fundAllowlist).values({ familyId, symbol: "VTI" }).onConflictDoNothing();
   const r = await proposeInvestment(d, familyId, { symbol: "VTI", amountCents }, { why: "I want to own part of the whole market" });
@@ -94,35 +95,108 @@ describe("proposeInvestment / settleInvestment", () => {
     expect((await settleInvestment(d, await approvedInvestment(d, fam))).status).toBe("filled");
   });
 
-  it("order rejected -> invest_reversal restores savings", async () => {
+  it("order rejected -> cash_held, no reversal, retry places a new order", async () => {
     const fam = await seed();
-    const { d } = mk(fakeFetch(() => undefined as unknown as Response, "rejected"));
+    const { d } = mk(fakeFetch(() => NONE(), "rejected"));
+    const id = await approvedInvestment(d, fam);
+    expect((await settleInvestment(d, id)).status).toBe("cash_held");
+    expect(await savingsCents(db, fam)).toBe(7_500);
+    expect(await kindsOf(fam)).toEqual(["invest", "week_close"]);
+    const ok = mk(fakeFetch(() => NONE(), "accepted"));
+    expect((await retryInvestment(ok.d, id)).status).toBe("queued");
+    expect((await row(id)).receiptNote).toBe("This money now belongs to Zoe and can't be taken back.");
+  });
+
+  it("deposit 4xx => reversal, savings restored", async () => {
+    const fam = await seed();
+    const { d } = mk(fakeFetch((p) => (p.endsWith("/transfers") ? json({ message: "bad relationship" }, 422) : NONE())));
     const id = await approvedInvestment(d, fam);
     expect((await settleInvestment(d, id)).status).toBe("rejected");
     expect(await savingsCents(db, fam)).toBe(10_000);
-    const kinds = (await db.select().from(t.journal).where(eq(t.journal.familyId, fam))).map((j) => j.kind).sort();
-    expect(kinds).toEqual(["invest", "invest_reversal", "week_close"]);
+    expect(await kindsOf(fam)).toEqual(["invest", "invest_reversal", "week_close"]);
   });
 
-  it("4xx on order reverses; 5xx on order keeps invest and returns queued", async () => {
-    const f4 = await seed();
-    const m4 = mk(fakeFetch((p) => (p.endsWith("/orders") ? json({ message: "insufficient buying power" }, 403) : (undefined as unknown as Response))));
-    expect((await settleInvestment(m4.d, await approvedInvestment(m4.d, f4))).status).toBe("rejected");
-    expect(await savingsCents(db, f4)).toBe(10_000);
+  it("order 403 after deposit => no reversal, savings still debited, status queued, error stored", async () => {
+    const fam = await seed();
+    const { d } = mk(fakeFetch((p) => (p.endsWith("/orders") ? json({ message: "insufficient buying power" }, 403) : NONE())));
+    const id = await approvedInvestment(d, fam);
+    expect((await settleInvestment(d, id)).status).toBe("queued");
+    expect(await savingsCents(db, fam)).toBe(7_500);
+    expect(await kindsOf(fam)).toEqual(["invest", "week_close"]);
+    const r = await row(id);
+    expect(r.error).toContain("403");
+    expect(r.transferId).toBe("tr-1");
+  });
 
-    const f5 = await seed();
-    const m5 = mk(fakeFetch((p) => (p.endsWith("/orders") ? json({ message: "boom" }, 503) : (undefined as unknown as Response))));
-    const id = await approvedInvestment(m5.d, f5);
-    expect((await settleInvestment(m5.d, id)).status).toBe("queued");
-    expect(await savingsCents(db, f5)).toBe(7_500); // never shown as returned
+  it("5xx on order keeps invest and returns queued", async () => {
+    const fam = await seed();
+    const { d } = mk(fakeFetch((p) => (p.endsWith("/orders") ? json({ message: "boom" }, 503) : NONE())));
+    const id = await approvedInvestment(d, fam);
+    expect((await settleInvestment(d, id)).status).toBe("queued");
+    expect(await savingsCents(db, fam)).toBe(7_500);
     expect((await row(id)).error).toContain("503");
   });
 
-  it("network error keeps invest and returns queued", async () => {
+  it("network error on deposit keeps the debit and stays depositing", async () => {
     const fam = await seed();
-    const { d } = mk(fakeFetch((p) => { if (p.endsWith("/transfers")) throw new TypeError("fetch failed"); return undefined as unknown as Response; }));
-    expect((await settleInvestment(d, await approvedInvestment(d, fam))).status).toBe("queued");
+    const { d } = mk(fakeFetch((p) => { if (p.endsWith("/transfers")) throw new TypeError("fetch failed"); return NONE(); }));
+    expect((await settleInvestment(d, await approvedInvestment(d, fam))).status).toBe("depositing");
     expect(await savingsCents(db, fam)).toBe(7_500);
+  });
+
+  it("resume places the missing order", async () => {
+    const fam = await seed();
+    const down = mk(fakeFetch((p) => (p.endsWith("/orders") ? json({ message: "boom" }, 503) : NONE())));
+    const id = await approvedInvestment(down.d, fam);
+    await settleInvestment(down.d, id);
+    const up = mk(fakeFetch((p) => (p.includes("by_client_order_id") ? json({ message: "not found" }, 404) : NONE()), "accepted"));
+    expect((await resumeInvestment(up.d, id)).status).toBe("queued");
+    expect((await row(id)).orderId).toBe("ord-1");
+    expect(up.f.mock.calls.filter(([u]) => String(u).endsWith("/orders"))).toHaveLength(1);
+  });
+
+  it("resume does not double-place when by_client_order_id finds one", async () => {
+    const fam = await seed();
+    const down = mk(fakeFetch((p) => (p.endsWith("/orders") ? json({ message: "boom" }, 503) : NONE())));
+    const id = await approvedInvestment(down.d, fam);
+    await settleInvestment(down.d, id);
+    const up = mk(fakeFetch((p) => (p.includes("by_client_order_id") ? json({ id: "ord-9", status: "filled" }) : NONE())));
+    expect((await resumeInvestment(up.d, id)).status).toBe("filled");
+    expect(up.f.mock.calls.some(([u, i]) => String(u).endsWith("/orders") && (i as RequestInit).method === "POST")).toBe(false);
+    expect((await row(id)).orderId).toBe("ord-9");
+  });
+
+  it("resume refreshes a queued order that later got rejected -> cash_held", async () => {
+    const fam = await seed();
+    const { d } = mk();
+    const id = await approvedInvestment(d, fam);
+    await settleInvestment(d, id);
+    const later = mk(fakeFetch((p) => (p.includes("/orders/") ? json({ status: "canceled" }) : NONE())));
+    expect((await resumeInvestment(later.d, id)).status).toBe("cash_held");
+    expect(await savingsCents(db, fam)).toBe(7_500);
+  });
+
+  it("depositing-without-transfer with no match => needs_review and no deposit call", async () => {
+    const fam = await seed();
+    const down = mk(fakeFetch((p) => { if (p.endsWith("/transfers")) throw new TypeError("fetch failed"); return NONE(); }));
+    const id = await approvedInvestment(down.d, fam);
+    await settleInvestment(down.d, id);
+    const up = mk(fakeFetch((p, i) => (p.endsWith("/transfers") && i.method === "GET" ? json([]) : NONE())));
+    expect((await resumeInvestment(up.d, id)).status).toBe("needs_review");
+    expect(up.f.mock.calls.some(([u, i]) => String(u).endsWith("/transfers") && (i as RequestInit).method === "POST")).toBe(false);
+    expect(await savingsCents(db, fam)).toBe(7_500);
+  });
+
+  it("depositing-without-transfer finds the matching transfer and continues", async () => {
+    const fam = await seed();
+    const down = mk(fakeFetch((p) => { if (p.endsWith("/transfers")) throw new TypeError("fetch failed"); return NONE(); }));
+    const id = await approvedInvestment(down.d, fam);
+    await settleInvestment(down.d, id);
+    const created = new Date().toISOString();
+    const up = mk(fakeFetch((p, i) => (p.endsWith("/transfers") && i.method === "GET"
+      ? json([{ id: "tr-found", amount: "25", created_at: created, direction: "INCOMING" }]) : NONE())));
+    expect((await resumeInvestment(up.d, id)).status).toBe("queued");
+    expect((await row(id)).transferId).toBe("tr-found");
   });
 
   it("settleInvestment twice is a no-op", async () => {
@@ -130,9 +204,10 @@ describe("proposeInvestment / settleInvestment", () => {
     const { d, f } = mk();
     const id = await approvedInvestment(d, fam);
     expect((await settleInvestment(d, id)).status).toBe("queued");
-    const calls = f.mock.calls.length;
-    expect((await settleInvestment(d, id)).status).toBe("queued");
-    expect(f.mock.calls.length).toBe(calls);
+    const posts = () => f.mock.calls.filter(([, i]) => (i as RequestInit).method === "POST" && !String((i as RequestInit).body).includes("grant_type")).length;
+    const before = posts();
+    expect((await settleInvestment(d, id)).status).toBe("queued"); // may refresh the order (GET), never moves money again
+    expect(posts()).toBe(before);
     expect(await savingsCents(db, fam)).toBe(7_500);
   });
 
@@ -168,9 +243,8 @@ describe("stand-in account", () => {
     expect(body.minor_identity).toBeUndefined();
   });
 
-  it("custodial payload sent when ALPACA_CUSTODIAL_ENABLED=true", async () => {
-    process.env.ALPACA_CUSTODIAL_ENABLED = "true";
-    const { d, f } = mk();
+  it("custodial payload sent when ALPACA_CUSTODIAL_ENABLED=true (custodialEnabled)", async () => {
+    const { d, f } = mk(fakeFetch(), true);
     expect((await d.alpaca.createCustodialAccount(guardian, minor)).custodial).toBe(true);
     const body = bodyOf(f, "/v1/accounts");
     expect(body.account_type).toBe("custodial");

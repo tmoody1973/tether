@@ -2,6 +2,8 @@ import type { Cents, Decision, Grant, Reason } from "./types";
 
 export const MIN_INVEST_CENTS = 100;
 export const QUEUED_LABEL = "Queued for market open";
+export const CASH_HELD_LABEL = "Held as cash in Zoe's investing account. Amara can try the order again.";
+export const NEEDS_REVIEW_LABEL = "Checking with the broker";
 export const investReceiptNote = (teenName: string) => `This money now belongs to ${teenName} and can't be taken back.`;
 
 export interface InvestProposal { symbol: string; amountCents: Cents }

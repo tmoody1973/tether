@@ -98,7 +98,7 @@ export const journal = pgTable("journal", {
   amountCents: integer("amount_cents").notNull(),
   ref: text("ref"),
   note: text("note"),
-});
+}, (j) => [uniqueIndex("journal_invest_ref_uq").on(j.kind, j.ref).where(sql`${j.kind} in ('invest', 'invest_reversal')`)]);
 
 export const weeks = pgTable("weeks", {
   familyId: text("family_id").notNull().references(() => families.id),
@@ -154,10 +154,12 @@ export const investments = pgTable("investments", {
   amountCents: integer("amount_cents").notNull(),
   answers: jsonb("answers").$type<Record<string, unknown>>().notNull(),
   status: text("status", {
-    enum: ["proposed", "approved", "depositing", "queued", "filled", "rejected"],
+    enum: ["proposed", "approved", "depositing", "queued", "filled", "rejected", "cash_held", "needs_review"],
   }).notNull(),
   alpacaAccountId: text("alpaca_account_id"),
   transferId: text("transfer_id"),
   orderId: text("order_id"),
+  debitedAt: ts("debited_at"), // real time of the debit; transfers are matched against it when a deposit outcome is unknown
+  receiptNote: text("receipt_note"),
   error: text("error"), // last Alpaca error when the outcome is unknown or the order was rejected
 });

@@ -18,11 +18,12 @@ function sign(body: Omit<AuthToken, "signature">, secret: string): string {
   return createHmac("sha256", secret).update(JSON.stringify(sorted)).digest("hex");
 }
 
-export function mintToken(d: Decision, grant: Grant, cart: Cart, now: Date, secret: string): AuthToken {
+/** `tokenId` may be supplied (e.g. derived from an investment id) so a second mint for the same thing is a REPLAY. */
+export function mintToken(d: Decision, grant: Grant, cart: Cart, now: Date, secret: string, tokenId: string = randomUUID()): AuthToken {
   if (d.outcome !== "ALLOW") throw new Error(`cannot mint token for outcome ${d.outcome}`);
   if (!secret) throw new Error("token secret is required");
   const body = {
-    tokenId: randomUUID(), grantId: grant.id, grantVersion: grant.version, cartHash: cartHash(cart),
+    tokenId, grantId: grant.id, grantVersion: grant.version, cartHash: cartHash(cart),
     amountCents: cart.totalCents, merchantId: cart.merchantId, issuedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + TOKEN_TTL_MS).toISOString(),
   };
