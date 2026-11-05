@@ -11,6 +11,9 @@ importers:
       '@ai-sdk/anthropic':
         specifier: ^4.0.97
         version: 4.0.97(zod@4.6.7)
+      '@channel3/sdk':
+        specifier: ^4.8.0
+        version: 4.8.0
       '@electric-sql/pglite':
         specifier: ^0.5.15
         version: 0.5.15
@@ -60,6 +63,9 @@ importers:
       eslint-config-next:
         specifier: 16.4.5
         version: 16.4.5(@typescript-eslint/parser@8.72.1(eslint@9.39.5)(typescript@5.9.3))(eslint@9.39.5)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -157,6 +163,10 @@ packages:
   '@babel/types@7.29.11':
     resolution: {integrity: sha512-WCsemW40Cpc6gouC1SrY6PBaZ+oLRlEVY9XBvZBI7il/HyUrb2nJ505wE1MHEFyDZNnrWDEuy4jL50WVHfTTSQ==}
     engines: {node: '>=6.9.0'}
+
+  '@channel3/sdk@4.8.0':
+    resolution: {integrity: sha512-eoLdpTxG+7za0pcq3ULYl4vc0EEYN6EdegH4rJOdAhZVM2SFJnlRiZD6WZnT6uiaSaj3jBv3drlLi/X8YI0/bA==}
+    engines: {node: '>=18.0.0'}
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
@@ -2905,6 +2915,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.13
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@channel3/sdk@4.8.0': {}
 
   '@drizzle-team/brocli@0.10.2': {}
 

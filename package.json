@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.97",
+    "@channel3/sdk": "^4.8.0",
     "@electric-sql/pglite": "^0.5.15",
     "@neondatabase/serverless": "^1.2.0",
     "ai": "^7.0.163",
@@ -33,6 +34,7 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.1.0"
   },
