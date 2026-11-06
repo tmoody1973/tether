@@ -22,10 +22,7 @@
   padding: 20px 14px; display: flex; flex-direction: column; gap: 3px;
 }
 .g-brand { display: flex; align-items: center; gap: 9px; padding: 0 8px 16px; font-weight: 750; font-size: 15px; }
-.g-brand__mark {
-  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
-  color: #fff; font-weight: 800; font-size: 14px; background: linear-gradient(140deg, #0B6B5B, #22A08A);
-}
+.g-brand__logo { display: block; height: 32px; width: auto; margin-left: -6px; }
 .g-nav { display: flex; flex-direction: column; gap: 3px; list-style: none; }
 .g-nav a {
   display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 11px; border-radius: var(--r-md);
@@ -87,6 +84,7 @@
   display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 48px; padding: 12px 2px;
   text-decoration: none; font-weight: 600;
 }
+.g-needs__note { display: block; padding: 12px 2px; font-weight: 600; }
 .g-needs a::after { content: "›"; color: var(--ink-3-text); font-size: 20px; line-height: 1; }
 .g-needs small { display: block; font-weight: 400; color: var(--ink-2); font-size: 13px; }
 

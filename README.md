@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/brand/tether-inverse.svg">
+    <img src="public/brand/tether-color.svg" alt="Tether" width="220">
+  </picture>
+</p>
+
 # Tether
 
 > A parent signs the rules. An AI agent proposes. Code decides. PayPal pays.

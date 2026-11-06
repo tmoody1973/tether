@@ -1,7 +1,8 @@
 // Stand-ins for PayPal's sandbox and Channel3 during e2e. Never real money, never a real shop.
 // - PayPal: OAuth, create-order (idempotent on PayPal-Request-Id, like PayPal), Transaction Search (Tether's
 //   whole merchant account: other families' and unlinked rows too), and a vault delete that is refused.
-// - Channel3: product `sku-<cents>` costs <cents>, at the shop it is asked about.
+// - Channel3: product `sku-<cents>` costs <cents>, at the shop it is asked about. Search returns the same three
+//   products whatever the words (the teen e2e agent proposes exactly these); lookup reads `sku-<cents>` from the URL.
 import { createServer } from "node:http";
 import { E2E } from "./fixtures";
 
@@ -16,6 +17,11 @@ const search: Row[] = [
   row(E2E.unlinkedCapture, "50.00"),
 ];
 const orders = new Map<string, unknown>(); // PayPal-Request-Id → order
+
+const c3 = (id: string, title: string, cents: number, domain: string) =>
+  ({ id, title, offers: [{ domain, price: { price: cents / 100, currency: "USD" }, availability: "InStock" }] });
+// Level 1 Zoe who has bought at Target: fits / needs Amara's OK (first time at Best Buy) / over budget.
+const SEARCH = [c3("sku-500", "Notebook", 500, "target.com"), c3("sku-800", "Earbuds", 800, "bestbuy.com"), c3("sku-1500", "Running shoes", 1500, "target.com")];
 let n = 0;
 
 createServer((req, res) => {
@@ -47,6 +53,14 @@ createServer((req, res) => {
       const w = url.searchParams.get("website_ids") ?? "";
       const domain = w.startsWith("[") ? (JSON.parse(w) as string[])[0] : w; // the SDK sends a JSON list
       return send(200, { id: `sku-${product[1]}`, title: "Item", offers: [{ domain, price: { price: Number(product[1]) / 100, currency: "USD" }, availability: "InStock" }] });
+    }
+    if (req.method === "POST" && path === "/v1/search") return send(200, { products: SEARCH, next_page_token: null });
+    if (req.method === "POST" && path === "/v1/lookup") {
+      const link = String((JSON.parse(raw || "{}") as { url?: string }).url ?? "");
+      const sku = link.match(/sku-(\d+)/);
+      if (!sku) return send(422, { detail: "not a product page" });
+      const domain = new URL(link).hostname.replace(/^www\./, "");
+      return send(200, { product: c3(`sku-${sku[1]}`, "Notebook", Number(sku[1]), domain) });
     }
     if (req.method === "GET" && path === "/health") return send(200, { ok: true });
     send(404, { name: "NOT_FAKED", message: `${req.method} ${path}` });

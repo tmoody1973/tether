@@ -8,8 +8,9 @@ import type { Channel3Adapter, Product } from "@/adapters/channel3/client";
 import type { Cart, Grant } from "@/engine/types";
 import { settlePurchase, proposePurchase, type Deps } from "@/flows/purchase";
 import { ledgerView } from "@/ledger/ledger";
+import { askAmara } from "@/flows/teen";
 import {
-  ApprovalError, decideApproval, normaliseDomain, pendingApprovals, proposeShop, requestApproval, teenMessage,
+  ApprovalError, decideApproval, liftableOverage, normaliseDomain, pendingApprovals, proposeShop, requestApproval, teenMessage,
 } from "@/flows/approvals";
 
 const DOMAIN = "books.example";
@@ -191,5 +192,119 @@ describe("approvals", () => {
     await proposeShop(d, familyId, "HTTPS://WWW.Nike.com/x", "my shoes");
     const [p] = await pendingApprovals(db, familyId, new Date(nowMs));
     expect(p).toMatchObject({ subjectId: "nike.com", shopDomain: "nike.com", note: "my shoes", cartHash: null });
+  });
+
+  describe("R40: Amara can approve one over-budget cart", () => {
+    const overBudget = async () => {
+      const { familyId, merchantId } = await seed("2026-11-04T12:00:00Z");
+      const d = deps();
+      await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 400, at: new Date(nowMs), ref: null, note: null });
+      const { purchaseId, decision } = await proposePurchase(d, familyId, cartOf(merchantId)); // $6 with $4 left
+      expect(decision.outcome).toBe("REFUSE");
+      const p = (await repo.getPurchase(db, purchaseId))!;
+      return { d, familyId, merchantId, purchaseId, p };
+    };
+
+    it("budget-only refusal ⇒ a lifting request ⇒ approve ⇒ paid, full amount spent this week", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p.cartHash, "please");
+      const [row] = await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
+      expect(row).toMatchObject({ liftsBudget: true, overCents: 200 });
+      expect(await pendingApprovals(db, familyId, new Date(nowMs))).toEqual([expect.objectContaining({ id: approvalId, liftsBudget: true })]);
+      await decideApproval(d, approvalId, "approved");
+      expect(await statusOf(purchaseId)).toBe("approved");
+      expect((await settlePurchase(d, purchaseId)).status).toBe("paid");
+      const [receipt] = await db.select().from(t.receipts).where(eq(t.receipts.purchaseId, purchaseId));
+      expect(receipt.approvalId).toBe(approvalId);
+      expect((await ledgerView(db, familyId, new Date(nowMs))).spentThisWeekCents).toBe(1000);
+    });
+
+    it("the overage grew after Amara said yes ⇒ refused, nothing charged", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p.cartHash);
+      await decideApproval(d, approvalId, "approved");
+      await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 100, at: new Date(nowMs), ref: null, note: null });
+      const r = await settlePurchase(d, purchaseId);
+      expect(r.status).toBe("refused");
+      expect((await ledgerView(db, familyId, new Date(nowMs))).spentThisWeekCents).toBe(500);
+    });
+
+    it("an ordinary approval never lifts the budget", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      await db.insert(t.approvals).values({
+        id: `plain-${n}`, familyId, subject: "purchase", subjectId: purchaseId, cartHash: p.cartHash,
+        expiresAt: new Date(nowMs + 3_600_000), result: "approved", decidedAt: new Date(nowMs),
+      });
+      await db.update(t.purchases).set({ status: "approved" }).where(eq(t.purchases.id, purchaseId));
+      expect((await settlePurchase(d, purchaseId)).status).toBe("refused");
+    });
+
+    it("a meaning-check refusal or any other hard reason can't be asked for", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const gate2 = [{ rule: "BOOKS_ONLY", probability: 0.1, model: "m", modelVersion: "1", band: "REFUSE" as const }];
+      await db.update(t.purchases).set({ decision: { ...p.decision, gate2 } as never }).where(eq(t.purchases.id, purchaseId));
+      await expect(requestApproval(d, familyId, "purchase", purchaseId, p.cartHash)).rejects.toBeInstanceOf(ApprovalError);
+      const payee = { ...p.decision, reasons: [...p.decision.reasons, { constraint: "payment.allowed_payees", detail: "x" }] };
+      await db.update(t.purchases).set({ decision: payee }).where(eq(t.purchases.id, purchaseId));
+      await expect(requestApproval(d, familyId, "purchase", purchaseId, p.cartHash)).rejects.toBeInstanceOf(ApprovalError);
+    });
+  
+    it("a lifted cart refused at settle (overage grew) can't be re-asked with the same stale lift", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p.cartHash);
+      await decideApproval(d, approvalId, "approved");
+      await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 100, at: new Date(nowMs), ref: null, note: null });
+      expect((await settlePurchase(d, purchaseId)).status).toBe("refused");
+      const after = (await repo.getPurchase(db, purchaseId))!;
+      expect(after.decision.reasons.map((r) => r.constraint)).toContain("settle.refused");
+      expect(liftableOverage(after.decision)).toBeNull();
+      await expect(requestApproval(d, familyId, "purchase", purchaseId, p.cartHash)).rejects.toBeInstanceOf(ApprovalError);
+    });
+
+    it("a lifted cart whose price changed at settle is refused and not re-askable", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p.cartHash);
+      await decideApproval(d, approvalId, "approved");
+      vi.mocked(channel3.retrieve).mockResolvedValueOnce({ id: "a", title: "T", priceCents: 650, domain: DOMAIN, available: true });
+      expect(await settlePurchase(d, purchaseId)).toMatchObject({ status: "refused", reason: "CART_MISMATCH" });
+      expect(liftableOverage((await repo.getPurchase(db, purchaseId))!.decision)).toBeNull();
+    });
+  });
+
+  describe("R40 at the bookshop: the over-budget ask carries a real book check", () => {
+    const bookshop = async (title: string) => {
+      const { familyId, merchantId } = await seed("2026-11-04T12:00:00Z");
+      const [g] = await db.select().from(t.grants).where(eq(t.grants.familyId, familyId));
+      const body = { ...g.body, constraints: [...g.body.constraints, { type: "checkout.semantic_category", merchantIds: [merchantId], rule: "BOOKS_ONLY" } as const] };
+      await db.update(t.grants).set({ body }).where(eq(t.grants.id, g.id));
+      const d: Deps = { ...deps(), classifier: { ask: async (_q, ctx) => ({ probability: (ctx.titles as string[]).includes("Hobbit") ? 0.99 : 0.05, model: "m", modelVersion: "1" }) } };
+      await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 400, at: new Date(nowMs), ref: null, note: null });
+      const cart: Cart = { merchantId, items: [{ sku: "a", title, qty: 1, unitCents: 600 }], totalCents: 600 };
+      const { purchaseId, decision } = await proposePurchase(d, familyId, cart); // $6 with $4 left
+      return { d, familyId, purchaseId, decision };
+    };
+
+    it("over-budget book ⇒ gate 2 ran ⇒ lifting request ⇒ approve ⇒ paid", async () => {
+      const { d, familyId, purchaseId, decision } = await bookshop("Hobbit");
+      expect(decision.outcome).toBe("REFUSE");
+      expect(decision.gate2).toEqual([expect.objectContaining({ rule: "checkout.semantic_category", band: "ALLOW" })]);
+      expect(await askAmara(d, familyId, purchaseId, "for school")).toBe("request");
+      const [a] = await pendingApprovals(db, familyId, new Date(nowMs));
+      await decideApproval(d, a.id, "approved");
+      expect((await settlePurchase(d, purchaseId)).status).toBe("paid");
+    });
+
+    it("over-budget non-book at the bookshop ⇒ a note to Amara, no approval", async () => {
+      const { d, familyId, purchaseId, decision } = await bookshop("Mug");
+      expect(decision.gate2).toEqual([expect.objectContaining({ band: "REFUSE" })]);
+      expect(await askAmara(d, familyId, purchaseId, null)).toBe("message");
+      expect(await pendingApprovals(db, familyId, new Date(nowMs))).toEqual([]);
+    });
+
+    it("a semantic rule with no stored finding is not liftable", () => {
+      const d = { outcome: "REFUSE" as const, semanticRules: ["checkout.semantic_category"], gate2: [],
+        reasons: [{ constraint: "payment.budget", detail: "", numbers: { spentCents: 400, cartCents: 600, maxCents: 800, remainingCents: 400 } }] };
+      expect(liftableOverage(d)).toBeNull();
+    });
   });
 });

@@ -4,6 +4,8 @@ import * as t from "@/db/schema";
 import { getActiveGrant, getPurchase } from "@/db/repo";
 import { now as demoNow } from "@/clock/clock";
 import type { Cart, Constraint } from "@/engine/types";
+import { budgetOverage } from "@/engine/decide";
+import type { StoredDecision } from "@/flows/purchase";
 import type { Deps } from "@/flows/purchase";
 
 const DAY_MS = 86_400_000;
@@ -36,11 +38,14 @@ export async function requestApproval(
   const { db } = deps;
   await expireStale(deps, familyId);
   const now = await deps.now(familyId);
+  let lift: { liftsBudget: boolean; overCents: number | null } = { liftsBudget: false, overCents: null };
   if (subject === "purchase") {
     const p = await getPurchase(db, subjectId);
     if (!p || p.familyId !== familyId) throw new ApprovalError(`unknown purchase ${subjectId}`);
-    if (p.status !== "needs_approval") throw new ApprovalError(`purchase is ${p.status}, not awaiting approval`);
+    const over = p.status === "refused" ? liftableOverage(p.decision) : null;
+    if (p.status !== "needs_approval" && over === null) throw new ApprovalError(`purchase is ${p.status}, not awaiting approval`);
     if (p.cartHash !== cartHash) throw new ApprovalError("cart hash does not match the purchase");
+    if (over !== null) lift = { liftsBudget: true, overCents: over };
   }
   const find = () => db.select().from(t.approvals).where(and(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subject, subject), eq(t.approvals.subjectId, subjectId),
@@ -49,7 +54,7 @@ export async function requestApproval(
   if (existing) return { approvalId: existing.id };
   const expiresAt = new Date(Math.min(now.getTime() + DAY_MS, weekEnd(now).getTime()));
   const approvalId = crypto.randomUUID();
-  const ins = await db.insert(t.approvals).values({ id: approvalId, familyId, subject, subjectId, cartHash, expiresAt, note })
+  const ins = await db.insert(t.approvals).values({ id: approvalId, familyId, subject, subjectId, cartHash, expiresAt, note, ...lift })
     .onConflictDoNothing().returning({ id: t.approvals.id });
   if (ins.length) return { approvalId };
   const [raced] = await find(); // lost a race to the one-open-approval index
@@ -71,7 +76,7 @@ export async function decideApproval(
       .where(and(eq(t.approvals.id, approvalId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now)))
       .returning();
     if (!won) throw new ApprovalError("approval is not open (already decided or expired)");
-    if (a.subject === "purchase") await decidePurchase(tx, a.subjectId, result);
+    if (a.subject === "purchase") await decidePurchase(tx, a.subjectId, result, a.liftsBudget);
     else if (a.subject === "shop" && result === "approved") await applyShop(tx, a.familyId, a.subjectId, now);
     else if (a.subject === "investment") await decideInvestmentRow(tx, a.subjectId, result);
     else if (a.subject === "fund") await decideFund(tx, a.familyId, a.subjectId, result);
@@ -79,10 +84,23 @@ export async function decideApproval(
   return { subject: a.subject, subjectId: a.subjectId };
 }
 
-async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "declined") {
+/**
+ * R40: a refused purchase can be asked about only when the weekly budget is its ONLY hard reason and no
+ * meaning check (gate 2) refused it. Returns how far past the week it goes (the most Amara's yes can cover).
+ */
+export function liftableOverage(d: StoredDecision | PurchaseDecision): number | null {
+  const gate2 = (d as Partial<StoredDecision>).gate2 ?? [];
+  if (gate2.some((f) => f.band === "REFUSE")) return null;
+  if (d.semanticRules.length > 0 && gate2.length === 0) return null; // a meaning rule nobody checked: never liftable
+  return budgetOverage(d.reasons);
+}
+type PurchaseDecision = (typeof t.purchases.$inferSelect)["decision"];
+
+async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "declined", liftsBudget: boolean) {
   const p = await getPurchase(db, purchaseId);
   if (!p) throw new ApprovalError(`unknown purchase ${purchaseId}`);
-  const allowed = result === "approved" ? ["needs_approval"] : ["needs_approval", "approved"];
+  const open = liftsBudget ? ["needs_approval", "refused"] : ["needs_approval"];
+  const allowed = result === "approved" ? open : [...open, "approved"];
   if (!allowed.includes(p.status)) throw new ApprovalError(`cannot ${result === "approved" ? "approve" : "decline"} a ${p.status} purchase`);
   if (result === "approved") {
     await db.update(t.purchases).set({ status: "approved" }).where(eq(t.purchases.id, purchaseId));
@@ -122,7 +140,7 @@ export async function expireStale(deps: Pick<Deps, "db" | "now">, familyId: stri
 
 export type PendingApproval = {
   id: string; subject: Subject; subjectId: string; expiresAt: Date; cartHash: string | null;
-  cart?: Cart; shopDomain?: string; note: string | null;
+  cart?: Cart; shopDomain?: string; note: string | null; liftsBudget: boolean;
 };
 
 export async function pendingApprovals(db: Db, familyId: string, at?: Date): Promise<PendingApproval[]> {
@@ -131,11 +149,12 @@ export async function pendingApprovals(db: Db, familyId: string, at?: Date): Pro
   const rows = await db.select().from(t.approvals).where(and(
     eq(t.approvals.familyId, familyId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now)));
   const out = await Promise.all(rows.map(async (a): Promise<PendingApproval | null> => {
-    const base = { id: a.id, subject: a.subject, subjectId: a.subjectId, expiresAt: a.expiresAt, cartHash: a.cartHash, note: a.note };
+    const base = { id: a.id, subject: a.subject, subjectId: a.subjectId, expiresAt: a.expiresAt, cartHash: a.cartHash, note: a.note, liftsBudget: a.liftsBudget };
     if (a.subject === "shop") return { ...base, shopDomain: a.subjectId };
     if (a.subject === "purchase") {
       const p = await getPurchase(db, a.subjectId);
-      return p?.status === "needs_approval" ? { ...base, cart: p.cart } : null; // already settled or refused
+      const waiting = p?.status === "needs_approval" || (a.liftsBudget && p?.status === "refused");
+      return waiting ? { ...base, cart: p.cart } : null; // already settled, or refused for good
     }
     return base;
   }));

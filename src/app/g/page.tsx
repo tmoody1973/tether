@@ -142,9 +142,14 @@ function NeedsYouRow({ item, zoe, hadRules }: { item: NeedsYou; zoe: string; had
   if (item.kind === "rules") {
     return (
       <li><Link href="/g/grant">
-        <span>{hadRules ? `${zoe}'s week has ended` : `${zoe} has no rules yet`}<small>Sign her rules so she can spend.</small></span>
+        <span>{hadRules ? `${zoe}'s week has ended` : `${zoe} has no rules yet`}
+          <small>{item.nudged ? `${zoe} nudged you to renew them. ` : ""}Sign her rules so she can spend.</small></span>
       </Link></li>
     );
+  }
+  if (item.kind === "message") {
+    // No button: her rules can't pay for it, and an approval never lifts a refusal. It's for a conversation.
+    return <li><span className="g-needs__note">{zoe} asked you about {item.note}<small>Her rules can&apos;t pay for this one this week, so nothing will be charged.</small></span></li>;
   }
   if (item.kind === "paypal") {
     return (

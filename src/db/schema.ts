@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, boolean, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type { Cart, Decision, Grant } from "@/engine/types";
@@ -23,6 +23,10 @@ export const families = pgTable("families", {
   commitmentCents: integer("commitment_cents").notNull().default(0),
   pendingCommitmentCents: integer("pending_commitment_cents"), // takes effect at the next week close
   alpacaAccountId: text("alpaca_account_id"), // the family's one investing account, created once and reused
+  // Zoe's latest nudge to Amara (demo clock). note null = "renew my rules"; text = she asked about something the rules can't pay for.
+  teenNudgeAt: ts("teen_nudge_at"),
+  teenNudgeNote: text("teen_nudge_note"),
+  teenSeenLevelAt: ts("teen_seen_level_at"), // the level change Zoe last tapped "Nice" on; a newer one shows the level-up moment
 });
 
 export const merchants = pgTable("merchants", {
@@ -85,6 +89,9 @@ export const approvals = pgTable("approvals", {
   decidedAt: ts("decided_at"),
   expiredAt: ts("expired_at"),
   note: text("note"),
+  // R40: Amara's yes may cover one over-budget cart, by at most over_cents past the week (set from the refusal she saw).
+  liftsBudget: boolean("lifts_budget").notNull().default(false),
+  overCents: integer("over_cents"),
 }, (a) => [uniqueIndex("approvals_one_open_uq").on(a.familyId, a.subject, a.subjectId)
   .where(sql`${a.result} is null and ${a.expiredAt} is null`)]);
 
