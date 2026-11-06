@@ -157,7 +157,7 @@ function Proof({ p, rec }: { p: RecordReceipt; rec: Reconciliation | "checking" 
   const check = checkWords(rec, p.captureId);
   return (
     <details className="g-proof">
-      <summary>Proof<span className="g-sr"> for {p.shop}, {formatDay(p.at)}</span></summary>
+      <summary>Proof<span className="g-sr"> for {formatCents(p.amountCents)} at {p.shop}, {formatDay(p.at)}</span></summary>
       <dl className="g-proofbox">
         <dt>PayPal ID</dt><dd><code>{p.captureId}</code></dd>
         <dt>Allowed by</dt><dd>Rules v{p.ruleVersion}, signed by you{p.amaraApproved && <>, and you approved it{p.approvalId && <> (<code>{p.approvalId}</code>)</>}</>}</dd>

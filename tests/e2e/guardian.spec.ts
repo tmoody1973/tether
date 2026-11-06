@@ -185,6 +185,7 @@ test("activity lists purchases in plain words, with the proof folded under each"
   await expect(row).toContainText("Target");
   await expect(row).toContainText("Within her rules");
   await expect(row.getByText(E2E.receiptCapture)).toBeHidden(); // folded until she asks
+  await expect(row.locator("summary")).toHaveText(/^Proof for \$6\.00 at Target, /); // its name says which payment
   await row.getByText("Proof").click();
   await expect(row.getByText(E2E.receiptCapture)).toBeVisible();
   await expect(row).toContainText("Rules v1, signed by you");
