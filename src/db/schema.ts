@@ -204,3 +204,11 @@ export const investments = pgTable("investments", {
   retryCount: integer("retry_count").notNull().default(0), // index of the latest retry order client id
   error: text("error"), // last Alpaca error when the outcome is unknown or the order was rejected
 });
+
+/** Real-time daily usage counters for the public demo key (R45): one row per family, kind and UTC day. */
+export const usage = pgTable("usage", {
+  familyId: text("family_id").notNull().references(() => families.id),
+  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask"] }).notNull(),
+  day: text("day").notNull(), // YYYY-MM-DD, real UTC date (never the demo clock)
+  count: integer("count").notNull().default(0),
+}, (u) => [primaryKey({ columns: [u.familyId, u.kind, u.day] })]);

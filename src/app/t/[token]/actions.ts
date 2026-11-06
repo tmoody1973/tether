@@ -5,6 +5,7 @@ import { runAgent } from "@/ai/agent";
 import { teenFromForm } from "@/auth/teen";
 import { getActiveGrant } from "@/db/repo";
 import { ledgerView } from "@/ledger/ledger";
+import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, type Proposed } from "@/flows/teen";
 import { ApprovalError } from "@/flows/approvals";
 import { cardOutcome, type CardKind } from "@/ui/teenWords";
@@ -35,6 +36,7 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
   if (mode !== "agent" && mode !== "link" && mode !== "search") return { cards: [] };
   const throttled = await shopThrottle(db, fam.id, mode);
   if (throttled) return { cards: [], error: throttled };
+  if (!(await takeDaily(db, fam.id, mode === "agent" ? "shop_agent" : "shop_lookup"))) return { cards: [], error: DAILY_CAP_MESSAGE };
   try {
     let items: { cart: NonNullable<ReturnType<typeof cartFor>>; reason?: string }[];
     if (mode === "agent") {
