@@ -107,7 +107,8 @@ describe("approvals", () => {
     const d = deps();
     const a = await requestApproval(d, familyId, "fund", "p1", "h");
     const b = await requestApproval(d, familyId, "fund", "p1", "h");
-    expect(b).toEqual(a);
+    expect(b).toEqual({ approvalId: a.approvalId, created: false }); // only the first opens one (and pushes)
+    expect(a.created).toBe(true);
   });
 
   it("deciding an expired approval throws", async () => {

@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { guardianHome } from "@/flows/home";
 import { requestView, type RequestView } from "@/flows/request";
 import { formatCents, formatDay } from "@/ui/grantWords";
+import { requestTitle as title } from "@/ui/approveWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "../../invest/FundFacts";
 import { decideRequestAction } from "../../actions";
@@ -50,14 +51,6 @@ function Closed() {
       <Link className="g-btn g-btn--ghost" href="/g">Back to home</Link>
     </div>
   );
-}
-
-function title(v: RequestView): string {
-  const zoe = v.teenName;
-  if (v.purchase) return `${zoe} is asking for ${formatCents(v.purchase.amountCents)} at ${v.purchase.shop}`;
-  if (v.investment) return `${zoe} proposes investing ${formatCents(v.investment.amountCents)} in ${v.investment.symbol}`;
-  if (v.fund) return `${zoe} proposes adding ${v.fund.symbol} to your fund list`;
-  return `${zoe} suggests a new shop: ${v.shop?.domain}`;
 }
 
 function approveLabel(v: RequestView): string {

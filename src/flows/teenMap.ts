@@ -8,6 +8,7 @@ import type { Constraint } from "@/engine/types";
 import { ApprovalError, normaliseDomain, proposeShop } from "@/flows/approvals";
 import { NO_LEVEL } from "@/flows/grant";
 import type { Deps } from "@/flows/purchase";
+import { tellAmara } from "@/flows/notify";
 
 export type TileKind = "open" | "ask" | "locked";
 /** opensAt: the level a locked shop opens at (null: it's open at her level, just not on her list). */
@@ -68,6 +69,7 @@ export async function suggestShop(deps: Deps, familyId: string, input: string, w
     or(isNull(t.merchants.addedByFamilyId), eq(t.merchants.addedByFamilyId, familyId))));
   const tile = known && tiles.find((x) => x.id === known.id);
   if (tile && tile.kind !== "locked") return { ok: false, error: "have" };
-  await proposeShop(deps, familyId, domain, reason);
+  const { approvalId, created } = await proposeShop(deps, familyId, domain, reason);
+  if (created) tellAmara(deps, familyId, approvalId);
   return { ok: true, domain };
 }

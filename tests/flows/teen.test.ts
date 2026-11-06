@@ -11,6 +11,7 @@ import { pendingApprovals } from "@/flows/approvals";
 import { askAmara, buy, markLevelSeen, nudge, proposeCarts, refusalSentence, shopThrottle, teenWeek, TeenError, THROTTLED } from "@/flows/teen";
 import type { Llm } from "@/ai/llm";
 import type { Deps } from "@/flows/purchase";
+import { pushedBody, recordNotify } from "./pushHelper";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -117,6 +118,29 @@ describe("shopping: propose, ask, buy", () => {
     expect(await askAmara(deps(), s.familyId, card.purchaseId, "mine broke")).toBe("request");
     expect(await pendingApprovals(db, s.familyId, NOW)).toEqual([expect.objectContaining({ subjectId: card.purchaseId, note: "mine broke" })]);
     expect((await teenWeek(db, s.familyId, NOW)).asks).toEqual([expect.objectContaining({ title: "Earbuds", status: "waiting" })]);
+  });
+
+  it("a request schedules exactly one push to Amara, in the request page's words; asking again doesn't push again", async () => {
+    const s = await seed();
+    const [card] = await proposeCarts(deps(), s.familyId, [{ cart: cart(s.bb, 800, "Earbuds") }]);
+    const r = recordNotify();
+    expect(await askAmara({ ...deps(), notify: r.notify }, s.familyId, card.purchaseId, "Mia's birthday")).toBe("request");
+    expect(await askAmara({ ...deps(), notify: r.notify }, s.familyId, card.purchaseId, "please")).toBe("request");
+    const [a] = await pendingApprovals(db, s.familyId, NOW);
+    expect(r.calls).toEqual([{ familyId: s.familyId, approvalId: a.id }]);
+    expect(await pushedBody(deps(), s.familyId, a.id)).toMatchObject({
+      headings: { en: "Tether" }, contents: { en: "Zoe is asking for $8.00 at Best Buy" }, url: `https://tether.example/g/requests/${a.id}`,
+    });
+  });
+
+  it("a push that throws never fails the ask; a note (not a request) pushes nothing", async () => {
+    const s = await seed();
+    const [need, refused] = await proposeCarts(deps(), s.familyId, [{ cart: cart(s.bb, 800) }, { cart: cart(s.tgt, 2500) }]);
+    const boom = () => { throw new Error("push down"); };
+    expect(await askAmara({ ...deps(), notify: boom }, s.familyId, need.purchaseId, null)).toBe("request");
+    const r = recordNotify();
+    expect(await askAmara({ ...deps(), notify: r.notify }, s.familyId, refused.purchaseId, "falling apart")).toBe("message");
+    expect(r.calls).toEqual([]);
   });
 
   it("ask on a refused cart tells Amara, without a button (approval never lifts a refusal)", async () => {

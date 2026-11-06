@@ -1,5 +1,6 @@
 import { CASH_HELD_LABEL, NEEDS_REVIEW_LABEL, QUEUED_LABEL } from "@/engine/invest";
 import type { ApproveCode } from "@/flows/approve";
+import type { RequestView } from "@/flows/request";
 import { formatCents } from "@/ui/grantWords";
 
 export interface ApproveFlash { text: string; warn?: boolean; connectPaypal?: boolean }
@@ -27,4 +28,13 @@ export function approveWords(code: ApproveCode, teen: string, paid?: { amountCen
     case "shop": return { text: `Approved. ${teen} can now use that shop.` };
     case "shop-later": return { text: `Approved. The shop goes into ${teen}'s rules when you next sign them.` };
   }
+}
+
+/** One request in a sentence: the request page's title and the push Amara gets for it. */
+export function requestTitle(v: Pick<RequestView, "teenName" | "purchase" | "investment" | "fund" | "shop">): string {
+  const zoe = v.teenName;
+  if (v.purchase) return `${zoe} is asking for ${formatCents(v.purchase.amountCents)} at ${v.purchase.shop}`;
+  if (v.investment) return `${zoe} proposes investing ${formatCents(v.investment.amountCents)} in ${v.investment.symbol}`;
+  if (v.fund) return `${zoe} proposes adding ${v.fund.symbol} to your fund list`;
+  return `${zoe} suggests a new shop: ${v.shop?.domain}`;
 }

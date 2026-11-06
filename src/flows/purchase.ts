@@ -1,4 +1,5 @@
 import { and, eq, isNotNull } from "drizzle-orm";
+import type { Notify } from "@/flows/notify";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import {
@@ -28,6 +29,8 @@ export type Deps = {
   now: (familyId: string, conn?: Db) => Promise<Date>;
   /** REAL wall-clock ms (default Date.now). PayPal's 6-hour request-id window runs on real time, never the demo clock. */
   realNow?: () => number;
+  /** Tells Amara about a new request after the response (push). Absent ⇒ push is off. */
+  notify?: Notify;
 };
 
 const realNow = (deps: Pick<Deps, "realNow">): number => (deps.realNow ?? Date.now)();

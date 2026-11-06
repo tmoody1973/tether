@@ -11,6 +11,7 @@ import type { Product } from "@/adapters/channel3/client";
 import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { monthReviewView, reviewWeeks } from "@/flows/month";
 import { proposePurchase, settlePurchase, type Deps, type SettleResult } from "@/flows/purchase";
+import { tellAmara } from "@/flows/notify";
 import { formatCents } from "@/ui/grantWords";
 import { explainRefusal, type ExplainCtx, type Explanation } from "@/ai/explain";
 import type { Llm } from "@/ai/llm";
@@ -221,13 +222,14 @@ export const askable = (p: Pick<PurchaseRow, "status" | "decision">): "request" 
  * Ask Amara. A cart that needs her OK, or is over this week's budget and nothing else (R40), becomes a real request
  * scoped to that cart (F9). Any other refusal can't be approved by anyone, so she is told about it instead: a note.
  */
-export async function askAmara(deps: Pick<Deps, "db" | "now">, familyId: string, purchaseId: string, reason: string | null): Promise<"request" | "message"> {
+export async function askAmara(deps: Pick<Deps, "db" | "now" | "notify">, familyId: string, purchaseId: string, reason: string | null): Promise<"request" | "message"> {
   const p = await own(deps.db, familyId, purchaseId);
   const g = await getActiveGrant(deps.db, familyId);
   if (!g || g.expiresAt <= await deps.now(familyId)) throw new TeenError("rules are not in force");
   const kind = askable(p);
   if (kind === "request") {
-    await requestApproval(deps, familyId, "purchase", p.id, p.cartHash, reason);
+    const { approvalId, created } = await requestApproval(deps, familyId, "purchase", p.id, p.cartHash, reason);
+    if (created) tellAmara(deps, familyId, approvalId);
     return "request";
   }
   if (kind !== "message") throw new TeenError(`purchase is ${p.status}`);

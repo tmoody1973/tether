@@ -35,7 +35,7 @@ export function normaliseDomain(input: string): string {
 
 export async function requestApproval(
   deps: Pick<Deps, "db" | "now">, familyId: string, subject: Subject, subjectId: string, cartHash: string | null, note: string | null = null,
-): Promise<{ approvalId: string }> {
+): Promise<{ approvalId: string; created: boolean }> {
   const { db } = deps;
   await expireStale(deps, familyId);
   const now = await deps.now(familyId);
@@ -52,15 +52,15 @@ export async function requestApproval(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subject, subject), eq(t.approvals.subjectId, subjectId),
     isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now))).limit(1);
   const [existing] = await find();
-  if (existing) return { approvalId: existing.id };
+  if (existing) return { approvalId: existing.id, created: false };
   const expiresAt = new Date(Math.min(now.getTime() + DAY_MS, weekEnd(now).getTime()));
   const approvalId = crypto.randomUUID();
   const ins = await db.insert(t.approvals).values({ id: approvalId, familyId, subject, subjectId, cartHash, expiresAt, note, ...lift })
     .onConflictDoNothing().returning({ id: t.approvals.id });
-  if (ins.length) return { approvalId };
+  if (ins.length) return { approvalId, created: true };
   const [raced] = await find(); // lost a race to the one-open-approval index
   if (!raced) throw new ApprovalError("could not open approval");
-  return { approvalId: raced.id };
+  return { approvalId: raced.id, created: false };
 }
 
 /** `familyId`, when given (every guardian surface gives it), must own the approval: another family's id is "unknown". */
