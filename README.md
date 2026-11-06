@@ -47,6 +47,8 @@ The demo is one shared family. **Reset demo** (in Amara's demo box) puts it back
 | **PayPal Orders v2** | Each approved cart is one order, charged to the vaulted wallet. Completes in one call, no separate capture. |
 | **PayPal Webhooks** | Payment events reconcile Tether's ledger with PayPal. |
 | **PayPal Agent Toolkit** (`@paypal/agent-toolkit`) | Read-only: only `list_transactions` is exposed, wrapped so the model sees only this family's rows (date, amount, status). |
+
+Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
 | **Claude** (`claude-haiku-5-5` via the Vercel AI SDK) | The propose-only shopping agent, the "is it a book?" check, plain-English refusal sentences, fund descriptions, and the month assistant. Every model output is validated, with a code fallback. |
 | **Channel3** | Product search scoped to the parent's allowed shops; turns a pasted link into a real cart. |
 | **Alpaca Broker API** (sandbox) | Investing: account, deposit, dollar-amount orders; market search and price history. |
