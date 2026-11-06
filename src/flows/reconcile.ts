@@ -9,6 +9,8 @@ const DAY_MS = 86_400_000;
 // ponytail: one 31-day search (Transaction Search's widest range) from the month's first slip; a month whose slips
 // span more than 31 real days would miss late rows — split into several searches if that ever happens.
 const MAX_WINDOW_MS = 31 * DAY_MS;
+/** PayPal T-code groups that give a payment back: T11 reversals and refunds, T12 chargebacks. */
+const UNDO_CODE = /^T1[12]\d\d$/;
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export type ReconFlag =
@@ -62,7 +64,9 @@ export async function reconcileMonth(
   const captures = new Set(receipts.map((r) => r.captureId));
   const undone = new Set([
     ...rows.filter((r) => r.status === "V").map((r) => r.id),
-    ...rows.filter((r) => r.amountCents < 0 && r.referenceId).map((r) => r.referenceId as string),
+    // Only reversal/refund/chargeback T-codes (T11xx, T12xx) undo a payment. Other negative rows that reference a
+    // capture, like the sandbox's automatic T2002 sweep to a partner account, move money on and refund nothing.
+    ...rows.filter((r) => r.amountCents < 0 && r.referenceId && UNDO_CODE.test(r.eventCode ?? "")).map((r) => r.referenceId as string),
   ]);
 
   const flags: ReconFlag[] = [
