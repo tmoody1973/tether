@@ -4,6 +4,7 @@ import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
 import { approvalShort, formatCents, formatDay, grantClause, matchWords } from "@/ui/grantWords";
+import { editDraft, type Draft } from "@/ui/rulesDraft";
 import { setLevelAction, signGrantAction, type LevelState, type SignState } from "../actions";
 
 const FLOORS = [10, 15, 20, 25, 50];
@@ -23,22 +24,25 @@ type Confirm = "sign" | "level" | "saving" | null;
 
 /** Zoe's rules, in Amara's order (mockup `rules` view). The clause is the same plain code her rules are signed from. */
 export function GrantEditor(p: GrantEditorProps) {
-  const [level, setLevelState] = useState<Level>(p.currentLevel ?? 1);
-  const [floorPct, setFloorState] = useState(FLOORS.includes(p.floorPct) ? p.floorPct : 10);
-  const [matchPct, setMatchState] = useState(MATCHES.includes(p.matchPct) ? p.matchPct : 100);
+  const signed: Draft = {
+    level: p.currentLevel ?? 1,
+    floorPct: FLOORS.includes(p.floorPct) ? p.floorPct : 10,
+    matchPct: MATCHES.includes(p.matchPct) ? p.matchPct : 100,
+  };
+  const [draft, setDraft] = useState<Draft>(signed);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [signState, signAction, signing] = useActionState<SignState, FormData>(signGrantAction, {});
   const [levelState, levelAction, moving] = useActionState<LevelState, FormData>(setLevelAction, {});
-  const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setConfirm(null); };
-  const setLevel = edit(setLevelState), setFloor = edit(setFloorState), setMatch = edit(setMatchState);
+  // In force, a level pick and a saving change never mix (editDraft): the preview is what the next button signs.
+  const edit = (change: Partial<Draft>) => { setDraft((d) => editDraft(signed, d, change, p.inForce)); setConfirm(null); };
+  const setLevel = (level: Level) => edit({ level }), setFloor = (floorPct: number) => edit({ floorPct }), setMatch = (matchPct: number) => edit({ matchPct });
+  const { level, floorPct, matchPct } = draft;
 
   const zoe = p.teenName;
   const cur = p.currentLevel;
   const levelChanged = cur !== null && level !== cur;
-  const savingChanged = floorPct !== p.floorPct || matchPct !== p.matchPct;
+  const savingChanged = floorPct !== signed.floorPct || matchPct !== signed.matchPct;
   const expires = new Date(p.expiresAt);
-  // The level whose money the saving amounts are counted from: in force, the saving form re-signs at her current level.
-  const savingLevel: Level = p.inForce && cur ? cur : level;
   const unchanged = p.inForce && !levelChanged && !savingChanged;
   const clause = grantClause({
     teenName: zoe, level, shops: p.shops[level], floorPct, matchPct,
@@ -67,7 +71,7 @@ export function GrantEditor(p: GrantEditorProps) {
       <div className="g-def">
         <label className="g-def__k" htmlFor="floorPct">{zoe} saves at least</label><span className="g-def__lead" />
         <select id="floorPct" name="floorPct" form={signForm} className="g-select" value={floorPct} onChange={(e) => setFloor(Number(e.target.value))}>
-          {FLOORS.map((f) => <option key={f} value={f}>{formatCents(commitmentFloorCents(LEVELS[savingLevel].weeklyCents, f))} a week ({f}%)</option>)}
+          {FLOORS.map((f) => <option key={f} value={f}>{formatCents(commitmentFloorCents(LEVELS[level].weeklyCents, f))} a week ({f}%)</option>)}
         </select>
       </div>
       <div className="g-def">
@@ -144,7 +148,7 @@ export function GrantEditor(p: GrantEditorProps) {
               ) : (
                 <div role="group" aria-label="Confirm saving change" className="g-confirm" style={{ marginTop: 10 }}>
                   <p style={{ marginBottom: 10, fontWeight: 600 }}>
-                    This re-signs her rules for a new week: they start now and end {formatDay(expires)}.
+                    This re-signs her rules for a new week at Level {cur}: they start now and end {formatDay(expires)}.
                   </p>
                   <div className="g-btnrow">
                     <button type="submit" className="g-btn" disabled={signing} autoFocus>{signing ? "Signing…" : "Yes, re-sign"}</button>
