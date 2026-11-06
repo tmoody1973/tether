@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { eq, or, sql } from "drizzle-orm";
 import * as t from "@/db/schema";
-import { getActiveGrant, getFamily, insertFamily, saveVault } from "@/db/repo";
+import { ARCHIVED_PREFIX, getActiveGrant, getFamily, insertFamily, saveVault } from "@/db/repo";
 import { setNow } from "@/clock/clock";
 import { weekRecords } from "@/ledger/ledger";
 import { AlpacaError, type AlpacaBroker } from "@/adapters/alpaca/broker";
@@ -154,7 +154,7 @@ async function archiveEarlier(deps: SeedDeps, keys: DemoKeys): Promise<string | 
   for (const f of rows) {
     await deps.db.update(t.families).set({
       name: `${f.name} (archived)`, demo: null,
-      guardianToken: `archived-${randomBytes(24).toString("base64url")}`, teenToken: `archived-${randomBytes(24).toString("base64url")}`,
+      guardianToken: `${ARCHIVED_PREFIX}${randomBytes(24).toString("base64url")}`, teenToken: `${ARCHIVED_PREFIX}${randomBytes(24).toString("base64url")}`,
     }).where(eq(t.families.id, f.id));
     deps.log?.(`archived earlier demo family ${short(f.id)} (its records stay)`);
   }

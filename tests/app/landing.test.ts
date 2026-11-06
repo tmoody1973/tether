@@ -15,13 +15,13 @@ describe("landing page (Task 19)", () => {
     expect(on).toContain("A parent signs the rules. An AI agent proposes. Code decides. PayPal pays.");
     expect(on).toContain('href="/g/enter/demo%20key%2F1"');
     expect(on).toContain("Open Amara&#x27;s view");
-    expect(on).toContain('href="/t/teen-token-1"');
-    expect(on).toContain("Sandbox demo — no real money moves.");
+    expect(on).toContain('href="/t/enter"'); // freshens a stale demo, then her week (R44)
+    expect(on).toContain("Sandbox only; no real money moves.");
 
     vi.stubEnv("DEMO_TEEN_TOKEN", "");
     const off = render();
     expect(off).not.toContain("/g/enter/");
     expect(off).not.toContain("Open Zoe");
-    expect(off).toContain("Sandbox demo — no real money moves."); // the page still renders, without an error
+    expect(off).toContain("Sandbox only; no real money moves."); // the page still renders, without an error
   });
 });

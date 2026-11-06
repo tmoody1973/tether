@@ -72,8 +72,9 @@ export async function resetDemoAction(): Promise<void> {
   if (!g) redirect("/g");
   let needsPaypal: boolean;
   try {
-    ({ needsPaypal } = await resetDemo(paymentDeps(g.deps.db), g.familyId,
-      { guardianKey: process.env.DEMO_GUARDIAN_KEY, teenToken: process.env.DEMO_TEEN_TOKEN }));
+    const r = await resetDemo(paymentDeps(g.deps.db), g.familyId,
+      { guardianKey: process.env.DEMO_GUARDIAN_KEY, teenToken: process.env.DEMO_TEEN_TOKEN });
+    needsPaypal = r?.needsPaypal ?? false; // null only with ifStaleMs, which this button never passes
   } catch (err) {
     if (!(err instanceof DemoResetError)) throw err;
     redirect("/g");

@@ -150,7 +150,8 @@ function PaymentRow({ p }: { p: RecordReceipt }) {
     <>
       <tr className="g-row--main">
         <td>{formatWhen(p.at)}</td>
-        <td><b>{p.shop}</b><Money cents={p.amountCents} />{p.status === "paying" && <> · <span className="g-chip">Paying…</span></>}</td>
+        <td><b>{p.shop}</b><Money cents={p.amountCents} />{p.status === "paying" && <> · <span className="g-chip">Paying…</span></>}
+          {p.setAside && <span className="g-note" style={{ display: "block" }}>Set aside by a demo reset — not counted</span>}</td>
         <td>{p.amaraApproved ? <>You approved it · Rules v{p.ruleVersion}</> : <>Within Rules v{p.ruleVersion}</>}</td>
         <td className="g-proof"><span className="g-muted">PayPal capture</span><br /><code>{p.captureId}</code></td>
       </tr>

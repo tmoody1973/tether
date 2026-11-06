@@ -78,8 +78,7 @@ async function Review({ searchParams }: { searchParams: Promise<Record<string, s
                 = <Money cents={v.release.savedCents + v.release.matchCents} />
               </div>
               <p className="g-card__sub">
-                Send it to {zoe} yourself — Venmo, PayPal or cash. Tether doesn&apos;t move this money. When you&apos;ve sent it, tap below;
-                the record will say you confirmed it, because Tether can&apos;t see it move.
+                Send it to {zoe} yourself — Venmo, PayPal or cash — then tap below.
               </p>
               <div style={{ marginTop: 8 }}><Seam kinds={["release"]} /></div>
               <form action={confirmReleaseAction} style={{ marginTop: 12 }}>

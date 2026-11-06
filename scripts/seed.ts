@@ -43,4 +43,8 @@ async function main() {
   }
 }
 
-main().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err);
+  console.error("Re-run the seed to finish setting up the demo family.");
+  process.exit(1);
+});

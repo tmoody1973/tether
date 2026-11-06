@@ -3,5 +3,6 @@ export function demoLinks(env: NodeJS.ProcessEnv = process.env): { amara: string
   const key = env.DEMO_GUARDIAN_KEY?.trim();
   const token = env.DEMO_TEEN_TOKEN?.trim();
   if (!key || !token) return null;
-  return { amara: `/g/enter/${encodeURIComponent(key)}`, zoe: `/t/${encodeURIComponent(token)}` };
+  // Zoe's door is /t/enter: it freshens a stale demo first (R44), then sends her to her week.
+  return { amara: `/g/enter/${encodeURIComponent(key)}`, zoe: "/t/enter" };
 }

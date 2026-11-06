@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { createDb, migrateDb, type Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, insertFamily } from "@/db/repo";
@@ -11,9 +11,12 @@ import { approveAndSettle, type ApproveDeps } from "@/flows/approve";
 import { advanceDemoClock } from "@/flows/demo";
 import { resetTeenLink, revoke } from "@/flows/grant";
 import { guardianHome } from "@/flows/home";
-import { DemoResetError, resetDemo } from "@/flows/reset";
+import { DEMO_STALE_MS, DemoResetError, freshenDemoIfStale, resetDemo } from "@/flows/reset";
 import { DEMO_COMMITMENT_CENTS, DEMO_NOW, seedDemo, type SeedResult } from "@/flows/seed";
 import { ledgerView } from "@/ledger/ledger";
+import { appendJournal, insertPurchase, receiptsForMonth } from "@/db/repo";
+import { recordRow } from "@/ai/monthAssistant";
+import { confirmRelease } from "@/flows/month";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -111,7 +114,8 @@ describe("resetDemo (Task 19, R43)", () => {
   it("reset restores level 2, pending approvals cleared, teen token unchanged", async () => {
     const { r, keys } = await seeded();
     const fam = r.familyId;
-    const spentBefore = (await ledgerView(db, fam, await clockNow(db, fam))).spentThisWeekCents;
+    const before = await ledgerView(db, fam, await clockNow(db, fam));
+    const spentBefore = before.spentThisWeekCents;
     const receiptsBefore = (await db.select().from(t.receipts)).length;
 
     // A judge plays: approves the over-budget ask (a real charge), resets Zoe's link, jumps to month end (Level 3).
@@ -133,6 +137,18 @@ describe("resetDemo (Task 19, R43)", () => {
     expect((await clockNow(db, fam)).getTime() - DEMO_NOW.getTime()).toBeLessThan(60_000);
     // The judge's PayPal charge stays on the record, but no longer counts toward Zoe's week.
     expect((await db.select().from(t.receipts)).length).toBe(receiptsBefore + 1);
+    const after = await ledgerView(db, fam, await clockNow(db, fam));
+    expect(after.spentThisWeekCents).toBe(spentBefore);
+    expect(after.savingsCents).toBe(before.savingsCents);
+    expect(await db.select().from(t.releases).where(eq(t.releases.familyId, fam))).toHaveLength(0); // the unconfirmed one
+    // R44: the record labels it, and the month assistant is told it doesn't count.
+    const dec = await receiptsForMonth(db, fam, "2026-12");
+    const judged = dec.find((x) => x.approvalId === ask.id)!;
+    expect(judged.setAside).toBe(true);
+    expect(recordRow(judged).countsTowardBudget).toBe(false);
+    expect(dec.filter((x) => x.setAside)).toHaveLength(1);
+    // A reversal of that set-aside spend, written after the reset, can't count on its own (R44 Q5).
+    await appendJournal(db, { familyId: fam, kind: "spend_reversal", amountCents: judged.amountCents, ref: judged.purchaseId, at: await clockNow(db, fam), note: null });
     expect((await ledgerView(db, fam, await clockNow(db, fam))).spentThisWeekCents).toBe(spentBefore);
     // And the on-camera promotion works again.
     expect((await advanceDemoClock(d(), fam, "endOfMonth")).review?.action).toBe("PROMOTE");
@@ -154,4 +170,69 @@ describe("resetDemo (Task 19, R43)", () => {
     await expect(resetDemo(d(), r.familyId, { guardianKey: "some-other-key", teenToken: keys.teenToken })).rejects.toThrow(DemoResetError);
     await expect(resetDemo(d(), r.familyId, {})).rejects.toThrow(DemoResetError);
   });
+
+  it("a confirmed release survives a reset; an unconfirmed one doesn't", async () => {
+    const { r, keys } = await seeded();
+    const { review } = await advanceDemoClock(d(), r.familyId, "endOfMonth");
+    await confirmRelease(d(), review!.release!.releaseId, r.familyId);
+    await resetDemo(d(), r.familyId, keys);
+    const rows = await db.select().from(t.releases).where(eq(t.releases.familyId, r.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].confirmedAt).not.toBeNull();
+  });
+
+  it("a shop first used after the seed is a first-time shop again after a reset", async () => {
+    const { r, keys } = await seeded();
+    const at = await clockNow(db, r.familyId);
+    const cart = { merchantId: "m_barnesandnoble", items: [{ sku: "b", title: "Book", qty: 1, unitCents: 500 }], totalCents: 500 };
+    const p = await insertPurchase(db, { familyId: r.familyId, cart, cartHash: "h", status: "paid", decision: { outcome: "ALLOW", reasons: [], semanticRules: [] } });
+    await appendJournal(db, { familyId: r.familyId, kind: "spend", amountCents: 500, ref: p.id, at, note: null });
+    expect((await ledgerView(db, r.familyId, at)).merchantsUsed.has("m_barnesandnoble")).toBe(true);
+    await resetDemo(d(), r.familyId, keys);
+    expect((await ledgerView(db, r.familyId, at)).merchantsUsed.has("m_barnesandnoble")).toBe(false);
+  });
 });
+
+describe("freshenDemoIfStale (R44)", () => {
+  const version = async (familyId: string) => (await getActiveGrant(db, familyId))!.version;
+  /** Pretend the last reset happened `ms` ago in real time (DB clock), without touching the seed's own window start. */
+  const lastResetAgo = async (familyId: string, keys: { guardianKey: string; teenToken: string }, ms: number) => {
+    await resetDemo(d(), familyId, keys);
+    await db.update(t.families).set({ ledgerVoidTo: sql`now() - ${ms} * interval '1 millisecond'` }).where(eq(t.families.id, familyId));
+  };
+
+  it("an entry within 6 hours of the last seed or reset changes nothing, so a judge's level-up survives", async () => {
+    const { r, keys } = await seeded();
+    expect((await advanceDemoClock(d(), r.familyId, "endOfMonth")).review?.action).toBe("PROMOTE");
+    const v = await version(r.familyId);
+    expect(await freshenDemoIfStale(d(), keys)).toBe(false);
+    expect(await version(r.familyId)).toBe(v);
+    expect((await getActiveGrant(db, r.familyId))!.level).toBe(3);
+  });
+
+  it("an entry more than 6 hours after the last reset resets the demo", async () => {
+    const { r, keys } = await seeded();
+    await lastResetAgo(r.familyId, keys, DEMO_STALE_MS + 60_000);
+    expect((await advanceDemoClock(d(), r.familyId, "endOfMonth")).review?.action).toBe("PROMOTE");
+    expect(await freshenDemoIfStale(d(), keys)).toBe(true);
+    expect((await getActiveGrant(db, r.familyId))!.level).toBe(2);
+    expect((await clockNow(db, r.familyId)).getTime() - DEMO_NOW.getTime()).toBeLessThan(60_000);
+    expect(await freshenDemoIfStale(d(), keys)).toBe(false); // fresh again
+  });
+
+  it("two concurrent entries reset once", async () => {
+    const { r, keys } = await seeded();
+    await lastResetAgo(r.familyId, keys, DEMO_STALE_MS + 60_000);
+    const v = await version(r.familyId);
+    const results = await Promise.all([freshenDemoIfStale(d(), keys), freshenDemoIfStale(d(), keys)]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await version(r.familyId)).toBe(v + 1);
+  });
+
+  it("only the demo keys can freshen", async () => {
+    await seeded();
+    expect(await freshenDemoIfStale(d(), { guardianKey: "nobody", teenToken: "nobody" })).toBe(false);
+    expect(await freshenDemoIfStale(d(), {})).toBe(false);
+  });
+});
+

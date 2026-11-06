@@ -16,10 +16,16 @@ export function weekKey(d: Date): string {
 
 /**
  * Journal rows that count. A demo reset (Task 19) voids the rows written (real time) between the seed and the reset:
- * they stay on the record, append-only, but no longer count toward a week, the budget or savings.
+ * they stay on the record, append-only, but no longer count toward a week, the budget or savings. A reversal is
+ * judged by the row it reverses (same ref), so undoing a set-aside spend can't count on its own (R44).
  */
-export const counted = sql`not exists (select 1 from families f where f.id = ${t.journal.familyId}
-  and ${t.journal.createdAt} > f.ledger_void_from and ${t.journal.createdAt} <= f.ledger_void_to)`;
+// ponytail: a correlated lookup per journal row; fine at family scale, index journal(family_id, ref) if it ever isn't.
+export const counted = sql`not exists (select 1 from families f, lateral (select coalesce(
+    (select o.created_at from journal o where o.family_id = ${t.journal.familyId} and o.ref = ${t.journal.ref}
+      and o.kind = case ${t.journal.kind} when 'spend_reversal' then 'spend' when 'invest_reversal' then 'invest' end
+      order by o.created_at limit 1),
+    ${t.journal.createdAt}) as written) w
+  where f.id = ${t.journal.familyId} and w.written > f.ledger_void_from and w.written <= f.ledger_void_to)`;
 
 type Entry = { at: Date; kind: (typeof t.journalKinds)[number]; amountCents: number };
 
@@ -40,9 +46,11 @@ export async function savingsCents(db: Db, familyId: string): Promise<Cents> {
   return sum(await entries(db, familyId), SAVINGS_SIGN);
 }
 
+/** Shops she has bought from: paid purchases whose spend counts (a demo reset brings "first time here" back). */
 async function merchantsUsed(db: Db, familyId: string): Promise<Set<string>> {
   const rows = await db.select({ cart: t.purchases.cart }).from(t.purchases)
-    .where(and(eq(t.purchases.familyId, familyId), eq(t.purchases.status, "paid")));
+    .leftJoin(t.journal, and(eq(t.journal.kind, "spend"), eq(t.journal.ref, t.purchases.id)))
+    .where(and(eq(t.purchases.familyId, familyId), eq(t.purchases.status, "paid"), counted)); // no spend row ⇒ counts
   return new Set(rows.map((r) => r.cart.merchantId));
 }
 

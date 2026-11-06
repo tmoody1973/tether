@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import * as t from "./schema";
+import { counted } from "@/ledger/ledger";
 
 type Row<T extends { $inferSelect: unknown }> = T["$inferSelect"];
 const id = () => crypto.randomUUID();
@@ -9,6 +10,8 @@ const plain = <T extends object>(r: T): T => ({ ...r });
 const one = <T extends object>(rows: T[]): T | null => (rows[0] ? plain(rows[0]) : null);
 
 export type Family = Row<typeof t.families>;
+/** Key prefix of a demo family a re-seed archived: its records stay, its old guardian cookies count as signed out. */
+export const ARCHIVED_PREFIX = "archived-";
 export type GrantRow = Row<typeof t.grants>;
 export type PurchaseRow = Row<typeof t.purchases>;
 export type PurchaseStatus = PurchaseRow["status"];
@@ -132,11 +135,13 @@ export async function getValidApproval(
 export interface MonthReceipt {
   at: Date; shop: string; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
   purchaseId: string; captureId: string; grantId: string; cartHash: string; approvalId: string | null;
+  /** Set aside by a demo reset: still a real PayPal charge on the record, but it counts in no total (R44). */
+  setAside: boolean;
 }
 
 /** One family's receipts whose capture time falls in `month` ('YYYY-MM', UTC), oldest first. Family always comes from the caller. */
 export async function receiptsForMonth(db: Db, familyId: string, month: string): Promise<MonthReceipt[]> {
-  const rows = await db.select({ r: t.receipts, p: t.purchases, m: t.merchants, a: t.approvals, j: t.journal })
+  const rows = await db.select({ r: t.receipts, p: t.purchases, m: t.merchants, a: t.approvals, j: t.journal, counts: sql<boolean>`${counted}` })
     .from(t.receipts)
     .innerJoin(t.purchases, eq(t.purchases.id, t.receipts.purchaseId))
     .leftJoin(t.merchants, eq(t.merchants.id, sql`${t.purchases.cart}->>'merchantId'`))
@@ -147,10 +152,11 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
   const dated = rows.map((row) => ({ ...row, at: row.j?.at ?? row.r.createdAt }));
   return dated.filter(({ at }) => at.toISOString().startsWith(month))
     .sort((x, y) => x.at.getTime() - y.at.getTime())
-    .map(({ r, p, m, a, at }) => ({
+    .map(({ r, p, m, a, at, counts }) => ({
       at, shop: m?.name ?? "unknown shop", amountCents: p.cart.totalCents,
       status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
       purchaseId: p.id, captureId: r.captureId, grantId: r.grantId, cartHash: r.cartHash, approvalId: r.approvalId,
+      setAside: !counts,
     }));
 }
 

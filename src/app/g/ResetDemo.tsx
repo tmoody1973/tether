@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PendingButton } from "@/ui/PendingButton";
 import { resetDemoAction } from "./actions";
 
 /** Reset demo (D11), with a confirm step: puts the shared demo family back as it was set up. */
@@ -20,7 +21,7 @@ export function ResetDemo() {
         on the record but stop counting toward this week.
       </p>
       <div className="g-btnrow">
-        <button type="submit" className="g-btn" autoFocus>Yes, reset the demo</button>
+        <PendingButton label="Yes, reset the demo" pendingLabel="Resetting…" className="g-btn" />
         <button type="button" className="g-btn g-btn--ghost" onClick={() => setConfirming(false)}>Keep it</button>
       </div>
     </form>

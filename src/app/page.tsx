@@ -1,7 +1,7 @@
 import Image from "next/image";
 import "@/ui/tokens.css";
 import "./landing.css";
-import { SEAMS, Seam } from "@/ui/Seam";
+import { Seam } from "@/ui/Seam";
 import { demoLinks } from "./demoLinks";
 
 const REPO_URL = "https://github.com/tmoody1973/tether";
@@ -37,7 +37,7 @@ export default function Landing() {
               <a className="l-btn l-btn--secondary" href={links.zoe}>Open Zoe&apos;s view</a>
             </div>
           )}
-          <Seam center>Sandbox demo — no real money moves. {SEAMS.family}</Seam>
+          <Seam center kinds={["sandbox", "family"]} />
         </section>
 
         <section className="l-band" aria-label="How it works">
