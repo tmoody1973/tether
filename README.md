@@ -16,14 +16,15 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 **Live app:** https://tether-five-beta.vercel.app (sandbox only, no real money moves)
 **Demo video:** _link coming with the submission_
 
-## Try it in three minutes
+## Try it in five minutes
 
 1. Open https://tether-five-beta.vercel.app and click **Open Zoe's view**. Her week shows one number: what she has left. Go to **Shop**, ask for something ("headphones under $30"). The AI agent searches only her allowed shops and labels every card *Fits your week*, *Needs Amara's OK* or *Over budget*. Open an over-budget card to see the amber refusal sentence and its two ways forward.
-2. Back on the landing page, click **Open Amara's view**. "Needs you" holds Zoe's over-budget ask. Open it: the budget consequence comes first. Tap **Approve**: Tether checks the cart against the signed rules again, mints a single-use permission slip and charges Amara's saved sandbox PayPal. The receipt, its PayPal capture id and the rules it ran under are in **Record**.
-3. In Amara's view, press **Advance to end of month** in the demo box. Zoe kept her savings promise four weeks running, so the review moves her to Level 3 and offers the savings release. At Level 3 Zoe can search the whole market, read a facts-only fund page and propose an investment; Amara approves and Tether places a sandbox Alpaca order.
-4. Ask the month assistant on Amara's Record page: "How much did Zoe spend this month?"
+2. Back on the landing page, click **Open Amara's view**. **Home** shows what needs her: Zoe's over-budget ask. Open it: the budget consequence comes first. Tap **Approve**: Tether checks the cart against the signed rules again, mints a single-use permission slip and charges Amara's saved sandbox PayPal. In **Activity**, open **Proof** on that payment for its PayPal capture id, the permission slip and the rules version it ran under.
+3. In **Zoe's rules**, search for a shop (try "Lego") and add it, or remove one. Each change asks once, then applies at once as a new rules version. Zoe can also search for a shop and ask Amara for it.
+4. Ask the month assistant on **Home**: "What did Zoe buy this month?" It reads PayPal's transaction list and Tether's receipts, and can't move money.
+5. Open **Demo controls** at the bottom of Home and press **Advance to end of month**. Zoe kept her savings promise four weeks running, so the check-in in **Activity** moves her to Level 3 and offers the savings release. At Level 3 Zoe can search the whole market, read a facts-only fund page and propose an investment; Amara approves and Tether places a sandbox Alpaca order.
 
-The demo is one shared family. **Reset demo** (in Amara's demo box) puts it back, and it also resets itself when someone arrives more than 6 hours after the last reset. Dates are on a demo clock set to late December 2026 so a month fits in a few clicks; the screen says so.
+The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home) puts it back, and it also resets itself when someone arrives more than 6 hours after the last reset. Dates are on a demo clock set to late December 2026 so a month fits in a few clicks; the screen says so.
 
 ---
 
