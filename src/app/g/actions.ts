@@ -155,7 +155,9 @@ export async function revokeAction(): Promise<void> {
 
 // ---- Zoe's shops (the Shops section on Zoe's rules page). No AI: Channel3 website search and plain rules. ----
 
-export type ShopSearchState = { query?: string; selling?: FoundSite[]; named?: FoundSite[]; note?: string; error?: string };
+export type ShopSearchState = {
+  query?: string; selling?: FoundSite[]; named?: FoundSite[]; sellsTimedOut?: true; note?: string; error?: string;
+};
 export type ShopChangeState = { done?: string; error?: string };
 
 /** "Add a shop": Channel3 website search, counted against the family's daily cap before Channel3 is called. */
@@ -166,8 +168,9 @@ export async function searchShopsAction(_prev: ShopSearchState, form: FormData):
   try {
     const r = await searchShopSites({ ...g.deps, channel3: paymentDeps(g.deps.db).channel3 }, g.familyId, query, "shop_sites");
     if (!r.ok) return { query, error: r.error === "cap" ? DAILY_CAP_MESSAGE : SHOP_QUERY_WORDS };
-    const { selling, named } = r;
-    return selling.length + named.length ? { query, selling, named } : { query, selling, named, note: noShopsFound(query) };
+    const { selling, named, sellsTimedOut } = r;
+    const found = { query, selling, named, ...(sellsTimedOut ? { sellsTimedOut } : {}) };
+    return selling.length + named.length || sellsTimedOut ? found : { ...found, note: noShopsFound(query) };
   } catch (err) {
     console.error("shop search failed", err instanceof Error ? err.message : err);
     return { query, error: SHOP_SEARCH_DOWN };

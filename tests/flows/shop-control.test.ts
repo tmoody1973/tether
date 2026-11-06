@@ -219,7 +219,7 @@ describe("shop search", () => {
     expect(websites).not.toHaveBeenCalled();
   });
 
-  it("shops that sell it come first (top 6, named by domain, with a product count); a shop is never in both groups", async () => {
+  it("shops that sell it come first (top 6, named by domain, with a product count, 1-product shops dropped when 3+ have more); a shop is never in both groups", async () => {
     const { familyId, m } = await seed(1);
     shopsSelling.mockResolvedValueOnce([
       { domain: "kickscrew.com", products: 14 }, { domain: m.nike.domain, products: 9 }, { domain: "not a domain", products: 5 },
@@ -240,14 +240,34 @@ describe("shop search", () => {
         { domain: "zulily.com", name: "zulily.com", products: 3, onList: false, opensAt: null },
         { domain: "stadiumgoods.com", name: "stadiumgoods.com", products: 3, onList: false, opensAt: null },
         { domain: "dtlr.com", name: "dtlr.com", products: 2, onList: false, opensAt: null },
-        { domain: m.target.domain, name: m.target.domain, products: 1, onList: true, opensAt: null },
-      ],
+      ], // target (1 product) and shiekh (1) dropped: five shops have 2+
       named: [ // kickscrew.com is already under "sells": not repeated
         { domain: "sneakers.com", name: "Sneakers.com", onList: false, opensAt: null },
         { domain: "sneakerask.com", name: "Sneakerask", onList: false, opensAt: null },
         { domain: "sistersandseekers.com", name: "S&S", onList: false, opensAt: null },
       ],
     });
+  });
+
+  it("with fewer than 3 shops at 2+ products, 1-product shops stay (a small result is still usable)", async () => {
+    const { familyId } = await seed(1);
+    shopsSelling.mockResolvedValueOnce([
+      { domain: "michaels.com", products: 3 }, { domain: "dickblick.com", products: 2 }, { domain: "etsy.com", products: 1 },
+    ]);
+    websites.mockResolvedValueOnce([]);
+    const r = await searchShopSites(deps(), familyId, "easel", "shop_sites");
+    expect(r.ok && r.selling.map((s) => [s.domain, s.products])).toEqual([["michaels.com", 3], ["dickblick.com", 2], ["etsy.com", 1]]);
+  });
+
+  it("product search slower than the limit: the named shops come back alone, flagged so the page can say so", async () => {
+    const { familyId } = await seed(1);
+    shopsSelling.mockReturnValueOnce(new Promise(() => {})); // never answers
+    websites.mockResolvedValueOnce([{ domain: "lego.com", name: "Lego" }]);
+    expect(await searchShopSites(deps(), familyId, "lego", "shop_sites", 20)).toEqual({ ok: true, selling: [], sellsTimedOut: true,
+      named: [{ domain: "lego.com", name: "Lego", onList: false, opensAt: null }] });
+    shopsSelling.mockReturnValueOnce(new Promise(() => {}));
+    websites.mockRejectedValueOnce(new Error("down")); // and the name search failing too: the error path
+    await expect(searchShopSites(deps(), familyId, "lego", "shop_sites", 20)).rejects.toThrow("down");
   });
 
   it("one search counts once against the cap; one Channel3 call failing still returns the other's shops; both failing throws", async () => {

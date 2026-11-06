@@ -60,6 +60,15 @@ describe("Amara's shop actions", () => {
       { domain: "toynk.com", name: "toynk.com", products: 4, onList: false, opensAt: null },
       { domain: "target.com", name: "target.com", products: 2, onList: true, opensAt: null },
     ]);
+    shopsSelling.mockReturnValueOnce(new Promise(() => {}) as never); // product search too slow: says so, no "no shops" note
+    websites.mockResolvedValueOnce([]);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      const slow = searchShopsAction({}, form({ q: "kites" }));
+      await vi.waitFor(async () => { await vi.advanceTimersByTimeAsync(1000); expect(shopsSelling).toHaveBeenCalled(); });
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(await slow).toEqual({ query: "kites", selling: [], named: [], sellsTimedOut: true });
+    } finally { vi.useRealTimers(); }
     websites.mockResolvedValueOnce([]);
     expect(await searchShopsAction({}, form({ q: "zzz" }))).toEqual({ query: "zzz", selling: [], named: [],
       note: `No shops found for "zzz". Try another word, or the shop's name.` });
@@ -73,8 +82,8 @@ describe("Amara's shop actions", () => {
 
   it("a search query must be 1–60 characters", async () => {
     session = fam.id;
-    expect((await searchShopsAction({}, form({ q: "  " }))).error).toBe("Type a shop's name to search.");
-    expect((await searchShopsAction({}, form({ q: "x".repeat(61) }))).error).toBe("Type a shop's name to search.");
+    expect((await searchShopsAction({}, form({ q: "  " }))).error).toBe("Type what you'd buy there, or the shop's name.");
+    expect((await searchShopsAction({}, form({ q: "x".repeat(61) }))).error).toBe("Type what you'd buy there, or the shop's name.");
     expect(websites).not.toHaveBeenCalled();
     expect(shopsSelling).not.toHaveBeenCalled();
   });

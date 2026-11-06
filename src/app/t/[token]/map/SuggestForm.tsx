@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { PendingButton } from "@/ui/PendingButton";
-import { SHOP_QUERY_MAX, matchingProducts } from "@/ui/grantWords";
+import { SHOP_QUERY_MAX, matchingProducts, sellsTooSlow } from "@/ui/grantWords";
 import { searchSitesAction, suggestAction, type SiteSearchState, type SuggestState } from "./actions";
 
 /**
@@ -33,6 +33,7 @@ export function SuggestForm({ token, guardian }: { token: string; guardian: stri
       </form>
       {found.error && <p className="t-flash t-flash--warn" role="alert">{found.error}</p>}
       {found.note && <p className="t-small" role="status">{found.note}</p>}
+      {found.sellsTimedOut && found.query && <p className="t-small" role="status">{sellsTooSlow(found.query)}</p>}
       {sites.length > 0 && (
         <form action={suggest} className="t-form">
           <input type="hidden" name="token" value={token} />

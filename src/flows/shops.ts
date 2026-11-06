@@ -13,6 +13,7 @@ import { SHOP_QUERY_MAX } from "@/ui/grantWords";
 export { SHOP_QUERY_MAX };
 const MAX_SELLING = 6; // shops that sell it
 const MAX_NAMED = 3; // shops named like it
+const SELLS_TIMEOUT_MS = 8_000; // product search took 1–10 s in real calls; past this, name results come back alone
 const NAME_MAX = 80;
 
 /** Every merchant id any list in the rules names. */
@@ -57,7 +58,9 @@ export async function guardianShops(db: Db, familyId: string, now: Date): Promis
 }
 
 export interface FoundSite { domain: string; name: string; onList: boolean; opensAt: number | null; products?: number }
-export type SiteSearch = { ok: true; selling: FoundSite[]; named: FoundSite[] } | { ok: false; error: "query" | "cap" };
+export type SiteSearch =
+  | { ok: true; selling: FoundSite[]; named: FoundSite[]; sellsTimedOut?: true }
+  | { ok: false; error: "query" | "cap" };
 
 type Site = { domain: string; name: string; products?: number };
 
@@ -73,10 +76,17 @@ function clean(raw: Site[], max: number, skip = new Set<string>()): Site[] {
   }).slice(0, max);
 }
 
-/** A failed Channel3 call is an empty list when the other call answered; logged so it isn't silent. */
-function settled<T>(r: PromiseSettledResult<T[]>): T[] {
-  if (r.status === "fulfilled") return r.value;
-  console.error("shop search: one Channel3 call failed", r.reason instanceof Error ? r.reason.message : r.reason);
+const TIMED_OUT = Symbol("timed out");
+/** `p`, or TIMED_OUT after `ms`. ponytail: the Channel3 request itself keeps running; pass an AbortSignal if that costs. */
+function within<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<typeof TIMED_OUT>((r) => { timer = setTimeout(() => r(TIMED_OUT), ms); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+/** A failed (or too slow) Channel3 call is an empty list when the other call answered; logged so it isn't silent. */
+function failed(why: unknown): [] {
+  console.error("shop search: one Channel3 call failed", why instanceof Error ? why.message : why);
   return [];
 }
 
@@ -85,20 +95,30 @@ function settled<T>(r: PromiseSettledResult<T[]>): T[] {
  * shop) and shops whose NAME matches (website search), run side by side. One search = one count against the family's
  * daily cap, taken BEFORE Channel3 is called; Amara and Zoe have separate counters (`kind`), so Zoe (or a judge on her
  * side of the demo) using hers up never blocks Amara's. A shop in both groups stays under "sells". If one call fails the
- * other's shops still come back; if both fail it throws. `opensAt` is set only when the shop usually opens above her level.
+ * other's shops still come back; if both fail it throws. Product search slower than SELLS_TIMEOUT_MS counts as failed,
+ * flagged `sellsTimedOut` so the page can say so. When 3+ shops sell 2+ matching products, 1-product shops are dropped
+ * (a stray match); fewer than that and they stay, so a small result is still usable. `opensAt` is set only when the shop
+ * usually opens above her level. `sellsTimeoutMs` exists for tests.
  */
 export async function searchShopSites(
   deps: Pick<Deps, "db" | "now" | "channel3">, familyId: string, query: string, kind: "shop_sites" | "teen_shop_sites",
+  sellsTimeoutMs = SELLS_TIMEOUT_MS,
 ): Promise<SiteSearch> {
   const q = query.trim();
   if (!q || q.length > SHOP_QUERY_MAX) return { ok: false, error: "query" };
   if (!(await takeDaily(deps.db, familyId, kind))) return { ok: false, error: "cap" };
-  const [sells, names] = await Promise.allSettled([deps.channel3.shopsSelling(q), deps.channel3.websites(q)]);
-  if (sells.status === "rejected" && names.status === "rejected") throw sells.reason;
+  const [answer, names] = await Promise.allSettled([within(deps.channel3.shopsSelling(q), sellsTimeoutMs), deps.channel3.websites(q)]);
+  const timedOut = answer.status === "fulfilled" && answer.value === TIMED_OUT;
+  if ((answer.status === "rejected" || timedOut) && names.status === "rejected") throw names.reason;
+  const sells = answer.status === "rejected" ? failed(answer.reason)
+    : answer.value === TIMED_OUT ? failed(`product search took over ${sellsTimeoutMs} ms`) : answer.value;
   // A selling shop has no display name from Channel3: its domain is its name.
-  const selling = clean(settled(sells).map((s) => ({ domain: s.domain, name: s.domain, products: s.products })), MAX_SELLING);
-  const named = clean(settled(names), MAX_NAMED, new Set(selling.map((s) => s.domain)));
-  if (selling.length + named.length === 0) return { ok: true, selling: [], named: [] };
+  const sold = clean(sells.map((s) => ({ domain: s.domain, name: s.domain, products: s.products })), Infinity);
+  const strong = sold.filter((s) => (s.products ?? 0) >= 2);
+  const selling = (strong.length >= 3 ? strong : sold).slice(0, MAX_SELLING);
+  const named = clean(names.status === "rejected" ? failed(names.reason) : names.value, MAX_NAMED, new Set(selling.map((s) => s.domain)));
+  const slow = timedOut ? { sellsTimedOut: true as const } : {};
+  if (selling.length + named.length === 0) return { ok: true, selling: [], named: [], ...slow };
   const list = await guardianShops(deps.db, familyId, await deps.now(familyId));
   const onList = new Set(list.shops.map((s) => s.domain));
   const known = await deps.db.select().from(t.merchants).where(and(
@@ -109,7 +129,7 @@ export async function searchShopSites(
     const at = opens.get(f.domain);
     return { ...f, onList: onList.has(f.domain), opensAt: at !== undefined && at > list.level && at !== NO_LEVEL ? at : null };
   };
-  return { ok: true, selling: selling.map(mark), named: named.map(mark) };
+  return { ok: true, selling: selling.map(mark), named: named.map(mark), ...slow };
 }
 
 /** Amara adds a shop, at any level. Applies now if rules are in force (version returned), else is recorded (null). */

@@ -30,7 +30,9 @@ export async function suggestAction(_prev: SuggestState, form: FormData): Promis
   return { error: words[r.error] };
 }
 
-export type SiteSearchState = { query?: string; selling?: FoundSite[]; named?: FoundSite[]; note?: string; error?: string };
+export type SiteSearchState = {
+  query?: string; selling?: FoundSite[]; named?: FoundSite[]; sellsTimedOut?: true; note?: string; error?: string;
+};
 
 /** Zoe types a shop's name; Channel3 website search (daily-capped) lists shops she can pick to suggest. */
 export async function searchSitesAction(_prev: SiteSearchState, form: FormData): Promise<SiteSearchState> {
@@ -40,8 +42,9 @@ export async function searchSitesAction(_prev: SiteSearchState, form: FormData):
   try {
     const r = await searchShopSites(teenDeps(f.db), f.fam.id, query, "teen_shop_sites");
     if (!r.ok) return { query, error: r.error === "cap" ? DAILY_CAP_MESSAGE : SHOP_QUERY_WORDS };
-    const { selling, named } = r;
-    return selling.length + named.length ? { query, selling, named } : { query, selling, named, note: noShopsFound(query) };
+    const { selling, named, sellsTimedOut } = r;
+    const found = { query, selling, named, ...(sellsTimedOut ? { sellsTimedOut } : {}) };
+    return selling.length + named.length || sellsTimedOut ? found : { ...found, note: noShopsFound(query) };
   } catch (err) {
     console.error("teen shop search failed", err instanceof Error ? err.message : err);
     return { query, error: SHOP_SEARCH_DOWN };

@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { FoundSite, ListedShop } from "@/flows/shops";
-import { SHOP_QUERY_MAX, matchingProducts } from "@/ui/grantWords";
+import { SHOP_QUERY_MAX, matchingProducts, sellsTooSlow } from "@/ui/grantWords";
 import {
   addShopAction, removeShopAction, searchShopsAction, type ShopChangeState, type ShopSearchState,
 } from "../actions";
@@ -63,6 +63,7 @@ export function ShopsSection({ teenName: zoe, inForce, shops }: ShopsSectionProp
       </form>
       {found.error && <p className="g-error" role="alert">{found.error}</p>}
       {found.note && <p className="g-muted" role="status">{found.note}</p>}
+      {found.sellsTimedOut && found.query && <p className="g-muted" role="status">{sellsTooSlow(found.query)}</p>}
       {[
         { title: `Shops that sell ${found.query}`, sites: found.selling ?? [] },
         { title: `Shops named ${found.query}`, sites: found.named ?? [] },
