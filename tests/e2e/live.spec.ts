@@ -53,18 +53,35 @@ test("landing → Zoe's view → shop agent cards → Amara approves the waiting
 test("month end → Level 3 → Zoe proposes a fund → Amara approves → investment queued or filled", async ({ page }) => {
   await resetDemo(page);
 
-  // End of month, then Amara moves Zoe to Level 3 (the demo family is seeded at Level 2).
+  // End of month, then Zoe is at Level 3 with rules in force (the demo family is seeded at Level 2). The month end may
+  // promote her itself and may leave her rules ended, so this asserts the end state, not which buttons got her there.
   await page.getByText("Demo controls").click();
   await page.getByRole("button", { name: "Advance to end of month" }).click();
-  await expect(page).toHaveURL(/\?(advanced=endOfMonth|promoted=1)$/, { timeout: 60_000 }); // wait for the clock to move
+  // The action's visible result: Home's "clock moved" flash, or Activity's "check-in ran" after a promotion.
+  await expect(page.getByRole("status").first())
+    .toContainText(/Demo clock moved forward to the end of the month\.|The month closed and the check-in ran\./, { timeout: 60_000 });
+
   await page.goto("/g/rules");
   await expect(page.getByRole("heading", { level: 1, name: "Zoe's rules" })).toBeVisible();
-  // Rules in force: the level change path (reason, Move, Yes). Ended after the month: the signing path (reason, Sign, Yes).
-  await page.getByLabel("Level 3").check();
-  await page.getByLabel(/It goes on the record\./).fill("Careful all month; ready to look at investing.");
-  await page.getByRole("button", { name: /^(Move Zoe to Level 3|Sign and send)$/ }).click();
-  await page.getByRole("button", { name: /^(Yes, move her|Yes, sign)$/ }).click();
-  await expect(page.getByRole("status").first()).toContainText(/Zoe is now at Level 3\.|Signed\. Rules v\d+ are in force now\./);
+  const signNow = page.getByRole("button", { name: "Sign and send" }); // only shown when no rules are in force
+  if (!(await page.getByLabel(/^Level 3/).isChecked())) {
+    // Not there yet: in force ⇒ reason, Move, Yes; ended ⇒ reason, Sign and send, Yes.
+    await page.getByLabel(/^Level 3/).check();
+    await page.getByLabel(/It goes on the record\./).fill("Careful all month; ready to look at investing.");
+    await page.getByRole("button", { name: /^(Move Zoe to Level 3|Sign and send)$/ }).click();
+    await page.getByRole("button", { name: /^(Yes, move her|Yes, sign)$/ }).click();
+    await expect(page.getByRole("status").first()).toContainText(/Zoe is now at Level 3\.|Signed\. Rules v\d+ are in force now\./);
+    await page.goto("/g/rules");
+  } else if (await signNow.isVisible()) {
+    // Already Level 3 but her rules ended at the month end: sign them again so she can propose.
+    await signNow.click();
+    await page.getByRole("button", { name: "Yes, sign" }).click();
+    await expect(page).toHaveURL(/\/g\?signed=\d+$/);
+    await page.goto("/g/rules");
+  }
+  // End state: Level 3, rules in force.
+  await expect(page.locator(".g-section__head .g-chip", { hasText: /^Level \d$/ })).toHaveText("Level 3");
+  await expect(page.getByText(/^In force until /)).toBeVisible();
 
   // Zoe proposes $5 in VTI (already on Amara's fund list in the seeded grant).
   await page.goto("/");
