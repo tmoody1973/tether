@@ -1,5 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
+import { paypalFromEnv } from "@/adapters/paypal/http";
 import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
 import { now } from "@/clock/clock";
 import { getDb } from "@/db/client";
@@ -33,6 +34,7 @@ export async function POST(req: Request): Promise<Response> {
     const result = await askAboutMonth({
       model: createAnthropic({ apiKey })("claude-haiku-5-5"),
       paypalTools: readOnlyPaypalTools({ clientId, clientSecret, sandbox: true }),
+      paypal: paypalFromEnv(), // paypal_check: the Activity page's reconciliation, read-only
       db,
       now: await now(db, familyId), // the family's demo clock: the model must ask about the months Tether shows
     }, familyId, question);
