@@ -102,6 +102,19 @@ beforeAll(async () => {
   await seedCheckin(famC);
 });
 
+/** PayPal's Transaction Search answering with `rows` (as transaction_info), or failing with `status`. */
+const fakePaypal = (rows: object[], status = 200) => paypalHttp({ baseUrl: "https://paypal.test", clientId: "c", secret: "s" },
+  (async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith("/v1/oauth2/token")
+    ? { access_token: "AT", expires_in: 3600 }
+    : { transaction_details: rows.map((r) => ({ transaction_info: r })), total_pages: 1 }), { status: String(url).endsWith("/token") ? 200 : status, headers: { "content-type": "application/json" } })) as typeof fetch);
+const info = (id: string, value: string, custom?: string, extra: object = {}) =>
+  ({ transaction_id: id, transaction_amount: { value }, transaction_status: "S", ...(custom ? { custom_field: custom } : {}), ...extra });
+
+const BOOKSHOP_CARD = { kind: "purchases", month: "2026-10", totalCents: 2050, hiddenNote: null, rows: [
+  { date: "2026-10-05", shop: "The Bookshop", items: "Book", amountCents: 1250, allowedBy: "Within her rules" },
+  { date: "2026-10-20", shop: "The Bookshop", items: "Book", amountCents: 800, allowedBy: "Within her rules" },
+] };
+
 let lastModel: MockLanguageModelV4;
 const ask = (steps: Step[], q = "How much at the bookshop in October?", paypalTools = {}, familyId = famA, paypal?: PaypalHttp) =>
   askAboutMonth({ model: (lastModel = scripted(steps)), paypalTools, paypal, db, now: DEMO_NOW, realNow: REAL_NOW }, familyId, q);
@@ -151,15 +164,16 @@ describe("askAboutMonth", () => {
   });
   it("tools called but no rows => the model's answer passes through (a true \"no purchases\")", async () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-09" } }] }, { text: "Zoe made no purchases in September." }]);
-    expect(r).toEqual({ answer: "Zoe made no purchases in September.", toolsUsed: ["tether_record"] });
+    expect(r).toEqual({ answer: "Zoe made no purchases in September.", toolsUsed: ["tether_record"],
+      cards: [{ kind: "purchases", month: "2026-09", rows: [], totalCents: 0, hiddenNote: null }] });
   });
   it("no tool called => \"I can't see that.\"", async () => {
     const r = await ask([{ text: "You spent $5." }]);
-    expect(r).toEqual({ answer: CANT_SEE, toolsUsed: [] });
+    expect(r).toEqual({ answer: CANT_SEE, toolsUsed: [], cards: [] });
   });
-  it("falls back when the model returns empty text", async () => {
+  it("falls back when the model returns empty text, and shows no cards", async () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "  " }]);
-    expect(r.answer).toBe("I can't see that.");
+    expect(r).toEqual({ answer: "I can't see that.", toolsUsed: ["tether_record"], cards: [] });
   });
   it("a bad month gives an empty result", async () => {
     await ask([{ calls: [{ name: "tether_record", input: { month: "October" } }] }, { text: "$99" }]);
@@ -167,7 +181,7 @@ describe("askAboutMonth", () => {
   });
   it("a tool name outside the allowed set => \"I can't see that.\"", async () => {
     const r = await ask([{ calls: [{ name: "create_order", input: {} }] }, { text: "Done, paid." }], "pay", { create_order: fakeTool("x") });
-    expect(r).toEqual({ answer: "I can't see that.", toolsUsed: [] });
+    expect(r).toEqual({ answer: "I can't see that.", toolsUsed: [], cards: [] });
   });
   it("tether_record ignores a familyId the model tries to pass", async () => {
     const execSpy = vi.spyOn(repo, "receiptsForMonth");
@@ -179,10 +193,31 @@ describe("askAboutMonth", () => {
   });
 });
 
+describe("answer cards", () => {
+  it("come only from tool results: numbers the model claims in its text change nothing", async () => {
+    const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "You spent $999.99 at Evil Shop." }]);
+    expect(r.answer).toBe("You spent $999.99 at Evil Shop."); // the sentence is the model's
+    expect(r.cards).toEqual([BOOKSHOP_CARD]); // the numbers are the data's
+    expect(JSON.stringify(r.cards)).not.toMatch(/999|Evil/);
+  });
+  it("keep the last result per tool", async () => {
+    const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-09" } }] }, { calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "ok" }]);
+    expect(r.cards).toEqual([BOOKSHOP_CARD]);
+  });
+  it("carry no ids of any kind", async () => {
+    const paypal = fakePaypal([info("cap-a1", "12.50", "tok-a1"), info("CAP-A4", "4.25", "tok-a4")]);
+    const r = await ask([{ calls: [
+      { name: "tether_record", input: { month: "2026-10" } }, { name: "month_checkin", input: {} }, { name: "paypal_check", input: { month: "2026-10" } },
+    ] }, { text: "ok" }], "How is October?", {}, famA, paypal);
+    expect(r.cards.map((c) => c.kind)).toEqual(["purchases", "checkin", "paypal"]);
+    expect(JSON.stringify(r.cards)).not.toMatch(new RegExp(`${famA}|${famB}|cap-|CAP-|tok-|g-a\\d|m-a\\d|[0-9a-f]{8}-[0-9a-f]{4}-`, "i"));
+  });
+});
+
 describe("month_checkin", () => {
   it("returns the check-in numbers, in dollars, with no ids", async () => {
     const r = await ask([{ calls: [{ name: "month_checkin", input: { familyId: famA } }] }, { text: "She's at Level 1." }], "Is Zoe on track?", {}, famC);
-    expect(r).toEqual({ answer: "She's at Level 1.", toolsUsed: ["month_checkin"] });
+    expect(r).toMatchObject({ answer: "She's at Level 1.", toolsUsed: ["month_checkin"], cards: [{ kind: "checkin", month: "2026-10", level: 1 }] });
     const [out] = toolOutputs(lastModel);
     expect(out).toEqual({
       month: "2026-10", level: 1, rulesStopped: false, weeklyAllowance: "20.00",
@@ -216,6 +251,7 @@ describe("list_transactions wrapper", () => {
       ]) });
     const { r, model } = await runTool(raw, { month: "2026-10" });
     expect(r.answer).toBe("ok");
+    expect(r.cards).toEqual([]); // list_transactions makes no card: paypal_check covers matching
     expect(toolOutputs(model)).toEqual([{ month: "2026-10", charges: [
       { tetherShop: "The Bookshop", tetherDate: "2026-10-05", paypalDate: "2026-08-10", amount: "12.50", status: "completed" },
       { tetherShop: "The Bookshop", tetherDate: "2026-10-20", paypalDate: "2026-08-11", amount: "8.00", status: "completed" },
@@ -250,13 +286,6 @@ describe("list_transactions wrapper", () => {
 });
 
 describe("paypal_check", () => {
-  /** PayPal's Transaction Search answering with `rows` (as transaction_info), or failing with `status`. */
-  const fakePaypal = (rows: object[], status = 200) => paypalHttp({ baseUrl: "https://paypal.test", clientId: "c", secret: "s" },
-    (async (url: string | URL | Request) => new Response(JSON.stringify(String(url).endsWith("/v1/oauth2/token")
-      ? { access_token: "AT", expires_in: 3600 }
-      : { transaction_details: rows.map((r) => ({ transaction_info: r })), total_pages: 1 }), { status: String(url).endsWith("/token") ? 200 : status, headers: { "content-type": "application/json" } })) as typeof fetch);
-  const info = (id: string, value: string, custom?: string, extra: object = {}) =>
-    ({ transaction_id: id, transaction_amount: { value }, transaction_status: "S", ...(custom ? { custom_field: custom } : {}), ...extra });
   const check = async (paypal: PaypalHttp) => {
     await ask([{ calls: [{ name: "paypal_check", input: { month: "2026-10" } }] }, { text: "ok" }], "Do Tether's receipts match PayPal?", {}, famA, paypal);
     return toolOutputs(lastModel)[0];
@@ -318,7 +347,7 @@ describe("POST /api/g/ask", () => {
     await setNow(db, famA, new Date("2026-12-20T12:00:00Z")); // the family's demo clock, not real time
     const res = await post({ question: "October?" }, signGuardianCookie(famA, new Date()));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ answer: "Total $20.50.", toolsUsed: ["tether_record"] });
+    expect(await res.json()).toEqual({ answer: "Total $20.50.", toolsUsed: ["tether_record"], cards: [BOOKSHOP_CARD] });
     expect(routeModelIds.at(-1)).toBe("claude-sonnet-5-5"); // the month assistant runs on Sonnet (Tarik's call); Haiku stays elsewhere
     expect(JSON.stringify(model.doGenerateCalls[0].prompt)).toContain("2026-12-20");
     routeModel = new MockLanguageModelV4({ doGenerate: async () => { throw new Error("upstream down"); } });

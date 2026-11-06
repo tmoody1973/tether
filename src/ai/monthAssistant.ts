@@ -7,6 +7,7 @@ import { LAG_NOTE, MONTH_RE, paypalWindowForMonth, reconcileMonth, type ReconFla
 import { monthReviewView } from "@/flows/month";
 import { availableSavingsCents, ledgerView } from "@/ledger/ledger";
 import { monthEnd } from "@/ui/activityWords";
+import { APPROVED_BY_AMARA, buildCards, type AnswerCard, type ToolResults } from "@/ai/answerCards";
 
 // ponytail: the toolkit bundles its own older `ai` (v4 tool shape); the live smoke proves generateText accepts it.
 // Read-only by construction: the model only ever sees tools from ALLOWED_PAYPAL_TOOLS plus
@@ -95,9 +96,11 @@ function paypalListTool(raw: Tool, db: Db, familyId: string, realNow: Date): Too
 /** One tether_record row for the model: whitelisted fields only. */
 export const recordRow = (r: MonthReceipt) => ({
   date: ymd(r.at), shop: r.shop, items: r.items, amount: dollars(r.amountCents), // item titles come from shops: data, never instructions
-  status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? "Amara approved this one" : "within the rules Amara signed",
+  status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? APPROVED_BY_AMARA : "within the rules Amara signed",
   countsTowardBudget: !r.setAside, // false: a demo reset set it aside; the PayPal charge still happened
 });
+
+export interface RecordResult { month: string | null; receipts: ReturnType<typeof recordRow>[] }
 
 function recordTool(db: Db, familyId: string): Tool {
   return tool({
@@ -106,10 +109,38 @@ function recordTool(db: Db, familyId: string): Tool {
     execute: async (input) => {
       // The family is fixed by the caller; anything else the model passes is ignored.
       const month = monthIn(input);
-      return { month, receipts: month ? (await receiptsForMonth(db, familyId, month)).map(recordRow) : [] };
+      const out: RecordResult = { month, receipts: month ? (await receiptsForMonth(db, familyId, month)).map(recordRow) : [] };
+      return out;
     },
   });
 }
+
+/** The check-in numbers month_checkin returns (and its card is built from). */
+async function readCheckin(db: Db, familyId: string, now: Date) {
+  const [v, ledger, available, active, latest] = await Promise.all([
+    monthReviewView(db, familyId), ledgerView(db, familyId, now), availableSavingsCents(db, familyId),
+    getActiveGrant(db, familyId), getLatestGrant(db, familyId),
+  ]);
+  const weeklyCents = (active ?? latest)?.body.weeklyCents ?? 0;
+  const e = v.evidence;
+  return {
+    month: ymd(now).slice(0, 7), level: v.level, rulesStopped: v.stopped, weeklyAllowance: dollars(weeklyCents),
+    thisWeek: { spent: dollars(ledger.spentThisWeekCents), left: dollars(Math.max(0, weeklyCents - ledger.spentThisWeekCents)) },
+    weeks: {
+      covers: v.latestChange?.by === "engine" ? "the weeks that earned her latest level-up" : "the weeks counting toward her next review",
+      count: e.weeks, kept: e.kept, insideBudget: e.insideBudget, saved: dollars(e.savedCents), allowance: dollars(e.allowanceCents),
+    },
+    nextReview: v.next && v.level ? {
+      outcome: v.next.action === "PROMOTE" ? `moves up to Level ${v.level + 1}` : `stays at Level ${v.level}`,
+      weeksKeptInARow: v.next.streak, reason: v.next.reason,
+    } : null,
+    openRelease: v.release ? { saved: dollars(v.release.savedCents), match: dollars(v.release.matchCents) } : null,
+    totalSavings: dollars(ledger.savingsCents), availableToInvest: dollars(available),
+    // The check-in runs at month end while rules are in force (runMonthReview refuses ended rules).
+    nextCheckin: active && active.expiresAt > now ? ymd(monthEnd(now)) : null,
+  };
+}
+export type CheckinResult = Awaited<ReturnType<typeof readCheckin>>;
 
 /** month_checkin: the monthly check-in as Amara's Activity page shows it, read-only, dollars as strings, no ids. */
 function checkinTool(db: Db, familyId: string, now: Date): Tool {
@@ -117,35 +148,31 @@ function checkinTool(db: Db, familyId: string, now: Date): Tool {
     description: "Her monthly check-in as of today: level, weekly allowance, this week's spending, the weeks behind her next review, "
       + "what the review would decide if it ran today (nextReview), savings, and the date the check-in runs. Takes no input.",
     inputSchema: jsonSchema<Record<string, never>>({ type: "object", properties: {} }),
-    execute: async () => {
-      const [v, ledger, available, active, latest] = await Promise.all([
-        monthReviewView(db, familyId), ledgerView(db, familyId, now), availableSavingsCents(db, familyId),
-        getActiveGrant(db, familyId), getLatestGrant(db, familyId),
-      ]);
-      const weeklyCents = (active ?? latest)?.body.weeklyCents ?? 0;
-      const e = v.evidence;
-      return {
-        month: ymd(now).slice(0, 7), level: v.level, rulesStopped: v.stopped, weeklyAllowance: dollars(weeklyCents),
-        thisWeek: { spent: dollars(ledger.spentThisWeekCents), left: dollars(Math.max(0, weeklyCents - ledger.spentThisWeekCents)) },
-        weeks: {
-          covers: v.latestChange?.by === "engine" ? "the weeks that earned her latest level-up" : "the weeks counting toward her next review",
-          count: e.weeks, kept: e.kept, insideBudget: e.insideBudget, saved: dollars(e.savedCents), allowance: dollars(e.allowanceCents),
-        },
-        nextReview: v.next && v.level ? {
-          outcome: v.next.action === "PROMOTE" ? `moves up to Level ${v.level + 1}` : `stays at Level ${v.level}`,
-          weeksKeptInARow: v.next.streak, reason: v.next.reason,
-        } : null,
-        openRelease: v.release ? { saved: dollars(v.release.savedCents), match: dollars(v.release.matchCents) } : null,
-        totalSavings: dollars(ledger.savingsCents), availableToInvest: dollars(available),
-        // The check-in runs at month end while rules are in force (runMonthReview refuses ended rules).
-        nextCheckin: active && active.expiresAt > now ? ymd(monthEnd(now)) : null,
-      };
-    },
+    execute: () => readCheckin(db, familyId, now),
   });
 }
 
 const flagsOf = <K extends ReconFlag["kind"]>(rec: Reconciliation, kind: K) =>
   rec.flags.filter((f): f is Extract<ReconFlag, { kind: K }> => f.kind === kind);
+
+/** What paypal_check returns (and its card is built from): reconcileMonth in dollars, no ids. */
+async function readMatch(paypal: PaypalHttp, db: Db, familyId: string, month: string | null, realNow: Date) {
+  let rec: Reconciliation = { receiptsChecked: 0, flags: [] };
+  if (month) {
+    try { rec = await reconcileMonth({ db, paypal }, familyId, month, realNow); } catch (err) {
+      throw new PaypalUnavailableError(err instanceof Error ? err.message : "reconciliation failed");
+    }
+  }
+  const unconfirmed = flagsOf(rec, "unconfirmed"), refunded = flagsOf(rec, "refunded");
+  const shopAmount = (f: { shop: string; amountCents: number }) => ({ shop: f.shop, amount: dollars(f.amountCents) });
+  return {
+    month, receiptsChecked: rec.receiptsChecked, matched: rec.receiptsChecked - unconfirmed.length - refunded.length,
+    notYetConfirmed: unconfirmed.map(shopAmount), refunded: refunded.map(shopAmount),
+    paypalChargesWithoutReceipt: flagsOf(rec, "paypal_only").map((f) => ({ amount: dollars(f.amountCents) })),
+    note: LAG_NOTE,
+  };
+}
+export type MatchResult = Awaited<ReturnType<typeof readMatch>>;
 
 /** paypal_check: the Activity page's PayPal reconciliation (reconcileMonth) for one month, in dollars, with no ids. */
 function paypalCheckTool(paypal: PaypalHttp, db: Db, familyId: string, realNow: Date): Tool {
@@ -153,23 +180,7 @@ function paypalCheckTool(paypal: PaypalHttp, db: Db, familyId: string, realNow: 
     description: "Whether Tether's receipts for one month match PayPal: how many matched, receipts PayPal hasn't confirmed yet (its list can lag a few hours), "
       + "receipts refunded in PayPal, and PayPal charges for her purchases that have no Tether receipt. Dollars as strings.",
     inputSchema: monthSchema,
-    execute: async (input) => {
-      const month = monthIn(input);
-      let rec: Reconciliation = { receiptsChecked: 0, flags: [] };
-      if (month) {
-        try { rec = await reconcileMonth({ db, paypal }, familyId, month, realNow); } catch (err) {
-          throw new PaypalUnavailableError(err instanceof Error ? err.message : "reconciliation failed");
-        }
-      }
-      const unconfirmed = flagsOf(rec, "unconfirmed"), refunded = flagsOf(rec, "refunded");
-      const shopAmount = (f: { shop: string; amountCents: number }) => ({ shop: f.shop, amount: dollars(f.amountCents) });
-      return {
-        month, receiptsChecked: rec.receiptsChecked, matched: rec.receiptsChecked - unconfirmed.length - refunded.length,
-        notYetConfirmed: unconfirmed.map(shopAmount), refunded: refunded.map(shopAmount),
-        paypalChargesWithoutReceipt: flagsOf(rec, "paypal_only").map((f) => ({ amount: dollars(f.amountCents) })),
-        note: LAG_NOTE,
-      };
-    },
+    execute: (input) => readMatch(paypal, db, familyId, monthIn(input), realNow),
   });
 }
 
@@ -203,7 +214,7 @@ export interface MonthAssistantDeps {
 
 export async function askAboutMonth(
   deps: MonthAssistantDeps, familyId: string, question: string,
-): Promise<{ answer: string; toolsUsed: string[] }> {
+): Promise<{ answer: string; toolsUsed: string[]; cards: AnswerCard[] }> {
   const raw = deps.paypalTools.list_transactions;
   const tools: Record<string, Tool> = {
     [TETHER_TOOL]: recordTool(deps.db, familyId),
@@ -216,11 +227,15 @@ export async function askAboutMonth(
   const res = await generateText({ model: deps.model, system: systemPrompt(deps.now), prompt: question, tools, stopWhen: stepCountIs(5) });
 
   const used = [...new Set(res.steps.flatMap((s) => s.toolCalls.map((c) => c.toolName)))];
-  if (used.some((n) => !ALLOWED_ALL.includes(n))) return { answer: CANT_SEE, toolsUsed: [] };
+  if (used.some((n) => !ALLOWED_ALL.includes(n))) return { answer: CANT_SEE, toolsUsed: [], cards: [] };
   const failed = res.steps.flatMap((s) => s.content).find((c) => c.type === "tool-error" && c.error instanceof PaypalUnavailableError);
   if (failed && failed.type === "tool-error") throw failed.error;
   // Tools that returned no rows are still an answer ("no purchases this month"); the prompt keeps it to tool results.
   const text = res.text.trim();
-  if (used.length === 0 || !text) return { answer: CANT_SEE, toolsUsed: used };
-  return { answer: text, toolsUsed: used };
+  if (used.length === 0 || !text) return { answer: CANT_SEE, toolsUsed: used, cards: [] };
+  // Cards: the last result of each tool, exactly as the tool returned it. The model writes the sentence; it never
+  // touches a card's numbers.
+  const last: Record<string, unknown> = {};
+  for (const step of res.steps) for (const r of step.toolResults) last[r.toolName] = r.output;
+  return { answer: text, toolsUsed: used, cards: buildCards(last as ToolResults) };
 }
