@@ -99,6 +99,7 @@ function Paypal({ c }: { c: PaypalCard }) {
         </ul>
       )}
       {c.note && <p className="g-note" style={{ marginTop: 6 }}>{c.note}</p>}
+      {c.setAsideNote && <p className="g-note" style={{ marginTop: 6 }}>{c.setAsideNote}</p>}
     </section>
   );
 }

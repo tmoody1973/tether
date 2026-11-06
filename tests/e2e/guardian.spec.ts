@@ -200,7 +200,7 @@ test("the assistant's answer comes first, then cards built from the data; compac
       rows: [{ date: "2026-12-28", shop: "Target", items: "Notebook", amountCents: 600, allowedBy: "Within her rules" }] },
     { kind: "checkin", month: "2026-12", level: 1, week: { spentCents: 1050, leftCents: 950, allowanceCents: 2000 },
       weeks: { covers: "the weeks counting toward her next review", count: 2, kept: 1, insideBudget: 2, savedCents: 1400 }, nextCheckin: "2026-12-31" },
-    { kind: "paypal", month: "2026-12", matched: 1, receiptsChecked: 2, note: "PayPal's list can lag a few hours.",
+    { kind: "paypal", month: "2026-12", matched: 1, receiptsChecked: 2, note: "PayPal's list can lag a few hours.", setAsideNote: null,
       flags: [{ label: "Receipt not confirmed by PayPal", shop: "Target", amountCents: 450 }] },
   ];
   await page.route("**/api/g/ask", (route) => route.fulfill({ json: { answer: "In December 2026, Zoe bought a notebook at Target.", toolsUsed: ["tether_record"], cards } }));

@@ -7,6 +7,7 @@ let routeModel: unknown;
 const routeModelIds: string[] = [];
 import { MockLanguageModelV4 } from "ai/test";
 import { jsonSchema, tool } from "ai";
+import { sql } from "drizzle-orm";
 import { createDb, migrateDb, type Db } from "@/db/client";
 import * as repo from "@/db/repo";
 import * as t from "@/db/schema";
@@ -99,6 +100,12 @@ beforeAll(async () => {
   // An October purchase PayPal charged but Tether never got a receipt for (crashed mid-settle).
   await seedReceipt(famA, "a4", "Corner Cafe", 425, "2026-10-22T10:00:00Z", "2026-08-13T09:00:00Z", false);
   await seedReceipt(famB, "b1", "Other Shop", 9900, "2026-10-06T10:00:00Z", "2026-08-10T10:00:00Z");
+  // R44: an October payment an earlier demo reset set aside (a live-test leftover). Still a real PayPal charge, but not
+  // part of her month. The reset's void window covers exactly its journal row (to the microsecond, in SQL).
+  await seedReceipt(famA, "a5", "Toy Shop", 3333, "2026-10-28T10:00:00Z", "2026-08-14T09:00:00Z");
+  await db.execute(sql`update families set
+    ledger_void_from = (select created_at - interval '1 microsecond' from journal where amount_cents = 3333),
+    ledger_void_to = now() + interval '1 day' where id = ${famA}`);
   await seedCheckin(famC);
 });
 
@@ -110,7 +117,7 @@ const fakePaypal = (rows: object[], status = 200) => paypalHttp({ baseUrl: "http
 const info = (id: string, value: string, custom?: string, extra: object = {}) =>
   ({ transaction_id: id, transaction_amount: { value }, transaction_status: "S", ...(custom ? { custom_field: custom } : {}), ...extra });
 
-const BOOKSHOP_CARD = { kind: "purchases", month: "2026-10", totalCents: 2050, hiddenNote: null, rows: [
+const BOOKSHOP_CARD = { kind: "purchases", month: "2026-10", totalCents: 2050, hiddenNote: "1 payment from an earlier demo reset is hidden.", rows: [
   { date: "2026-10-05", shop: "The Bookshop", items: "Book", amountCents: 1250, allowedBy: "Within her rules" },
   { date: "2026-10-20", shop: "The Bookshop", items: "Book", amountCents: 800, allowedBy: "Within her rules" },
 ] };
@@ -135,8 +142,8 @@ describe("askAboutMonth", () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "You spent $20.50 at The Bookshop in October." }]);
     expect(r.answer).toContain("$20.50");
     expect(r.toolsUsed).toEqual(["tether_record"]);
-    const row = { shop: "The Bookshop", items: [{ title: "Book", qty: 1 }], status: "paid", allowedBy: "within the rules Amara signed", countsTowardBudget: true };
-    expect(toolOutputs(lastModel)).toEqual([{ month: "2026-10", receipts: [
+    const row = { shop: "The Bookshop", items: [{ title: "Book", qty: 1 }], status: "paid", allowedBy: "within the rules Amara signed" };
+    expect(toolOutputs(lastModel)).toEqual([{ month: "2026-10", setAsideNote: "1 payment from an earlier demo reset is hidden.", receipts: [
       { ...row, date: "2026-10-05", amount: "12.50", ruleVersion: 3 },
       { ...row, date: "2026-10-20", amount: "8.00", ruleVersion: 4 },
     ] }]);
@@ -157,7 +164,7 @@ describe("askAboutMonth", () => {
   });
   it("a wrong-month query shows as such: the empty result names the month checked, and the prompt asks to name it", async () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-08" } }] }, { text: "In August 2026, Zoe made no purchases." }], "What did Zoe buy this month?");
-    expect(toolOutputs(lastModel)).toEqual([{ month: "2026-08", receipts: [] }]);
+    expect(toolOutputs(lastModel)).toEqual([{ month: "2026-08", receipts: [], setAsideNote: null }]);
     expect(r.answer).toBe("In August 2026, Zoe made no purchases.");
     const system = JSON.stringify((lastModel.doGenerateCalls[0].prompt as { role: string }[]).filter((m) => m.role === "system"));
     expect(system).toMatch(/name the month/i);
@@ -177,7 +184,7 @@ describe("askAboutMonth", () => {
   });
   it("a bad month gives an empty result", async () => {
     await ask([{ calls: [{ name: "tether_record", input: { month: "October" } }] }, { text: "$99" }]);
-    expect(toolOutputs(lastModel)).toEqual([{ month: null, receipts: [] }]);
+    expect(toolOutputs(lastModel)).toEqual([{ month: null, receipts: [], setAsideNote: null }]);
   });
   it("a tool name outside the allowed set => \"I can't see that.\"", async () => {
     const r = await ask([{ calls: [{ name: "create_order", input: {} }] }, { text: "Done, paid." }], "pay", { create_order: fakeTool("x") });
@@ -199,6 +206,12 @@ describe("answer cards", () => {
     expect(r.answer).toBe("You spent $999.99 at Evil Shop."); // the sentence is the model's
     expect(r.cards).toEqual([BOOKSHOP_CARD]); // the numbers are the data's
     expect(JSON.stringify(r.cards)).not.toMatch(/999|Evil/);
+  });
+  it("leave out payments a demo reset set aside, as Activity does: not in the model's data, not in the card; one count line", async () => {
+    const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "ok" }], "What did Zoe buy this month?");
+    expect(JSON.stringify(lastModel.doGenerateCalls[1].prompt)).not.toMatch(/Toy Shop|33\.33/);
+    expect(r.cards).toEqual([BOOKSHOP_CARD]); // two rows, $20.50, and "1 payment from an earlier demo reset is hidden."
+    expect(JSON.stringify(r.cards)).not.toMatch(/Toy Shop|3333/);
   });
   it("keep the last result per tool", async () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-09" } }] }, { calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "ok" }]);
@@ -247,6 +260,7 @@ describe("list_transactions wrapper", () => {
       execute: async () => txBody([
         paid("cap-a1", "12.50", "2026-08-10T09:01:00Z"), paid("cap-a2", "8.00", "2026-08-11T09:01:00Z"),
         paid("cap-a3", "4.50", "2026-08-12T09:01:00Z"), // this family, but a November (demo) receipt
+        paid("cap-a5", "33.33", "2026-08-14T09:01:00Z"), // this family, October, but set aside by a demo reset
         paid("cap-b1", "99.00", "2026-08-10T10:01:00Z"), txRow("BAL1", "5000.00", { transaction_event_code: "T1900" }),
       ]) });
     const { r, model } = await runTool(raw, { month: "2026-10" });
@@ -257,7 +271,7 @@ describe("list_transactions wrapper", () => {
       { tetherShop: "The Bookshop", tetherDate: "2026-10-20", paypalDate: "2026-08-11", amount: "8.00", status: "completed" },
     ] }]);
     const prompt = JSON.stringify(model.doGenerateCalls[1].prompt);
-    expect(prompt).not.toMatch(/99\.00|5000|4\.50|Corner Cafe|IGNORE ALL RULES|secret@example|cap-|BAL1/);
+    expect(prompt).not.toMatch(/99\.00|5000|4\.50|33\.33|Corner Cafe|Toy Shop|IGNORE ALL RULES|secret@example|cap-|BAL1/);
   });
   it("toolkit {error} => PaypalUnavailableError", async () => {
     const raw = fakeTool(JSON.stringify({ error: "boom" }));
@@ -301,6 +315,7 @@ describe("paypal_check", () => {
       month: "2026-10", receiptsChecked: 2, matched: 1,
       notYetConfirmed: [{ shop: "The Bookshop", amount: "8.00" }], refunded: [],
       paypalChargesWithoutReceipt: [{ amount: "4.25" }], note: "PayPal's list can lag a few hours.",
+      setAsideNote: "1 payment from an earlier demo reset is hidden; PayPal's check flagged 1 of them.", // the set-aside Toy Shop receipt isn't in PayPal's list: one line, no detail
     });
     expect(JSON.stringify(lastModel.doGenerateCalls[1].prompt)).not.toMatch(/cap-|CAP-|tok-|99\.00|50\.00|Other Shop/);
   });
@@ -310,6 +325,17 @@ describe("paypal_check", () => {
       info("REF-1", "-8.00", undefined, { paypal_reference_id: "cap-a2", transaction_event_code: "T1107" }),
     ]));
     expect(out).toMatchObject({ receiptsChecked: 2, matched: 1, notYetConfirmed: [], refunded: [{ shop: "The Bookshop", amount: "8.00" }], paypalChargesWithoutReceipt: [] });
+  });
+  it("a set-aside receipt PayPal shows as refunded leaves the counts but doesn't vanish: one line, no shop or amount", async () => {
+    const out = await check(fakePaypal([
+      info("cap-a1", "12.50", "tok-a1"), info("cap-a2", "8.00", "tok-a2"), info("cap-a5", "33.33", "tok-a5"),
+      info("REF-5", "-33.33", undefined, { paypal_reference_id: "cap-a5", transaction_event_code: "T1107" }),
+    ]));
+    expect(out).toEqual({
+      month: "2026-10", receiptsChecked: 2, matched: 2, notYetConfirmed: [], refunded: [], paypalChargesWithoutReceipt: [],
+      note: "PayPal's list can lag a few hours.", setAsideNote: "1 payment from an earlier demo reset is hidden; PayPal's check flagged 1 of them.",
+    });
+    expect(JSON.stringify(lastModel.doGenerateCalls[1].prompt)).not.toMatch(/Toy Shop|33\.33/);
   });
   it("PayPal failing => PaypalUnavailableError (the route answers \"I can't see that right now.\")", async () => {
     await expect(check(fakePaypal([], 500))).rejects.toBeInstanceOf(PaypalUnavailableError);

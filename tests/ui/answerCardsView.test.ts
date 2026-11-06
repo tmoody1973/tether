@@ -21,6 +21,7 @@ const checkin: AnswerCard = {
 };
 const paypal: AnswerCard = {
   kind: "paypal", month: "2026-10", matched: 1, receiptsChecked: 3, note: "PayPal's list can lag a few hours.",
+  setAsideNote: "1 payment from an earlier demo reset is hidden; PayPal's check flagged 1 of them.",
   flags: [
     { label: "Receipt not confirmed by PayPal", shop: "The Bookshop", amountCents: 800 },
     { label: "PayPal charged, Tether has no receipt", shop: null, amountCents: 425 },
@@ -63,8 +64,9 @@ describe("AnswerCards (under the assistant's answer)", () => {
     expect(t).toContain("Receipt not confirmed by PayPal The Bookshop $8.00");
     expect(t).toContain("PayPal charged, Tether has no receipt $4.25");
     expect(t).toContain("PayPal's list can lag a few hours.");
-    expect(text([{ ...paypal, matched: 2, receiptsChecked: 2, flags: [], note: null }])).toContain("2 of 2 receipts match PayPal");
-    expect(text([{ ...paypal, matched: 0, receiptsChecked: 0, flags: [], note: null }])).toContain("No receipts to check in October 2026.");
+    expect(t).toContain("1 payment from an earlier demo reset is hidden; PayPal's check flagged 1 of them."); // one line, no detail
+    expect(text([{ ...paypal, matched: 2, receiptsChecked: 2, flags: [], note: null, setAsideNote: null }])).toContain("2 of 2 receipts match PayPal");
+    expect(text([{ ...paypal, matched: 0, receiptsChecked: 0, flags: [], note: null, setAsideNote: null }])).toContain("No receipts to check in October 2026.");
   });
 
   it("no cards, or an unknown kind, renders nothing", () => {

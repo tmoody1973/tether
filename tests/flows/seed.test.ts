@@ -16,7 +16,7 @@ import { DEMO_STALE_MS, DemoResetError, freshenDemoIfStale, resetDemo } from "@/
 import { DEMO_COMMITMENT_CENTS, DEMO_NOW, seedDemo, type SeedResult } from "@/flows/seed";
 import { ledgerView } from "@/ledger/ledger";
 import { appendJournal, insertPurchase, receiptsForMonth } from "@/db/repo";
-import { recordRow } from "@/ai/monthAssistant";
+import { readRecord } from "@/ai/monthAssistant";
 import { confirmRelease } from "@/flows/month";
 
 let db: Db;
@@ -148,12 +148,14 @@ describe("resetDemo (Task 19, R43)", () => {
     expect(after.spentThisWeekCents).toBe(spentBefore);
     expect(after.savingsCents).toBe(before.savingsCents);
     expect(await db.select().from(t.releases).where(eq(t.releases.familyId, fam))).toHaveLength(0); // the unconfirmed one
-    // R44: the record labels it, and the month assistant is told it doesn't count.
+    // R44: the record labels it; the month assistant leaves it out, as Activity does, with one count line.
     const dec = await receiptsForMonth(db, fam, "2026-12");
     const judged = dec.find((x) => x.approvalId === ask.id)!;
     expect(judged.setAside).toBe(true);
-    expect(recordRow(judged).countsTowardBudget).toBe(false);
     expect(dec.filter((x) => x.setAside)).toHaveLength(1);
+    const told = await readRecord(db, fam, "2026-12");
+    expect(told.receipts).toHaveLength(dec.length - 1);
+    expect(told.setAsideNote).toBe("1 payment from an earlier demo reset is hidden.");
     // A reversal of that set-aside spend, written after the reset, can't count on its own (R44 Q5).
     await appendJournal(db, { familyId: fam, kind: "spend_reversal", amountCents: judged.amountCents, ref: judged.purchaseId, at: await clockNow(db, fam), note: null });
     expect((await ledgerView(db, fam, await clockNow(db, fam))).spentThisWeekCents).toBe(spentBefore);

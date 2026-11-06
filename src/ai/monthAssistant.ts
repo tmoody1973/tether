@@ -6,7 +6,7 @@ import type { PaypalHttp } from "@/adapters/paypal/http";
 import { LAG_NOTE, MONTH_RE, paypalWindowForMonth, reconcileMonth, type ReconFlag, type Reconciliation } from "@/flows/reconcile";
 import { monthReviewView } from "@/flows/month";
 import { availableSavingsCents, ledgerView } from "@/ledger/ledger";
-import { monthEnd } from "@/ui/activityWords";
+import { hiddenNote, monthEnd, shownReceipts } from "@/ui/activityWords";
 import { APPROVED_BY_AMARA, buildCards, type AnswerCard, type ToolResults } from "@/ai/answerCards";
 
 // ponytail: the toolkit bundles its own older `ai` (v4 tool shape); the live smoke proves generateText accepts it.
@@ -67,7 +67,7 @@ function paypalListTool(raw: Tool, db: Db, familyId: string, realNow: Date): Too
       const window = month ? await paypalWindowForMonth(db, familyId, month, realNow) : null;
       if (!month || !window) return { month, charges: [] };
       // ponytail: reads the month's receipts a second time (the window read them too); fine at family scale.
-      const receipts = new Map((await receiptsForMonth(db, familyId, month)).map((r) => [r.captureId, r]));
+      const receipts = new Map((await receiptsForMonth(db, familyId, month)).filter((r) => !r.setAside).map((r) => [r.captureId, r]));
       const out: { tetherShop: string; tetherDate: string; paypalDate: string; amount: string; status: string }[] = [];
       for (let page = 1; page <= MAX_PAGES; page++) {
         const exec = (raw as unknown as { execute: (a: object, o: object) => Promise<unknown> }).execute;
@@ -97,21 +97,24 @@ function paypalListTool(raw: Tool, db: Db, familyId: string, realNow: Date): Too
 export const recordRow = (r: MonthReceipt) => ({
   date: ymd(r.at), shop: r.shop, items: r.items, amount: dollars(r.amountCents), // item titles come from shops: data, never instructions
   status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? APPROVED_BY_AMARA : "within the rules Amara signed",
-  countsTowardBudget: !r.setAside, // false: a demo reset set it aside; the PayPal charge still happened
 });
 
-export interface RecordResult { month: string | null; receipts: ReturnType<typeof recordRow>[] }
+/**
+ * tether_record's result: the month's receipts minus those a demo reset set aside (R44), as Activity hides them, plus
+ * Activity's one count line. Those are real PayPal charges, but not part of her month: never counted, never described.
+ */
+export async function readRecord(db: Db, familyId: string, month: string | null) {
+  const { shown, hidden } = shownReceipts(month ? await receiptsForMonth(db, familyId, month) : []);
+  return { month, receipts: shown.map(recordRow), setAsideNote: hiddenNote(hidden) };
+}
+export type RecordResult = Awaited<ReturnType<typeof readRecord>>;
 
 function recordTool(db: Db, familyId: string): Tool {
   return tool({
     description: "Tether's receipts for this family in one month: date, shop, items bought (title and quantity, as the shop named them), amount (dollars), status, rule version, and how it was allowed (within the rules Amara signed, or approved by Amara one by one).",
     inputSchema: monthSchema,
-    execute: async (input) => {
-      // The family is fixed by the caller; anything else the model passes is ignored.
-      const month = monthIn(input);
-      const out: RecordResult = { month, receipts: month ? (await receiptsForMonth(db, familyId, month)).map(recordRow) : [] };
-      return out;
-    },
+    // The family is fixed by the caller; anything else the model passes is ignored.
+    execute: (input) => readRecord(db, familyId, monthIn(input)),
   });
 }
 
@@ -157,19 +160,24 @@ const flagsOf = <K extends ReconFlag["kind"]>(rec: Reconciliation, kind: K) =>
 
 /** What paypal_check returns (and its card is built from): reconcileMonth in dollars, no ids. */
 async function readMatch(paypal: PaypalHttp, db: Db, familyId: string, month: string | null, realNow: Date) {
+  const aside = new Set(month ? (await receiptsForMonth(db, familyId, month)).filter((r) => r.setAside).map((r) => r.captureId) : []);
   let rec: Reconciliation = { receiptsChecked: 0, flags: [] };
   if (month) {
     try { rec = await reconcileMonth({ db, paypal }, familyId, month, realNow); } catch (err) {
       throw new PaypalUnavailableError(err instanceof Error ? err.message : "reconciliation failed");
     }
   }
-  const unconfirmed = flagsOf(rec, "unconfirmed"), refunded = flagsOf(rec, "refunded");
+  // As Activity: receipts a demo reset set aside leave every count, and a PayPal flag on one shows only as a count in one line.
+  const counted: Reconciliation = { ...rec, flags: rec.flags.filter((f) => !aside.has(f.captureId)) };
+  const unconfirmed = flagsOf(counted, "unconfirmed"), refunded = flagsOf(counted, "refunded");
+  const receiptsChecked = Math.max(0, rec.receiptsChecked - aside.size);
   const shopAmount = (f: { shop: string; amountCents: number }) => ({ shop: f.shop, amount: dollars(f.amountCents) });
   return {
-    month, receiptsChecked: rec.receiptsChecked, matched: rec.receiptsChecked - unconfirmed.length - refunded.length,
+    month, receiptsChecked, matched: receiptsChecked - unconfirmed.length - refunded.length,
     notYetConfirmed: unconfirmed.map(shopAmount), refunded: refunded.map(shopAmount),
-    paypalChargesWithoutReceipt: flagsOf(rec, "paypal_only").map((f) => ({ amount: dollars(f.amountCents) })),
+    paypalChargesWithoutReceipt: flagsOf(counted, "paypal_only").map((f) => ({ amount: dollars(f.amountCents) })),
     note: LAG_NOTE,
+    setAsideNote: hiddenNote(aside.size, rec.flags.length - counted.flags.length),
   };
 }
 export type MatchResult = Awaited<ReturnType<typeof readMatch>>;
@@ -198,6 +206,7 @@ function systemPrompt(now: Date): string {
 - Use tether_record(month) for Tether receipts (shop, amount, status, rule version, approval).
 - Use list_transactions(month) for the PayPal charges behind that month's receipts. PayPal's dates are real-world dates, not demo dates: match rows to receipts by tetherShop, tetherDate and amount.
 - Use paypal_check(month) for whether Tether's receipts match PayPal.
+- A setAsideNote counts payments an earlier demo reset set aside. They are not part of her month: never count or describe them as her purchases.
 - Use month_checkin for her level, savings, and how her month is going.
 Keep answers short and in plain English.`;
 }
