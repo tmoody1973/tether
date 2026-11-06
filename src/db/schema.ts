@@ -209,7 +209,7 @@ export const investments = pgTable("investments", {
 /** Real-time daily usage counters for the public demo key (R45): one row per family, kind and UTC day. */
 export const usage = pgTable("usage", {
   familyId: text("family_id").notNull().references(() => families.id),
-  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask", "fund_words", "shop_sites"] }).notNull(),
+  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask", "fund_words", "shop_sites", "teen_shop_sites"] }).notNull(),
   day: text("day").notNull(), // YYYY-MM-DD, real UTC date (never the demo clock)
   count: integer("count").notNull().default(0),
 }, (u) => [primaryKey({ columns: [u.familyId, u.kind, u.day] })]);

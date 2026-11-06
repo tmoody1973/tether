@@ -10,9 +10,11 @@ import type { Level } from "@/engine/ladder";
 import { proposePurchase, settlePurchase, type Deps } from "@/flows/purchase";
 import { decideApproval, requestApproval } from "@/flows/approvals";
 import { approveAndSettle } from "@/flows/approve";
-import { guardianSetLevel, installLevel, revoke, shopsForLevel, signGrant, withFamilyLock } from "@/flows/grant";
+import { guardianSetLevel, installLevel, renewGrant, revoke, shopsForLevel, signGrant, withFamilyLock } from "@/flows/grant";
+import { approveWords } from "@/ui/approveWords";
 import { addShop, guardianShops, removeShop, searchShopSites } from "@/flows/shops";
 import { suggestShop } from "@/flows/teenMap";
+import { proposeShop } from "@/flows/approvals";
 import { allowedShops } from "@/flows/teen";
 import { DAILY_CAPS } from "@/flows/usage";
 
@@ -203,7 +205,7 @@ describe("shop search", () => {
     websites.mockResolvedValueOnce([
       { domain: m.target.domain, name: "Target" }, { domain: m.nike.domain, name: "Nike" }, { domain: "etsy.com", name: "Etsy" },
     ]);
-    const r = await searchShopSites(deps(), familyId, "  shops ");
+    const r = await searchShopSites(deps(), familyId, "  shops ", "shop_sites");
     expect(websites).toHaveBeenLastCalledWith("shops");
     expect(r).toEqual({ ok: true, sites: [
       { domain: m.target.domain, name: "Target", onList: true, opensAt: null },
@@ -211,18 +213,73 @@ describe("shop search", () => {
       { domain: "etsy.com", name: "Etsy", onList: false, opensAt: null },
     ] });
     websites.mockClear();
-    expect(await searchShopSites(deps(), familyId, "   ")).toEqual({ ok: false, error: "query" });
-    expect(await searchShopSites(deps(), familyId, "x".repeat(61))).toEqual({ ok: false, error: "query" });
+    expect(await searchShopSites(deps(), familyId, "   ", "shop_sites")).toEqual({ ok: false, error: "query" });
+    expect(await searchShopSites(deps(), familyId, "x".repeat(61), "teen_shop_sites")).toEqual({ ok: false, error: "query" });
     expect(websites).not.toHaveBeenCalled();
   });
 
-  it("the 201st search in a day returns the cap without calling Channel3", async () => {
+  it("the 201st search in a day returns the cap without calling Channel3; Zoe's counter is separate from Amara's", async () => {
     const { familyId } = await seed(1);
     const day = new Date().toISOString().slice(0, 10);
     expect(DAILY_CAPS.shop_sites).toBe(200);
-    await db.insert(t.usage).values({ familyId, kind: "shop_sites", day, count: 200 });
+    expect(DAILY_CAPS.teen_shop_sites).toBe(200);
+    await db.insert(t.usage).values({ familyId, kind: "teen_shop_sites", day, count: 200 });
     websites.mockClear();
-    expect(await searchShopSites(deps(), familyId, "lego")).toEqual({ ok: false, error: "cap" });
+    expect(await searchShopSites(deps(), familyId, "lego", "teen_shop_sites")).toEqual({ ok: false, error: "cap" });
     expect(websites).not.toHaveBeenCalled();
+    expect((await searchShopSites(deps(), familyId, "lego", "shop_sites")).ok).toBe(true); // Zoe used hers up; Amara's still works
+    await db.update(t.usage).set({ count: 200 }).where(eq(t.usage.kind, "shop_sites"));
+    websites.mockClear();
+    expect(await searchShopSites(deps(), familyId, "lego", "shop_sites")).toEqual({ ok: false, error: "cap" });
+    expect(websites).not.toHaveBeenCalled();
+  });
+});
+
+describe("fix round 1", () => {
+  it("I1: Remove takes off a shop on her rules even when another family owns the merchant row (legacy approvals)", async () => {
+    const a = await seed(1);
+    const b = await seed(1);
+    const legacy = `legacy${n}`;
+    await db.insert(t.merchants).values({ id: legacy, name: "etsy.com", domain: `etsy${n}.com`, class: "general", channel3WebsiteId: `etsy${n}.com`, opensAtLevel: 1, addedByFamilyId: a.familyId });
+    // The old applyShop reused A's row for B: B's rules name a merchant row B can't "see".
+    const g = await active(b.familyId);
+    const body = { ...g.body, constraints: g.body.constraints.map((c) => c.type === "payment.allowed_payees"
+      ? { ...c, merchantIds: [...(c as { merchantIds: string[] }).merchantIds, legacy] } : c) };
+    await db.update(t.grants).set({ body }).where(eq(t.grants.id, g.id));
+    expect((await guardianShops(db, b.familyId, NOW)).shops.map((s) => s.merchantId)).toContain(legacy);
+
+    expect(await removeShop(deps(), b.familyId, legacy)).toEqual({ name: "etsy.com", version: g.version + 1 });
+    expect(Object.values(lists((await active(b.familyId)).body.constraints)).flat()).not.toContain(legacy);
+    await signGrant(deps(), b.familyId, { level: 1 });
+    expect(Object.values(lists((await active(b.familyId)).body.constraints)).flat()).not.toContain(legacy);
+    // A row that is neither hers nor on her rules is still refused.
+    await expect(removeShop(deps(), b.familyId, `own-${n}-x`)).rejects.toThrow();
+  });
+
+  it("M3: rules past their end date are not in force: a change is only recorded, and renewing can't bring a removed shop back", async () => {
+    const { familyId, m } = await seed(1);
+    const g = await active(familyId);
+    const after = { ...deps(), now: async () => new Date(g.expiresAt.getTime() + 60_000) };
+    const versions = async () => (await db.select().from(t.grants).where(eq(t.grants.familyId, familyId))).length;
+    const count = await versions();
+    expect(await removeShop(after, familyId, m.target.id)).toEqual({ name: "Target", version: null });
+    expect(await addShop(after, familyId, { domain: m.nike.domain, name: "Nike" })).toEqual({ name: "Nike", version: null });
+    expect(await versions()).toBe(count);
+    expect((await guardianShops(db, familyId, new Date(g.expiresAt.getTime() + 60_000))).inForce).toBe(false);
+    await renewGrant(after, familyId); // same level and settings, fresh week: her choices still apply
+    expect(await payees(familyId)).not.toContain(m.target.id);
+    expect(await payees(familyId)).toContain(m.nike.id);
+  });
+
+  it("M2: approving Zoe's shop with no rules in force says it applies at the next signing", async () => {
+    const { familyId, m } = await seed(1);
+    const d = deps();
+    const live = await proposeShop(d, familyId, m.nike.domain, "running");
+    expect(await approveAndSettle(d, familyId, live.approvalId)).toBe("shop");
+    const later = await proposeShop(d, familyId, "etsy.com", "gifts");
+    await revoke(d, familyId);
+    expect(await approveAndSettle(d, familyId, later.approvalId)).toBe("shop-later");
+    expect(approveWords("shop-later", "Zoe").text).toBe("Approved. The shop goes into Zoe's rules when you next sign them.");
+    expect(approveWords("shop", "Zoe").text).toBe("Approved. Zoe can now use that shop.");
   });
 });

@@ -66,10 +66,11 @@ export async function requestApproval(
 /** `familyId`, when given (every guardian surface gives it), must own the approval: another family's id is "unknown". */
 export async function decideApproval(
   deps: Pick<Deps, "db" | "now">, approvalId: string, result: "approved" | "declined", familyId?: string,
-): Promise<{ subject: Subject; subjectId: string }> {
+): Promise<{ subject: Subject; subjectId: string; shopApplied?: boolean }> {
   const [a] = await deps.db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
   if (!a || (familyId !== undefined && a.familyId !== familyId)) throw new ApprovalError(`unknown approval ${approvalId}`);
   // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
+  let shopApplied: boolean | undefined;
   await deps.db.transaction(async (tx) => {
     await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, a.familyId)).for("update");
     const now = await deps.now(a.familyId, tx);
@@ -78,11 +79,11 @@ export async function decideApproval(
       .returning();
     if (!won) throw new ApprovalError("approval is not open (already decided or expired)");
     if (a.subject === "purchase") await decidePurchase(tx, a.subjectId, result, a.liftsBudget);
-    else if (a.subject === "shop" && result === "approved") await applyShop(tx, a.familyId, a.subjectId, now);
+    else if (a.subject === "shop" && result === "approved") shopApplied = await applyShop(tx, a.familyId, a.subjectId, now);
     else if (a.subject === "investment") await decideInvestmentRow(tx, a.subjectId, result);
     else if (a.subject === "fund") await decideFund(tx, a.familyId, a.subjectId, result);
   });
-  return { subject: a.subject, subjectId: a.subjectId };
+  return { subject: a.subject, subjectId: a.subjectId, ...(shopApplied !== undefined ? { shopApplied } : {}) };
 }
 
 /**
@@ -177,11 +178,11 @@ export async function proposeShop(deps: Deps, familyId: string, domain: string, 
  * Amara said yes to Zoe's shop: recorded as her choice ('added', so it sticks) and applied to the rules in force, at
  * any level (levels are defaults, not gates). Rules without an allowed-payees list can't take a shop: refused, rolled back.
  */
-async function applyShop(db: Db, familyId: string, domain: string, now: Date) {
+async function applyShop(db: Db, familyId: string, domain: string, now: Date): Promise<boolean> {
   const grant = await getActiveGrant(db, familyId);
-  if (grant && !grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds))) {
+  if (grant && grant.expiresAt > now && !grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds))) {
     throw new ApprovalError("active grant has no allowed_payees list to add the shop to");
   }
   const m = await merchantForDomain(db, familyId, domain, domain);
-  await chooseShop(db, familyId, m.id, "added", now);
+  return (await chooseShop(db, familyId, m.id, "added", now)) !== null; // false: recorded, applies at her next signing
 }

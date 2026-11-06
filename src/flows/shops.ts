@@ -14,6 +14,12 @@ export { SHOP_QUERY_MAX };
 const MAX_SITES = 10;
 const NAME_MAX = 80;
 
+/** Every merchant id any list in the rules names. */
+const idsOfAll = (cs: { type: string }[]): string[] => cs.flatMap((c) => {
+  const m = (c as { merchantIds?: unknown }).merchantIds;
+  return Array.isArray(m) ? (m as string[]) : [];
+});
+
 export interface ListedShop { merchantId: string; name: string; domain: string; note: string }
 export interface ShopList { level: Level; inForce: boolean; shops: ListedShop[] }
 
@@ -27,8 +33,9 @@ const idsOf = (cs: { type: string }[], type: string): string[] => cs.flatMap((c)
  * would give, choices included. Read-only.
  */
 export async function guardianShops(db: Db, familyId: string, now: Date): Promise<ShopList> {
-  const cur = await getActiveGrant(db, familyId);
-  const level = ((cur ?? await getLatestGrant(db, familyId))?.level ?? 1) as Level;
+  const latest = await getActiveGrant(db, familyId);
+  const cur = latest && latest.expiresAt > now ? latest : null; // past its end date: not in force (same as suggestShop)
+  const level = ((latest ?? await getLatestGrant(db, familyId))?.level ?? 1) as Level;
   const cs = cur?.body.constraints
     ?? (await buildForLevel(db, familyId, level, 0, { commitmentFloorPct: 10, matchPct: 100, fundAllowlist: [] }, now)).constraints;
   const ids = idsOf(cs, "payment.allowed_payees");
@@ -53,12 +60,15 @@ export type SiteSearch = { ok: true; sites: FoundSite[] } | { ok: false; error: 
 
 /**
  * Channel3 website search for a shop's name (Amara's "Add a shop" and Zoe's "Suggest a shop"). Counted against the
- * family's daily cap BEFORE Channel3 is called. `opensAt` is set only when the shop usually opens above her level.
+ * family's daily cap BEFORE Channel3 is called; Amara and Zoe have separate counters (`kind`), so Zoe (or a judge on her
+ * side of the demo) using hers up never blocks Amara's. `opensAt` is set only when the shop usually opens above her level.
  */
-export async function searchShopSites(deps: Pick<Deps, "db" | "now" | "channel3">, familyId: string, query: string): Promise<SiteSearch> {
+export async function searchShopSites(
+  deps: Pick<Deps, "db" | "now" | "channel3">, familyId: string, query: string, kind: "shop_sites" | "teen_shop_sites",
+): Promise<SiteSearch> {
   const q = query.trim();
   if (!q || q.length > SHOP_QUERY_MAX) return { ok: false, error: "query" };
-  if (!(await takeDaily(deps.db, familyId, "shop_sites"))) return { ok: false, error: "cap" };
+  if (!(await takeDaily(deps.db, familyId, kind))) return { ok: false, error: "cap" };
   const raw = await deps.channel3.websites(q);
   const seen = new Set<string>();
   const found = raw.flatMap((w) => {
@@ -93,11 +103,16 @@ export async function addShop(deps: Pick<Deps, "db" | "now">, familyId: string, 
   });
 }
 
-/** Amara removes a shop: off every list, and it stays off through re-signing and level-ups until she adds it back. */
+/**
+ * Amara removes a shop: off every list, and it stays off through re-signing and level-ups until she adds it back.
+ * Any shop her active rules name can be removed, even a merchant row another family owns: before shop choices,
+ * approving a suggestion could reuse another family's row, and a shop on her rules must never be one she can't take off.
+ */
 export async function removeShop(deps: Pick<Deps, "db" | "now">, familyId: string, merchantId: string): Promise<{ name: string; version: number | null }> {
   return withFamilyLock(deps, familyId, async (tx, now) => {
+    const onRules = idsOfAll((await getActiveGrant(tx, familyId))?.body.constraints ?? []).includes(merchantId);
     const [m] = await tx.select().from(t.merchants).where(and(eq(t.merchants.id, merchantId),
-      or(isNull(t.merchants.addedByFamilyId), eq(t.merchants.addedByFamilyId, familyId))));
+      onRules ? undefined : or(isNull(t.merchants.addedByFamilyId), eq(t.merchants.addedByFamilyId, familyId))));
     if (!m) throw new GrantError(`unknown shop ${merchantId}`);
     return { name: m.name, version: await chooseShop(tx, familyId, m.id, "removed", now) };
   });

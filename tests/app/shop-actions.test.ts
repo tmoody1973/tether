@@ -73,13 +73,19 @@ describe("Amara's shop actions", () => {
 });
 
 describe("the daily cap on shop search", () => {
-  it("both Amara's and Zoe's search show the cap message without calling Channel3", async () => {
-    const day = new Date().toISOString().slice(0, 10);
-    await testDb.insert(t.usage).values({ familyId: fam.id, kind: "shop_sites", day, count: 200 })
-      .onConflictDoUpdate({ target: [t.usage.familyId, t.usage.kind, t.usage.day], set: { count: 200 } });
+  const fill = (kind: "shop_sites" | "teen_shop_sites") => testDb.insert(t.usage)
+    .values({ familyId: fam.id, kind, day: new Date().toISOString().slice(0, 10), count: 200 })
+    .onConflictDoUpdate({ target: [t.usage.familyId, t.usage.kind, t.usage.day], set: { count: 200 } });
+
+  it("Zoe using up her searches does not block Amara's, and each shows the cap message without calling Channel3", async () => {
     session = fam.id;
-    expect((await searchShopsAction({}, form({ q: "lego" }))).error).toBe(DAILY_CAP_MESSAGE);
+    await fill("teen_shop_sites");
     expect((await searchSitesAction({}, form({ token: "shop-teen-token", q: "lego" }))).error).toBe(DAILY_CAP_MESSAGE);
+    expect(websites).not.toHaveBeenCalled();
+    expect((await searchShopsAction({}, form({ q: "lego" }))).sites).toHaveLength(1); // Amara's own counter
+    websites.mockClear();
+    await fill("shop_sites");
+    expect((await searchShopsAction({}, form({ q: "lego" }))).error).toBe(DAILY_CAP_MESSAGE);
     expect(websites).not.toHaveBeenCalled();
   });
 });

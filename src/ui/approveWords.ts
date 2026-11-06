@@ -25,5 +25,6 @@ export function approveWords(code: ApproveCode, teen: string, paid?: { amountCen
     case "inv-review": return { text: NEEDS_REVIEW_LABEL };
     case "fund": return { text: `Approved. ${teen} can now propose investing in it.` };
     case "shop": return { text: `Approved. ${teen} can now use that shop.` };
+    case "shop-later": return { text: `Approved. The shop goes into ${teen}'s rules when you next sign them.` };
   }
 }

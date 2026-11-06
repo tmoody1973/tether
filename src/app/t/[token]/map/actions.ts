@@ -38,7 +38,7 @@ export async function searchSitesAction(_prev: SiteSearchState, form: FormData):
   if (!f) return { error: GONE };
   const query = text(form.get("q"), SHOP_QUERY_MAX + 1);
   try {
-    const r = await searchShopSites(teenDeps(f.db), f.fam.id, query);
+    const r = await searchShopSites(teenDeps(f.db), f.fam.id, query, "teen_shop_sites");
     if (!r.ok) return { query, error: r.error === "cap" ? DAILY_CAP_MESSAGE : SHOP_QUERY_WORDS };
     return r.sites.length ? { query, sites: r.sites } : { query, sites: [], note: noShopsFound(query) };
   } catch (err) {

@@ -164,7 +164,7 @@ export async function searchShopsAction(_prev: ShopSearchState, form: FormData):
   if (!g) return { error: SIGNED_OUT };
   const query = String(form.get("q") ?? "").trim().slice(0, SHOP_QUERY_MAX + 1);
   try {
-    const r = await searchShopSites({ ...g.deps, channel3: paymentDeps(g.deps.db).channel3 }, g.familyId, query);
+    const r = await searchShopSites({ ...g.deps, channel3: paymentDeps(g.deps.db).channel3 }, g.familyId, query, "shop_sites");
     if (!r.ok) return { query, error: r.error === "cap" ? DAILY_CAP_MESSAGE : SHOP_QUERY_WORDS };
     return r.sites.length ? { query, sites: r.sites } : { query, sites: [], note: noShopsFound(query) };
   } catch (err) {

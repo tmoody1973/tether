@@ -100,14 +100,14 @@ export async function merchantForDomain(tx: Db, familyId: string, domain: string
 
 /**
  * Records Amara's choice for one shop (it sticks through re-signing and level-ups) and, when rules are in force, applies
- * it now as the next version with the same end date: a shop change never extends the week. With no rules in force it is
- * only recorded, and the next signing picks it up. Returns the new version, or null. Caller holds the family lock.
+ * it now as the next version with the same end date: a shop change never extends the week. With no rules in force
+ * (none active, or past their end date) it is only recorded; the next signing or renewal picks it up. Returns the new version, or null. Caller holds the family lock.
  */
 export async function chooseShop(tx: Db, familyId: string, merchantId: string, choice: ShopChoice, now: Date): Promise<number | null> {
   await tx.insert(t.shopChoices).values({ familyId, merchantId, choice, updatedAt: now })
     .onConflictDoUpdate({ target: [t.shopChoices.familyId, t.shopChoices.merchantId], set: { choice, updatedAt: now } });
   const cur = await getActiveGrant(tx, familyId);
-  if (!cur) return null;
+  if (!cur || cur.expiresAt <= now) return null; // past its end date counts as not in force (as suggestShop treats it)
   const constraints = await applyChoices(tx, familyId, cur.body.constraints);
   if (JSON.stringify(constraints) === JSON.stringify(cur.body.constraints)) return cur.version; // already so: no new version
   const body = await installGrant(tx, familyId, (version) => ({
@@ -161,16 +161,17 @@ export async function signGrant(
   });
 }
 
-/** Same level and settings (incl. shops approved since), fresh 7-day window. */
+/** Same level and settings (incl. shops approved since), fresh 7-day window. Shop choices made while the rules had
+ * lapsed were only recorded, so they are applied here: a renewal can never bring back a removed shop. */
 export async function renewGrant(deps: Deps, familyId: string): Promise<Grant> {
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getActiveGrant(tx, familyId);
     if (!cur) throw new GrantError("no active grant to renew");
     const expiresAt = new Date(now.getTime() + WEEK_MS).toISOString();
+    const constraints = await applyChoices(tx, familyId, cur.body.constraints.map((c) =>
+      c.type === "payment.execution_date" ? { ...c, notBefore: now.toISOString(), notAfter: expiresAt } : c));
     return installGrant(tx, familyId, (version) => ({
-      ...cur.body, id: crypto.randomUUID(), version, signedAt: now.toISOString(), expiresAt,
-      constraints: cur.body.constraints.map((c) =>
-        c.type === "payment.execution_date" ? { ...c, notBefore: now.toISOString(), notAfter: expiresAt } : c),
+      ...cur.body, id: crypto.randomUUID(), version, signedAt: now.toISOString(), expiresAt, constraints,
     }), now);
   });
 }
