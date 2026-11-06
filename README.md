@@ -13,8 +13,17 @@ Tether lets a parent give a teenager real spending freedom online without handin
 
 Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thursday 12 November 2026, 12:00 PT**.
 
-**Demo video:** _coming before submission_
-**Live app:** _coming before submission (Vercel)_
+**Live app:** https://tether-five-beta.vercel.app (sandbox only, no real money moves)
+**Demo video:** _link coming with the submission_
+
+## Try it in three minutes
+
+1. Open https://tether-five-beta.vercel.app and click **Open Zoe's view**. Her week shows one number: what she has left. Go to **Shop**, ask for something ("headphones under $30"). The AI agent searches only her allowed shops and labels every card *Fits your week*, *Needs Amara's OK* or *Over budget*. Open an over-budget card to see the amber refusal sentence and its two ways forward.
+2. Back on the landing page, click **Open Amara's view**. "Needs you" holds Zoe's over-budget ask. Open it: the budget consequence comes first. Tap **Approve**: Tether checks the cart against the signed rules again, mints a single-use permission slip and charges Amara's saved sandbox PayPal. The receipt, its PayPal capture id and the rules it ran under are in **Record**.
+3. In Amara's view, press **Advance to end of month** in the demo box. Zoe kept her savings promise four weeks running, so the review moves her to Level 3 and offers the savings release. At Level 3 Zoe can search the whole market, read a facts-only fund page and propose an investment; Amara approves and Tether places a sandbox Alpaca order.
+4. Ask the month assistant on Amara's Record page: "How much did Zoe spend this month?"
+
+The demo is one shared family. **Reset demo** (in Amara's demo box) puts it back, and it also resets itself when someone arrives more than 6 hours after the last reset. Dates are on a demo clock set to late December 2026 so a month fits in a few clicks; the screen says so.
 
 ---
 
@@ -185,20 +194,20 @@ sequenceDiagram
 | Layer | Technology |
 |---|---|
 | App | Next.js 16 (App Router, Cache Components), React 19, TypeScript (strict) |
-| Installable | Progressive web app (planned) |
+| Installable | Progressive web app (manifest, icons, offline page; money screens are never cached) |
 | Database | Postgres via Drizzle ORM: Neon in production, PGlite (Postgres in-process) for local dev and tests |
 | AI | Vercel AI SDK 7, `@ai-sdk/anthropic`, Claude Haiku |
 | Payments | PayPal REST (Vault, Orders v2, Webhooks, Transaction Search), PayPal Agent Toolkit |
 | Commerce data | Channel3 SDK |
 | Investing | Alpaca Broker API + Market Data (sandbox) |
 | Tests | Vitest (unit, integration on PGlite), Playwright (end-to-end) |
-| Hosting | Vercel (planned) |
+| Hosting | Vercel (production deploys from `main`), Neon Postgres |
 
 ## Status
 
-Built and tested: the rule engine, permission slips, the AI gate, levels, the ledger, PayPal vault and charges (verified live in sandbox), Channel3 search (live), purchases and approvals, weekly close and monthly level-ups, savings release, revoke, investing (verified live in the Alpaca sandbox), market search and fund facts, the month assistant, and the first parent screens (sign-in link, home, signing the rules, connecting PayPal).
+Built, reviewed task by task, and running in production: the rule engine and permission slips, the AI gate, levels and the ledger, purchases, approvals (including Amara approving a one-off over budget, decision 013), weekly close and monthly level-ups, savings release, stopping the rules, investing, market search and fund facts, the month assistant, every parent and teen screen, the demo family with a month of real sandbox history, the installable app, and the deploy. 400+ unit and integration tests and a Playwright suite run in CI on every pull request; a separate live suite runs against the deployed site.
 
-Still to build: the remaining parent screens (requests, the record, monthly review), Zoe's screens, demo data and demo clock, the installable app, and deployment.
+**Limits on the public demo** (it's one shared family whose link is public): Zoe's shopping agent 150 runs a day, searches and pasted links 400 a day, the month assistant 60 questions a day, and up to 300 shop look-ups an hour. Over a limit, the screen says so and no AI or Channel3 call is made. "Stop Zoe's rules" on the demo family stops the rules but keeps the shared saved PayPal, so the next person can try it; for a real family it also removes Tether's saved wallet at PayPal.
 
 ## Sandbox stand-ins (said plainly)
 
@@ -209,6 +218,7 @@ Still to build: the remaining parent screens (requests, the record, monthly revi
 | Savings release: Amara sends the money herself and taps "I've sent it". | Same. Tether never holds money. |
 | A demo clock moves time forward so a month fits in a video. | Real time. |
 | Sign-in is a private link (signed cookie). | Passkeys. |
+| One shared demo family that resets itself. | One family per household. |
 
 ## Quick start
 
@@ -223,7 +233,6 @@ Still to build: the remaining parent screens (requests, the record, monthly revi
 ```bash
 git clone https://github.com/tmoody1973/tether.git
 cd tether
-git checkout build/hackathon
 pnpm install
 cp .env.example .env.local
 # fill in .env.local (see below)
@@ -239,7 +248,7 @@ DATABASE_URL=pglite:./.pglite/dev
 Generate a signing key:
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
 ### Run
@@ -252,24 +261,33 @@ pnpm typecheck
 pnpm lint
 ```
 
-A one-command demo seed (a family, shops, a month of history) is coming with the demo data step.
+To create the demo family locally (it makes small **sandbox** PayPal charges and a sandbox Alpaca deposit; the script refuses to run against anything but the sandboxes):
+
+```bash
+pnpm tsx --env-file=.env.local scripts/seed.ts
+```
+
+To deploy your own copy: set the variables below in Vercel, run `DATABASE_URL=<neon url> pnpm tsx scripts/migrate.ts`, deploy, **seed before sharing the link**, then register a PayPal sandbox webhook at `https://<host>/api/paypal/webhook` and set `PAYPAL_WEBHOOK_ID`.
 
 ## Environment variables
 
 | Variable | What it's for | Required |
 |---|---|---|
 | `DATABASE_URL` | Postgres URL (Neon), or `pglite:<folder>` locally | Yes |
-| `TETHER_SIGNING_KEY` | Signs permission slips and the parent's sign-in cookie (64 hex chars) | Yes |
+| `APP_BASE_URL` | Public address, used for PayPal's return link and Zoe's link | Yes in production |
+| `TETHER_SIGNING_KEY` | Signs permission slips and the parent's sign-in cookie (long random string) | Yes |
 | `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | PayPal sandbox app | Yes |
-| `PAYPAL_BASE_URL` | `https://api-m.sandbox.paypal.com` | Yes |
-| `PAYPAL_WEBHOOK_ID` | Verifies PayPal webhook signatures | For webhooks |
-| `ANTHROPIC_API_KEY` | Claude, for the agent and AI checks | Yes |
-| `CHANNEL3_API_KEY` | Product search | Yes |
+| `PAYPAL_BASE_URL` | `https://api-m.sandbox.paypal.com` (the app refuses anything else) | Yes |
+| `PAYPAL_WEBHOOK_ID` | Verifies PayPal webhook signatures; the webhook refuses requests without it | Yes in production |
+| `PAYPAL_DEMO_VAULT_ID` | Amara's saved sandbox PayPal, used by the demo seed | For the seed |
+| `ANTHROPIC_API_KEY` | Claude, for the agent and the AI checks | Yes |
+| `CHANNEL3_API_KEY` | Product search inside allowed shops | Yes |
 | `ALPACA_BROKER_KEY` / `ALPACA_BROKER_SECRET` | Alpaca Broker sandbox (OAuth client credentials) | For investing |
 | `ALPACA_BROKER_BASE_URL` | `https://broker-api.sandbox.alpaca.markets` | For investing |
-| `ALPACA_DATA_BASE_URL` | `https://data.sandbox.alpaca.markets` | For investing |
+| `ALPACA_DATA_BASE_URL` | `https://data.sandbox.alpaca.markets` | No (this default) |
+| `ALPACA_FIRM_ACCOUNT_ID` | Funds deposits instantly by journal instead of a bank transfer | No |
 | `ALPACA_CUSTODIAL_ENABLED` | `true` sends the custodial account request | No (default `false`) |
-| `APP_BASE_URL` | Where PayPal returns Amara after saving her wallet | Yes |
+| `DEMO_GUARDIAN_KEY` / `DEMO_TEEN_TOKEN` | Keys for the shared demo family (landing page buttons, Reset demo); leave both blank to hide the demo | For the public demo |
 
 Never commit `.env.local`. It is git-ignored.
 
