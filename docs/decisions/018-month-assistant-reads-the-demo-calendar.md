@@ -1,0 +1,19 @@
+# 018 — The month assistant reads the demo calendar, and "nothing found" is an answer
+
+**Decision** — Amara's month assistant is told today's date on Tether's demo clock. It looks up PayPal charges by the real-time window when Zoe's permission slips were used, and it shows only charges that match one of that month's Tether receipts. When the tools find nothing, the model's own answer ("no purchases this month") goes through instead of a forced "I can't see that."
+
+**Why this came up** — On the live site every question got "I can't see that." Tether runs a demo clock, a per-family offset that fast-forwards time so judges can see a whole month in minutes. The demo read late December while real time was November. The model was never told the date, so it asked for the wrong month and found no receipts. A safety rule then turned "no rows" into "I can't see that." Even with the right month, PayPal records charges on real dates, so searching PayPal for "December" found nothing. If we got this wrong, the one AI feature Amara sees would keep saying nothing, or worse, would compare receipts to the wrong PayPal rows.
+
+**Options**
+1. **Keep "no rows means I can't see that," and only fix the dates.** Cost: a month with genuinely no purchases still answers "I can't see that," which reads as broken.
+2. **Let the model's answer through whenever it used a tool (chosen).** It still answers "I can't see that" when it calls no tool, calls a tool outside the allowed set, or says nothing. Cost: we rely more on the system prompt's "answer only from tool results" rule to stop the model inventing numbers when a list comes back empty.
+3. **For PayPal rows, keep every charge with one of this family's capture ids (a capture id is PayPal's id for a completed payment).** Cost: because the demo clock runs fast, one real-time window can hold charges from several demo months. The model would see a November charge while answering about October and could report a mismatch that isn't one.
+4. **For PayPal rows, keep only charges whose capture id is one of this month's receipts (chosen).** Each row then carries the receipt's shop and demo date next to PayPal's real date. Cost: a charge PayPal took with no Tether receipt at all is invisible to the assistant. The old version couldn't see those either; the Activity page's PayPal check (R35) is what catches them.
+
+**What we chose and why** — The date context, the slip-based window, the matching fields and option 2 came from the bug brief (Tarik and the lead agent). Option 4 over option 3 was Claude's call while implementing: it's the only version where every row the model sees belongs to the month it was asked about.
+
+**What we gave up** — The assistant can't say "PayPal charged something Tether has no receipt for." Searching from the month's first slip covers 31 real days at most, so a month whose slips span longer would miss late charges (the same limit the reconciliation already has). The check-in tool's "next review" is a preview of what the review would decide today, not a promise for month end.
+
+**How we'll know if this was right** — On the live demo, "What did Zoe buy this month?" lists the seeded December purchases, "Do Tether's receipts match PayPal?" says they match, and "Is Zoe on track for her next level?" gives her level and kept weeks. The automated tests in `tests/ai/monthAssistant.test.ts` check the date in the prompt, the slip window, the row matching, and that an empty month passes the model's answer through.
+
+**What actually happened** —
