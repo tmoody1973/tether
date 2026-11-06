@@ -9,6 +9,14 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite"],
   // R39: Zoe's link is her credential; it must never leave in a Referer header (/t, /t/:token and below).
   // Money pages (/g, /t) are never cached by the browser, a CDN or the service worker.
+  // Amara's side is organised around her jobs (Home, Zoe's rules, Activity); old links keep working, query and all.
+  async redirects() {
+    return [
+      { source: "/g/grant", destination: "/g/rules", permanent: false },
+      { source: "/g/record", destination: "/g/activity", permanent: false },
+      { source: "/g/review", destination: "/g/activity", permanent: false },
+    ];
+  },
   async headers() {
     const noStore = { key: "Cache-Control", value: "no-store" };
     return [
