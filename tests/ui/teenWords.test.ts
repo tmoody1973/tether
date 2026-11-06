@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  cardOutcome, levelLine, levelProgress, reflection, resetDay, setsBack, sheetNumbers, whatChanged,
+  buyFlash, cardOutcome, daysToReset, levelLine, levelProgress, reflection, resetsWords, setsBack, sheetNumbers, waitWords, whatChanged,
 } from "@/ui/teenWords";
 import type { Decision } from "@/engine/types";
+import type { PurchaseStatus } from "@/db/repo";
 
 const d = (outcome: Decision["outcome"], constraints: string[] = []): Decision =>
   ({ outcome, semanticRules: [], reasons: constraints.map((constraint) => ({ constraint, detail: "" })) });
@@ -18,6 +19,7 @@ describe("teen words", () => {
   it("states the week's arithmetic in money, never below zero", () => {
     expect(sheetNumbers(1200, 2000)).toBe("You've spent $12.00 of your $20.00, so there's $8.00 left.");
     expect(sheetNumbers(2100, 2000)).toBe("You've spent $21.00 of your $20.00, so there's $0.00 left.");
+    expect(sheetNumbers(600, 2000, false)).toBe("You've spent $6.00 of your $20.00 this week.");
   });
 
   it("says how many weeks a purchase sets the goal back, only with a goal and a commitment", () => {
@@ -27,8 +29,25 @@ describe("teen words", () => {
     expect(setsBack({ title: "Headphones" }, 500, 0)).toBeNull();
   });
 
-  it("budgets reset on Monday (UTC ISO weeks)", () => {
-    expect(resetDay()).toBe("Monday");
+  it("says when the budget resets: next ISO Monday (UTC), or sooner if her rules end first", () => {
+    const wed = new Date("2026-11-04T12:00:00Z");
+    expect(daysToReset(wed, null)).toBe(5);
+    expect(daysToReset(new Date("2026-11-08T23:00:00Z"), null)).toBe(1); // Sunday night
+    expect(daysToReset(wed, new Date("2026-11-06T09:00:00Z"))).toBe(2); // rules end Friday
+    expect(daysToReset(wed, new Date("2026-11-04T18:00:00Z"))).toBe(0);
+    expect([0, 1, 5].map(resetsWords)).toEqual(["resets today", "resets tomorrow", "resets in 5 days"]);
+    expect([0, 1, 5].map(waitWords)).toEqual(["Wait until later today", "Wait until tomorrow", "Wait 5 days"]);
+  });
+
+  it("buy flash follows the purchase's status; the URL code never makes it look paid", () => {
+    const p = (status: PurchaseStatus) => ({ title: "Notebook", amountCents: 500, shop: "Target", status });
+    expect(buyFlash("paid", p("paid"), "Amara", "This sets Bike back 1 week.")).toEqual({ text: "Paid — Notebook, $5.00 at Target.", sub: "This sets Bike back 1 week." });
+    expect(buyFlash("paid", p("refused"), "Amara", null)).toEqual({ text: "That doesn't fit your rules any more, so nothing was spent.", warn: true });
+    expect(buyFlash("paid", p("proposed"), "Amara", null)?.text).not.toMatch(/Paid/);
+    expect(buyFlash("rules", p("paying"), "Amara", null)?.text).toBe("PayPal is confirming — Notebook, $5.00 at Target.");
+    expect(buyFlash("rules", p("needs_approval"), "Amara", null)).toMatchObject({ ask: true });
+    expect(buyFlash("changed", p("refused"), "Amara", null)?.text).toMatch(/price or the item changed/);
+    expect(buyFlash("paid", null, "Amara", null)).toBeNull();
   });
 
   it("week-ended reflection compares her only with herself", () => {

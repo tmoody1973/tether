@@ -1,6 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createChannel3 } from "@/adapters/channel3/client";
-import { outcomeLabel, runAgent } from "@/ai/agent";
+import { runAgent } from "@/ai/agent";
 import type { Constraint, Grant } from "@/engine/types";
 
 const now = new Date();
@@ -28,7 +28,7 @@ const r = await runAgent(
 );
 console.log("toolCalls:", r.toolCalls);
 for (const p of r.proposals) {
-  console.log(`- ${p.cart.items.map((i) => i.title).join(" + ")} | ${p.cart.totalCents}c | ${p.cart.merchantId} | "${p.reason}" | ${p.decision.outcome} (${outcomeLabel(p.decision)})`);
+  console.log(`- ${p.cart.items.map((i) => i.title).join(" + ")} | ${p.cart.totalCents}c | ${p.cart.merchantId} | "${p.reason}" | ${p.decision.outcome} (${p.decision.reasons.map((r) => r.constraint).join(", ") || "no reasons"})`);
 }
 }
 main().catch((e) => { console.error(e instanceof Error ? e.message : e); process.exit(1); });

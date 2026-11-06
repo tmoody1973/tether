@@ -2,6 +2,7 @@
 // (see fixtures.ts), so the tests don't depend on each other's order.
 // Runs before the e2e dev server starts, because one PGlite directory can only be open in one process.
 import { rmSync } from "node:fs";
+import { eq } from "drizzle-orm";
 import path from "node:path";
 import { closeDb, openDb, type Db } from "@/db/client";
 import { appendJournal, consumeToken, insertFamily, insertPurchase, insertReceipt, saveVault } from "@/db/repo";
@@ -83,6 +84,11 @@ async function main() {
   await teen(E2E.teen.buy, "e2e-guardian-key-teen-buy");
   await teen(E2E.teen.ask, E2E.teenAskKey);
   await teen(E2E.teen.reset, E2E.teenResetKey);
+  await teen(E2E.teen.sheet, "e2e-guardian-key-teen-sheet");
+  const over = await teen(E2E.teen.over, E2E.teenOverKey);
+  await bought(db, over, 450, "e2e-token-teen-over-2", "E2E-CAP-teen-over-2"); // $10.50 spent, $9.50 left
+  const paused = await teen(E2E.teen.paused, "e2e-guardian-key-teen-paused");
+  await db.update(t.grants).set({ status: "revoked" }).where(eq(t.grants.id, paused.grant.id)); // Amara stopped the rules
   const ended = await teen(E2E.teen.ended, "e2e-guardian-key-teen-ended");
   await advanceDemoClock({ db, now: clockFor(db) }, ended.id, "week"); // her 7-day rules run out; the week closes
 

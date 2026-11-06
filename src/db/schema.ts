@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, boolean, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type { Cart, Decision, Grant } from "@/engine/types";
@@ -89,6 +89,9 @@ export const approvals = pgTable("approvals", {
   decidedAt: ts("decided_at"),
   expiredAt: ts("expired_at"),
   note: text("note"),
+  // R40: Amara's yes may cover one over-budget cart, by at most over_cents past the week (set from the refusal she saw).
+  liftsBudget: boolean("lifts_budget").notNull().default(false),
+  overCents: integer("over_cents"),
 }, (a) => [uniqueIndex("approvals_one_open_uq").on(a.familyId, a.subject, a.subjectId)
   .where(sql`${a.result} is null and ${a.expiredAt} is null`)]);
 

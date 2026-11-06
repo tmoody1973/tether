@@ -74,12 +74,6 @@ export function cleanReason(raw: unknown): string {
   return s.trim().slice(0, MAX_REASON) || FALLBACK_REASON;
 }
 
-export function outcomeLabel(d: Decision): string {
-  if (d.outcome === "ALLOW") return "fits your week";
-  if (d.outcome === "NEEDS_APPROVAL") return "needs approval";
-  return d.reasons.some((r) => r.constraint === "payment.budget") ? "over budget" : "not allowed";
-}
-
 export async function runAgent(
   deps: { model: AgentLlm; channel3: Channel3Adapter },
   input: AgentInput,

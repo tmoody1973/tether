@@ -79,6 +79,9 @@ function Consequence({ v }: { v: RequestView }) {
           <span>{formatCents(leftCents)} available</span>
           {overCents > 0 && <span className="g-over">{formatCents(overCents)} over</span>}
         </div>
+        {v.purchase.liftsBudget && overCents > 0 && (
+          <p style={{ color: "var(--ink-2)", marginTop: 6 }}>A one-off: this week won&apos;t count toward her next level.</p>
+        )}
         <p className="g-note" style={{ marginTop: 6 }}>
           {v.purchase.items.map((i) => `${i.qty > 1 ? `${i.qty} × ` : ""}${i.title}`).join(", ")}
         </p>

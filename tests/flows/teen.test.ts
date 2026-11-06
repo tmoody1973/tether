@@ -8,7 +8,7 @@ import type { Cart } from "@/engine/types";
 import { revoke, signGrant } from "@/flows/grant";
 import { guardianHome } from "@/flows/home";
 import { pendingApprovals } from "@/flows/approvals";
-import { askAmara, buy, markLevelSeen, nudge, proposeCarts, teenWeek, TeenError } from "@/flows/teen";
+import { askAmara, buy, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, THROTTLED } from "@/flows/teen";
 import type { Deps } from "@/flows/purchase";
 
 let db: Db;
@@ -128,6 +128,23 @@ describe("shopping: propose, ask, buy", () => {
     expect((await guardianHome(db, s.familyId, new Date(NOW.getTime() + 7 * DAY))).needsYou).not.toContainEqual(expect.objectContaining({ kind: "message" }));
   });
 
+  it("R40: over this week's budget and nothing else ⇒ a real request Amara can approve", async () => {
+    const s = await seed();
+    await paid(s.familyId, s.tgt, 1050, s.grant);
+    const [card] = await proposeCarts(deps(), s.familyId, [{ cart: cart(s.tgt, 1500, "Running shoes") }]);
+    expect(card.decision.outcome).toBe("REFUSE");
+    expect(await askAmara(deps(), s.familyId, card.purchaseId, "falling apart")).toBe("request");
+    expect(await pendingApprovals(db, s.familyId, NOW)).toEqual([expect.objectContaining({ subjectId: card.purchaseId, liftsBudget: true })]);
+    expect((await teenWeek(db, s.familyId, NOW)).asks).toEqual([expect.objectContaining({ title: "Running shoes", status: "waiting" })]);
+  });
+
+  it("asking needs rules in force", async () => {
+    const s = await seed();
+    const [card] = await proposeCarts(deps(), s.familyId, [{ cart: cart(s.bb, 800) }]);
+    clock = new Date(NOW.getTime() + 8 * DAY);
+    await expect(askAmara(deps(), s.familyId, card.purchaseId, null)).rejects.toBeInstanceOf(TeenError);
+  });
+
   it("another family's purchase is unknown to buy and ask", async () => {
     const a = await seed();
     const [card] = await proposeCarts(deps(), a.familyId, [{ cart: cart(a.tgt, 500) }]);
@@ -150,5 +167,20 @@ describe("nudge", () => {
     await nudge(deps(), s.familyId, null);
     expect((await teenWeek(db, s.familyId, clock)).nudged).toBe(true);
     expect((await guardianHome(db, s.familyId, clock)).needsYou[0]).toEqual({ kind: "rules", nudged: true });
+  });
+});
+
+describe("shopThrottle (real time)", () => {
+  it("refuses past 60 proposals an hour, and an agent run within 5s of the last one", async () => {
+    const s = await seed();
+    const real = Date.now();
+    expect(await shopThrottle(db, s.familyId, "agent", real)).toBeNull();
+    await proposeCarts(deps(), s.familyId, [{ cart: cart(s.tgt, 500) }]);
+    expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBe(THROTTLED);
+    expect(await shopThrottle(db, s.familyId, "search", Date.now())).toBeNull();
+    expect(await shopThrottle(db, s.familyId, "agent", Date.now() + 6_000)).toBeNull();
+    await proposeCarts(deps(), s.familyId, Array.from({ length: 59 }, (_, i) => ({ cart: cart(s.tgt, 100 + i) })));
+    expect(await shopThrottle(db, s.familyId, "search", Date.now() + 6_000)).toBe(THROTTLED);
+    expect(await shopThrottle(db, s.familyId, "search", Date.now() + 3_700_000)).toBeNull(); // an hour later
   });
 });

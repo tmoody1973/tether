@@ -192,4 +192,60 @@ describe("approvals", () => {
     const [p] = await pendingApprovals(db, familyId, new Date(nowMs));
     expect(p).toMatchObject({ subjectId: "nike.com", shopDomain: "nike.com", note: "my shoes", cartHash: null });
   });
+
+  describe("R40: Amara can approve one over-budget cart", () => {
+    const overBudget = async () => {
+      const { familyId, merchantId } = await seed("2026-11-04T12:00:00Z");
+      const d = deps();
+      await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 400, at: new Date(nowMs), ref: null, note: null });
+      const { purchaseId, decision } = await proposePurchase(d, familyId, cartOf(merchantId)); // $6 with $4 left
+      expect(decision.outcome).toBe("REFUSE");
+      const p = (await repo.getPurchase(db, purchaseId))!;
+      return { d, familyId, merchantId, purchaseId, p };
+    };
+
+    it("budget-only refusal ⇒ a lifting request ⇒ approve ⇒ paid, full amount spent this week", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p.cartHash, "please");
+      const [row] = await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
+      expect(row).toMatchObject({ liftsBudget: true, overCents: 200 });
+      expect(await pendingApprovals(db, familyId, new Date(nowMs))).toEqual([expect.objectContaining({ id: approvalId, liftsBudget: true })]);
+      await decideApproval(d, approvalId, "approved");
+      expect(await statusOf(purchaseId)).toBe("approved");
+      expect((await settlePurchase(d, purchaseId)).status).toBe("paid");
+      const [receipt] = await db.select().from(t.receipts).where(eq(t.receipts.purchaseId, purchaseId));
+      expect(receipt.approvalId).toBe(approvalId);
+      expect((await ledgerView(db, familyId, new Date(nowMs))).spentThisWeekCents).toBe(1000);
+    });
+
+    it("the overage grew after Amara said yes ⇒ refused, nothing charged", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const { approvalId } = await requestApproval(d, familyId, "purchase", purchaseId, p.cartHash);
+      await decideApproval(d, approvalId, "approved");
+      await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 100, at: new Date(nowMs), ref: null, note: null });
+      const r = await settlePurchase(d, purchaseId);
+      expect(r.status).toBe("refused");
+      expect((await ledgerView(db, familyId, new Date(nowMs))).spentThisWeekCents).toBe(500);
+    });
+
+    it("an ordinary approval never lifts the budget", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      await db.insert(t.approvals).values({
+        id: `plain-${n}`, familyId, subject: "purchase", subjectId: purchaseId, cartHash: p.cartHash,
+        expiresAt: new Date(nowMs + 3_600_000), result: "approved", decidedAt: new Date(nowMs),
+      });
+      await db.update(t.purchases).set({ status: "approved" }).where(eq(t.purchases.id, purchaseId));
+      expect((await settlePurchase(d, purchaseId)).status).toBe("refused");
+    });
+
+    it("a meaning-check refusal or any other hard reason can't be asked for", async () => {
+      const { d, familyId, purchaseId, p } = await overBudget();
+      const gate2 = [{ rule: "BOOKS_ONLY", probability: 0.1, model: "m", modelVersion: "1", band: "REFUSE" as const }];
+      await db.update(t.purchases).set({ decision: { ...p.decision, gate2 } as never }).where(eq(t.purchases.id, purchaseId));
+      await expect(requestApproval(d, familyId, "purchase", purchaseId, p.cartHash)).rejects.toBeInstanceOf(ApprovalError);
+      const payee = { ...p.decision, reasons: [...p.decision.reasons, { constraint: "payment.allowed_payees", detail: "x" }] };
+      await db.update(t.purchases).set({ decision: payee }).where(eq(t.purchases.id, purchaseId));
+      await expect(requestApproval(d, familyId, "purchase", purchaseId, p.cartHash)).rejects.toBeInstanceOf(ApprovalError);
+    });
+  });
 });

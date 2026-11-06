@@ -4,7 +4,7 @@ import { getDb } from "@/db/client";
 import { teenPurchase, type TeenWeek } from "@/flows/teen";
 import { formatCents } from "@/ui/grantWords";
 import { Chip } from "@/ui/teen";
-import { levelProgress, resetDay, sheetNumbers } from "@/ui/teenWords";
+import { daysToReset, levelProgress, sheetNumbers, waitWords } from "@/ui/teenWords";
 import { explainLlm } from "../teenDeps";
 
 /**
@@ -17,7 +17,7 @@ export async function RefusalSheet({ token, familyId, purchaseId, w }: { token: 
   const g = w.guardianName;
   const budget = p.decision.reasons.some((r) => r.constraint === "payment.budget");
   const { sentence, routes } = await explainRefusal(explainLlm(), p.decision, { teenName: w.teenName, guardianName: g, goalTitle: w.goal?.title });
-  const wait = budget ? `Wait until ${resetDay()}` : routes[1];
+  const wait = budget ? waitWords(daysToReset(w.now, w.endsAt)) : routes[1];
   return (
     <div className="t-scrim">
       <section className="t-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h">
@@ -29,7 +29,8 @@ export async function RefusalSheet({ token, familyId, purchaseId, w }: { token: 
         </div>
         <div className="t-card t-card--quiet">
           <p className="t-small">{sentence}</p>
-          <p className="t-small" style={{ marginTop: 6 }}>{sheetNumbers(w.spentCents, w.weeklyCents)}</p>
+          {/* The budget sentence already says what's left; say the rest of the arithmetic once. */}
+          <p className="t-small" style={{ marginTop: 6 }}>{sheetNumbers(w.spentCents, w.weeklyCents, !budget)}</p>
         </div>
         <div className="t-routes">
           {/* autoFocus: the sheet takes focus when it opens */}

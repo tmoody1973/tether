@@ -26,4 +26,5 @@ export interface LedgerView {
 
 export interface Reason { constraint: string; detail: string; numbers?: Record<string, Cents> }
 export interface Decision { outcome: Outcome; reasons: Reason[]; semanticRules: string[] }
-export interface ApprovalGrant { cartHash: string; expiresAt: string }
+/** R40: liftsBudget lets Amara's yes cover one over-budget cart, by at most overCents beyond the week. */
+export interface ApprovalGrant { cartHash: string; expiresAt: string; liftsBudget?: boolean; overCents?: Cents }

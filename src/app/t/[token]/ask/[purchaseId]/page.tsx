@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { teenSession } from "@/auth/teen";
 import { now as clockNow } from "@/clock/clock";
-import { openAsk, teenPurchase, teenWeek } from "@/flows/teen";
+import { askable, openAsk, teenPurchase, teenWeek } from "@/flows/teen";
 import { formatCents } from "@/ui/grantWords";
 import { PendingButton } from "@/ui/PendingButton";
 import { LinkGone, TeenLoading, TeenShell } from "@/ui/teen";
@@ -26,8 +26,8 @@ async function Ask({ params }: { params: Promise<{ token: string; purchaseId: st
   const [w, p] = await Promise.all([teenWeek(db, fam.id, await clockNow(db, fam.id)), teenPurchase(db, fam.id, purchaseId)]);
   const g = w.guardianName;
   if (w.state !== "active") return <TeenShell token={token} active="shop" center><NotShopping w={w} /></TeenShell>;
-  const askable = p && (p.status === "needs_approval" || p.status === "refused");
-  if (!askable) {
+  const kind = p ? askable(p) : null;
+  if (!p || !kind) {
     return (
       <TeenShell token={token} active="shop" center>
         <h1 className="t-h2">That one can&apos;t be asked about any more.</h1>
@@ -35,7 +35,8 @@ async function Ask({ params }: { params: Promise<{ token: string; purchaseId: st
       </TeenShell>
     );
   }
-  const already = p.status === "needs_approval" && await openAsk(db, fam.id, p.id);
+  const already = kind === "request" && await openAsk(db, fam.id, p.id);
+  const oneOff = kind === "request" && p.status === "refused"; // R40: over budget, and only that
   const left = formatCents(w.leftCents);
   return (
     <TeenShell token={token} active="shop">
@@ -51,9 +52,10 @@ async function Ask({ params }: { params: Promise<{ token: string; purchaseId: st
           <label className="t-label" htmlFor="reason">Why (optional)</label>
           <textarea id="reason" name="reason" className="t-input" rows={3} maxLength={200} placeholder="the ones I have are falling apart" />
           <p className="t-small">
-            {p.status === "needs_approval"
+            {kind === "request"
               ? <>She&apos;ll see that you have <span className="money">{left}</span> left this week, and your reason.</>
-              : <>This one is over what your rules allow, so {g} can&apos;t OK it in Tether and nothing will be charged. She&apos;ll see you asked, that you have <span className="money">{left}</span> left this week, and your reason.</>}
+              : <>This one is outside your rules, so {g} can&apos;t OK it in Tether and nothing will be charged. She&apos;ll see you asked, that you have <span className="money">{left}</span> left this week, and your reason.</>}
+            {oneOff && w.level && w.level < 3 && <> If she says yes, it goes past your week. This week won&apos;t count toward Level {w.level + 1}.</>}
           </p>
           <PendingButton label="Send" pendingLabel="Sending…" className="t-btn t-btn--primary" />
         </form>

@@ -237,3 +237,34 @@ describe("fail closed on unknown and malformed constraints", () => {
     expect(d.reasons.at(-1)?.constraint).toBe("unknown_constraint");
   });
 });
+
+describe("R40: an approval that lifts the budget (one over-budget one-off)", () => {
+  const g = grant([{ type: "approval.over_amount", overCents: 1000 }]);
+  const c = cart(1500);
+  const lift = (overCents: number, h = cartHash(c)): ApprovalGrant => ({ cartHash: h, expiresAt: week(1), liftsBudget: true, overCents });
+
+  it("budget-only refusal + lifting approval ⇒ ALLOW", () => {
+    expect(decide(g, c, ledger(1050), NOW).outcome).toBe("REFUSE");
+    expect(decide(g, c, ledger(1050), NOW, lift(550)).outcome).toBe("ALLOW");
+  });
+  it("an ordinary approval never lifts the budget", () => {
+    expect(decide(g, c, ledger(1050), NOW, { cartHash: cartHash(c), expiresAt: week(1) }).outcome).toBe("REFUSE");
+  });
+  it("overage grew after the approval ⇒ REFUSE", () => {
+    expect(decide(g, c, ledger(1100), NOW, lift(550)).outcome).toBe("REFUSE");
+  });
+  it("budget + shop not allowed ⇒ REFUSE", () => {
+    const other = cart(1500, "m_elsewhere");
+    expect(decide(g, other, ledger(1050), NOW, lift(550, cartHash(other))).outcome).toBe("REFUSE");
+  });
+  it("budget + rules expired ⇒ REFUSE", () => {
+    expect(decide(g, c, ledger(1050), new Date(Date.parse(week(8))), lift(550)).outcome).toBe("REFUSE");
+  });
+  it("over one week's allowance (amount_range) ⇒ REFUSE", () => {
+    const big = cart(2500);
+    expect(decide(g, big, ledger(0), NOW, lift(500, cartHash(big))).outcome).toBe("REFUSE");
+  });
+  it("a lifting approval for another cart lifts nothing", () => {
+    expect(decide(g, c, ledger(1050), NOW, lift(550, "other-hash")).outcome).toBe("REFUSE");
+  });
+});

@@ -4,11 +4,10 @@ import { teenSession } from "@/auth/teen";
 import type { Db } from "@/db/client";
 import { now as clockNow } from "@/clock/clock";
 import { teenPurchase, teenWeek, type TeenWeek } from "@/flows/teen";
-import { CHARGE_FAILED_MESSAGE } from "@/flows/purchase";
 import { formatCents } from "@/ui/grantWords";
 import { PendingButton } from "@/ui/PendingButton";
 import { Bar, LinkGone, Money, TeenLoading, TeenShell } from "@/ui/teen";
-import { levelLine, reflection, resetDay, setsBack, whatChanged } from "@/ui/teenWords";
+import { buyFlash, daysToReset, levelLine, reflection, resetsWords, setsBack, whatChanged, type BuyFlash } from "@/ui/teenWords";
 import { levelSeenAction, nudgeAction } from "./actions";
 import { RefusalSheet } from "./RefusalSheet";
 import { NotShopping } from "./NotShopping";
@@ -37,7 +36,7 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
   if (w.state === "ended") return <WeekEnded token={token} w={w} />;
   if (w.state !== "active") return <TeenShell token={token} active="week" center><NotShopping w={w} /></TeenShell>;
 
-  const flash = await buyFlash(sp, w, db, fam.id);
+  const flash = await flashFor(sp, w, db, fam.id);
   const sheet = one(sp, "sheet");
   const g = w.guardianName;
   return (
@@ -49,11 +48,16 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
       </div>
       <div>
         <Bar value={w.spentCents} max={w.weeklyCents} label={`${formatCents(w.spentCents)} spent of ${formatCents(w.weeklyCents)}`} />
-        <div className="t-barlabels"><span>spent <Money cents={w.spentCents} /> of <Money cents={w.weeklyCents} /></span><span>resets {resetDay()}</span></div>
+        <div className="t-barlabels"><span>spent <Money cents={w.spentCents} /> of <Money cents={w.weeklyCents} /></span><span>{resetsWords(daysToReset(w.now, w.endsAt))}</span></div>
       </div>
       {w.level && <div className="t-pill">{levelLine(w.level, g)}</div>}
 
-      {flash && <p className={flash.warn ? "t-flash t-flash--warn" : "t-flash"} role="status">{flash.text}{flash.sub && <small>{flash.sub}</small>}</p>}
+      {flash && (
+        <p className={flash.warn ? "t-flash t-flash--warn" : "t-flash"} role="status">
+          {flash.text}{flash.sub && <small>{flash.sub}</small>}
+          {flash.ask && flash.purchaseId && <small><Link href={`/t/${token}/ask/${flash.purchaseId}`} style={{ textDecoration: "underline" }}>Ask {g}</Link></small>}
+        </p>
+      )}
       {w.release && (
         <div className="t-hint" role="status">
           {w.release.confirmed
@@ -72,7 +76,7 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
               const back = p.status === "paid" ? setsBack(w.goal, p.amountCents, w.commitmentCents) : null;
               return (
                 <li key={p.id} className="t-row">
-                  <span className="t-row__who">{p.shop}<small>{p.title}{p.status === "paying" ? " · PayPal is confirming" : ""}{back ? ` · ${back}` : ""}</small></span>
+                  <span className="t-row__who">{p.shop}<small>{p.title}{p.status === "paying" ? " · PayPal is confirming" : ""}{p.approved ? ` · ${g} approved this one` : ""}{back ? ` · ${back}` : ""}</small></span>
                   <span className="t-row__amt">{formatCents(p.amountCents)}</span>
                 </li>
               );
@@ -102,9 +106,9 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
   );
 }
 
-type Flash = { text: string; sub?: string; warn?: boolean };
+type Flash = BuyFlash & { purchaseId?: string };
 
-async function buyFlash(sp: Search, w: TeenWeek, db: Db, familyId: string): Promise<Flash | null> {
+async function flashFor(sp: Search, w: TeenWeek, db: Db, familyId: string): Promise<Flash | null> {
   const g = w.guardianName;
   const asked = one(sp, "asked");
   if (asked === "request") return { text: `Sent. ${g} will see it, with what you have left this week.` };
@@ -112,18 +116,10 @@ async function buyFlash(sp: Search, w: TeenWeek, db: Db, familyId: string): Prom
   if (asked === "closed") return { text: "That one can't be asked about any more. Have another look in Shop.", warn: true };
   const code = one(sp, "buy");
   if (!code) return null;
+  // The purchase's own status decides what Zoe is told; the code only explains a "nothing was spent".
   const p = await teenPurchase(db, familyId, one(sp, "p") ?? "");
-  const what = p ? `${p.title}, ${formatCents(p.amountCents)} at ${p.shop}` : "";
-  switch (code) {
-    case "paid": return { text: `Paid — ${what}.`, sub: p ? setsBack(w.goal, p.amountCents, w.commitmentCents) ?? undefined : undefined };
-    case "paying": return { text: `PayPal is confirming — ${what}.`, sub: "It's held from your week until PayPal says it went through." };
-    case "declined": return { text: CHARGE_FAILED_MESSAGE, warn: true };
-    case "changed": return { text: "The price or the item changed, so nothing was spent. Have another look.", warn: true };
-    case "nopaypal": return { text: `${g}'s PayPal isn't saved, so nothing was spent.`, warn: true };
-    case "paypal-off": return { text: "Tether can't reach PayPal right now, so nothing was spent.", warn: true };
-    case "notstarted": return { text: "That didn't start, so nothing was spent. Try again in a minute.", warn: true };
-    default: return { text: "That doesn't fit your rules any more, so nothing was spent.", warn: true };
-  }
+  const f = buyFlash(code, p, g, p ? setsBack(w.goal, p.amountCents, w.commitmentCents) : null);
+  return f && p ? { ...f, purchaseId: p.id } : f;
 }
 
 /** Mock 5: a real screen, with the evidence on it. */

@@ -12,7 +12,8 @@ export interface RequestView {
   reason: string | null; answers: [string, string][];
   /** Her last (up to) 4 closed weeks. */
   lastWeeks: { count: number; insideBudget: number; kept: number };
-  purchase?: { amountCents: number; shop: string; items: { title: string; qty: number }[]; leftCents: number; overCents: number };
+  /** liftsBudget (R40): approving lets this one cart go past her week; that week then doesn't count toward a level. */
+  purchase?: { amountCents: number; shop: string; items: { title: string; qty: number }[]; leftCents: number; overCents: number; liftsBudget: boolean };
   investment?: { symbol: string; amountCents: number; savingsCents: number };
   fund?: { symbol: string };
   shop?: { domain: string };
@@ -45,7 +46,7 @@ export async function requestView(db: Db, familyId: string, approvalId: string, 
       ...base,
       purchase: {
         amountCents: a.cart.totalCents, shop: m?.name ?? "a shop", items: a.cart.items.map((i) => ({ title: i.title, qty: i.qty })),
-        leftCents, overCents: Math.max(0, a.cart.totalCents - leftCents),
+        leftCents, overCents: Math.max(0, a.cart.totalCents - leftCents), liftsBudget: a.liftsBudget,
       },
     };
   }

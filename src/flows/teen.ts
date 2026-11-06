@@ -1,6 +1,6 @@
 // Zoe's side. Every function takes the familyId the caller resolved from her link (R39); a purchase id that
 // isn't this family's is "unknown", never another family's data.
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getPurchase, type PurchaseRow } from "@/db/repo";
@@ -8,7 +8,7 @@ import { ledgerView, weekKey, weekRecords } from "@/ledger/ledger";
 import { commitmentFloorCents, streak, type Level, type WeekRecord } from "@/engine/ladder";
 import type { Cart, Decision, Grant } from "@/engine/types";
 import type { Product } from "@/adapters/channel3/client";
-import { requestApproval } from "@/flows/approvals";
+import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { monthReviewView, reviewWeeks } from "@/flows/month";
 import { proposePurchase, settlePurchase, type Deps, type SettleResult } from "@/flows/purchase";
 import { formatCents } from "@/ui/grantWords";
@@ -24,7 +24,10 @@ export type TeenState = "active" | "ended" | "paused" | "none";
 export interface TeenWeek {
   teenName: string; guardianName: string; state: TeenState; now: Date;
   level: Level | null; weeklyCents: number; spentCents: number; leftCents: number;
-  purchases: { id: string; title: string; shop: string; amountCents: number; status: "paid" | "paying" }[];
+  /** When the rules in force end (null without any). */
+  endsAt: Date | null;
+  /** approved: Amara said yes to this one (it went through on her approval). */
+  purchases: { id: string; title: string; shop: string; amountCents: number; status: "paid" | "paying"; approved: boolean }[];
   asks: { id: string; title: string; shop: string; amountCents: number; status: "waiting" | "declined" }[];
   goal: { title: string; targetCents: number } | null; savingsCents: number; commitmentCents: number;
   /** Weeks kept in a row that count toward the next level. */
@@ -52,7 +55,7 @@ export async function teenWeek(db: Db, familyId: string, now: Date): Promise<Tee
   const ended = active ?? latest;
   return {
     teenName: fam.teenName, guardianName: fam.guardianName, state, now,
-    level: latest ? (latest.level as Level) : null, weeklyCents,
+    level: latest ? (latest.level as Level) : null, weeklyCents, endsAt: ended?.expiresAt ?? null,
     spentCents: ledger.spentThisWeekCents, leftCents: Math.max(0, weeklyCents - ledger.spentThisWeekCents),
     purchases: await thisWeeksPurchases(db, familyId, now),
     asks: await thisWeeksAsks(db, familyId, now),
@@ -88,7 +91,7 @@ async function thisWeeksPurchases(db: Db, familyId: string, now: Date): Promise<
   const names = await shopNames(db, rows.map((r) => r.cart));
   return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).map((r) => ({
     id: r.id, title: titleOf(r.cart), shop: names.get(r.cart.merchantId) ?? "a shop", amountCents: r.cart.totalCents,
-    status: r.status as "paid" | "paying",
+    status: r.status as "paid" | "paying", approved: !!r.charge?.approvalId,
   }));
 }
 
@@ -99,7 +102,7 @@ async function thisWeeksAsks(db: Db, familyId: string, now: Date): Promise<TeenW
     .where(and(eq(t.approvals.familyId, familyId), eq(t.approvals.subject, "purchase")));
   const key = weekKey(now);
   const kept = rows.filter(({ a, p }) =>
-    (a.result === null && a.expiredAt === null && a.expiresAt > now && p.status === "needs_approval")
+    (a.result === null && a.expiredAt === null && a.expiresAt > now && (p.status === "needs_approval" || (a.liftsBudget && p.status === "refused")))
     || (a.result === "declined" && a.decidedAt !== null && weekKey(a.decidedAt) === key));
   const names = await shopNames(db, kept.map(({ p }) => p.cart));
   return kept.map(({ a, p }) => ({
@@ -193,27 +196,36 @@ export async function buy(deps: Deps, familyId: string, purchaseId: string): Pro
   return settlePurchase(deps, purchaseId);
 }
 
+/** Whether asking about this purchase makes a request Amara can approve (needs her OK, or R40: over budget only). */
+export const askable = (p: Pick<PurchaseRow, "status" | "decision">): "request" | "message" | null =>
+  p.status === "needs_approval" || (p.status === "refused" && liftableOverage(p.decision) !== null) ? "request"
+    : p.status === "refused" ? "message" : null;
+
 /**
- * Ask Amara. A cart that needs her OK becomes a real request (scoped to that cart, F9). A refused cart can't be
- * approved by anyone (approval never lifts a refusal), so she is told about it instead — a note, no button.
+ * Ask Amara. A cart that needs her OK, or is over this week's budget and nothing else (R40), becomes a real request
+ * scoped to that cart (F9). Any other refusal can't be approved by anyone, so she is told about it instead: a note.
  */
 export async function askAmara(deps: Pick<Deps, "db" | "now">, familyId: string, purchaseId: string, reason: string | null): Promise<"request" | "message"> {
   const p = await own(deps.db, familyId, purchaseId);
-  if (p.status === "needs_approval") {
+  const g = await getActiveGrant(deps.db, familyId);
+  if (!g || g.expiresAt <= await deps.now(familyId)) throw new TeenError("rules are not in force");
+  const kind = askable(p);
+  if (kind === "request") {
     await requestApproval(deps, familyId, "purchase", p.id, p.cartHash, reason);
     return "request";
   }
-  if (p.status !== "refused") throw new TeenError(`purchase is ${p.status}`);
-  const [names, g, ledger] = await Promise.all([
-    shopNames(deps.db, [p.cart]), getActiveGrant(deps.db, familyId), ledgerView(deps.db, familyId, await deps.now(familyId)),
-  ]);
-  const left = Math.max(0, (g?.body.weeklyCents ?? 0) - ledger.spentThisWeekCents);
+  if (kind !== "message") throw new TeenError(`purchase is ${p.status}`);
+  const [names, ledger] = await Promise.all([shopNames(deps.db, [p.cart]), ledgerView(deps.db, familyId, await deps.now(familyId))]);
+  const left = Math.max(0, g.body.weeklyCents - ledger.spentThisWeekCents);
   const what = `${titleOf(p.cart)}, ${formatCents(p.cart.totalCents)} at ${names.get(p.cart.merchantId) ?? "a shop"} (${formatCents(left)} left this week)`;
   await nudge(deps, familyId, reason ? `${what} — “${reason}”` : what);
   return "message";
 }
 
-/** Records Zoe's nudge (null note = "renew my rules"); Amara's home shows it. Only the latest one is kept. */
+/**
+ * Records Zoe's nudge (null note = "renew my rules"); Amara's home shows it.
+ * ponytail: one slot per family, so a newer nudge replaces an unread older one; a nudges table if that ever matters.
+ */
 export async function nudge(deps: Pick<Deps, "db" | "now">, familyId: string, note: string | null): Promise<void> {
   const at = await deps.now(familyId);
   await deps.db.update(t.families).set({ teenNudgeAt: at, teenNudgeNote: note?.slice(0, 300) ?? null }).where(eq(t.families.id, familyId));
@@ -224,4 +236,22 @@ export async function openAsk(db: Db, familyId: string, purchaseId: string): Pro
   const [a] = await db.select({ id: t.approvals.id }).from(t.approvals).where(and(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subjectId, purchaseId), isNull(t.approvals.result), isNull(t.approvals.expiredAt))).limit(1);
   return !!a;
+}
+
+const HOUR_MS = 3_600_000;
+export const SHOP_HOURLY_LIMIT = 60;
+export const AGENT_GAP_MS = 5_000;
+export const THROTTLED = "That's a lot of looking. Try again in a bit.";
+
+/**
+ * Every search, link and agent run costs real Channel3 (and model) calls and stores purchase rows, so: at most
+ * SHOP_HOURLY_LIMIT proposals an hour, and no agent run within AGENT_GAP_MS of the last one. Real time, not demo time.
+ */
+export async function shopThrottle(db: Db, familyId: string, mode: "agent" | "link" | "search", realNow: number = Date.now()): Promise<string | null> {
+  const rows = await db.select({ at: t.purchases.createdAt }).from(t.purchases)
+    .where(and(eq(t.purchases.familyId, familyId), gt(t.purchases.createdAt, new Date(realNow - HOUR_MS))))
+    .orderBy(desc(t.purchases.createdAt));
+  if (rows.length >= SHOP_HOURLY_LIMIT) return THROTTLED;
+  if (mode === "agent" && rows[0] && realNow - rows[0].at.getTime() < AGENT_GAP_MS) return THROTTLED;
+  return null;
 }

@@ -6,7 +6,7 @@ import { teenFamily } from "@/auth/teen";
 import { getDb } from "@/db/client";
 import { getActiveGrant } from "@/db/repo";
 import { ledgerView } from "@/ledger/ledger";
-import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, teenWeek, TeenError, type Proposed } from "@/flows/teen";
+import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, type Proposed } from "@/flows/teen";
 import { ApprovalError } from "@/flows/approvals";
 import { cardOutcome, type CardKind } from "@/ui/teenWords";
 import { agentModel, teenDeps } from "../teenDeps";
@@ -38,6 +38,9 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
   if (!shops || week.state !== "active") return { cards: [], error: "Your rules aren't in force right now, so nothing can be bought." };
 
   const mode = form.get("mode");
+  if (mode !== "agent" && mode !== "link" && mode !== "search") return { cards: [] };
+  const throttled = await shopThrottle(db, fam.id, mode);
+  if (throttled) return { cards: [], error: throttled };
   try {
     let items: { cart: NonNullable<ReturnType<typeof cartFor>>; reason?: string }[];
     if (mode === "agent") {
@@ -59,13 +62,11 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
       if (r.kind === "unavailable") return { cards: [], error: "That shop doesn't have it in stock right now." };
       const cart = cartFor(r.product, shops.merchantIdByDomain);
       items = cart ? [{ cart }] : [];
-    } else if (mode === "search") {
+    } else {
       const query = text(form.get("query"), 100);
       if (!query) return { cards: [], error: "Type what you're looking for." };
       const found = await deps.channel3.search(query, shops.domains, 6);
       items = found.flatMap((p) => { const cart = cartFor(p, shops.merchantIdByDomain); return cart ? [{ cart }] : []; });
-    } else {
-      return { cards: [] };
     }
     const cards = (await proposeCarts(deps, fam.id, items)).map((p) => toCard(p, fam.guardianName));
     return cards.length ? { cards } : { cards, note: "Nothing from your shops matched that. Try saying it another way." };

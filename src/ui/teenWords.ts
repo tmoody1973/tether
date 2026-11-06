@@ -3,6 +3,8 @@
 import { LEVELS, commitmentKept, type Level, type WeekRecord } from "@/engine/ladder";
 import type { Cents, Decision } from "@/engine/types";
 import { formatCents } from "@/ui/grantWords";
+import { CHARGE_FAILED_MESSAGE } from "@/flows/purchase";
+import type { PurchaseStatus } from "@/db/repo";
 
 export type CardKind = "fits" | "needs" | "over" | "refused";
 
@@ -14,8 +16,10 @@ export function cardOutcome(d: Decision, guardian: string): { kind: CardKind; la
     ? { kind: "over", label: "Over budget" } : { kind: "refused", label: "Not this time" };
 }
 
-export const sheetNumbers = (spentCents: Cents, weeklyCents: Cents): string =>
-  `You've spent ${formatCents(spentCents)} of your ${formatCents(weeklyCents)}, so there's ${formatCents(Math.max(0, weeklyCents - spentCents))} left.`;
+/** The week's arithmetic. withLeft=false when the sentence above it already says what's left (budget refusals). */
+export const sheetNumbers = (spentCents: Cents, weeklyCents: Cents, withLeft = true): string => withLeft
+  ? `You've spent ${formatCents(spentCents)} of your ${formatCents(weeklyCents)}, so there's ${formatCents(Math.max(0, weeklyCents - spentCents))} left.`
+  : `You've spent ${formatCents(spentCents)} of your ${formatCents(weeklyCents)} this week.`;
 
 const weeks = (n: number) => `${n} week${n === 1 ? "" : "s"}`;
 
@@ -25,8 +29,17 @@ export function setsBack(goal: { title: string } | null, amountCents: Cents, com
   return `This sets ${goal.title} back ${weeks(Math.ceil(amountCents / commitmentCents))}.`;
 }
 
-/** Weekly budgets are ISO weeks in UTC, so they always start again on Monday. */
-export const resetDay = (): string => "Monday";
+const DAY_MS = 86_400_000;
+const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+
+/** Calendar days (UTC) until her budget starts again: the next ISO week (Monday), or her rules' end if sooner. */
+export function daysToReset(now: Date, endsAt: Date | null): number {
+  const nextMonday = utcDay(now) + (7 - ((now.getUTCDay() + 6) % 7)) * DAY_MS;
+  const target = endsAt ? Math.min(nextMonday, endsAt.getTime()) : nextMonday;
+  return Math.max(0, Math.round((utcDay(new Date(target)) - utcDay(now)) / DAY_MS));
+}
+export const resetsWords = (n: number): string => (n === 0 ? "resets today" : n === 1 ? "resets tomorrow" : `resets in ${n} days`);
+export const waitWords = (n: number): string => (n === 0 ? "Wait until later today" : n === 1 ? "Wait until tomorrow" : `Wait ${n} days`);
 
 /** D12 moment 2, on the week-ended screen: her last (up to) 4 weeks against herself, then the goal. */
 export function reflection(
@@ -70,4 +83,29 @@ export function whatChanged(from: Level, to: Level, guardian: string): string {
   const added = def.merchantClasses.filter((c) => !LEVELS[from].merchantClasses.includes(c));
   const opens = added.map((c) => OPENS[c]).filter(Boolean);
   return [`Your weekly limit is now ${formatCents(def.weeklyCents)}, and ${ask}.`, ...opens].join(" ");
+}
+
+export type BuyFlash = { text: string; sub?: string; warn?: boolean; ask?: boolean };
+const NOT_CHARGED: Record<string, string> = {
+  changed: "The price or the item changed, so nothing was spent. Have another look.",
+  "paypal-off": "Tether can't reach PayPal right now, so nothing was spent.",
+  notstarted: "That didn't start, so nothing was spent. Try again in a minute.",
+};
+
+/**
+ * What Buy did, from the purchase's CURRENT status (this family's purchase only). The URL code is a hint that can
+ * only choose between "nothing was spent" explanations; it never makes a purchase look paid.
+ */
+export function buyFlash(
+  code: string, p: { title: string; amountCents: number; shop: string; status: PurchaseStatus } | null,
+  guardian: string, setsBackText: string | null,
+): BuyFlash | null {
+  if (!p) return null;
+  const what = `${p.title}, ${formatCents(p.amountCents)} at ${p.shop}`;
+  if (p.status === "paid") return { text: `Paid — ${what}.`, ...(setsBackText ? { sub: setsBackText } : {}) };
+  if (p.status === "paying") return { text: `PayPal is confirming — ${what}.`, sub: "It's held from your week until PayPal says it went through." };
+  if (p.status === "failed") return { text: CHARGE_FAILED_MESSAGE, warn: true };
+  if (p.status === "needs_approval") return { text: `That one needs ${guardian}'s OK now, so nothing was spent.`, warn: true, ask: true };
+  if (code === "nopaypal") return { text: `${guardian}'s PayPal isn't saved, so nothing was spent.`, warn: true };
+  return { text: NOT_CHARGED[code] ?? "That doesn't fit your rules any more, so nothing was spent.", warn: true };
 }

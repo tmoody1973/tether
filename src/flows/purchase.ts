@@ -137,7 +137,10 @@ async function reprice(c3: Channel3Adapter, cart: Cart, domain: string): Promise
 async function gates(db: Db, ctx: Ctx, grant: Grant, cart: Cart): Promise<StoredDecision> {
   const { p, now, approval } = ctx;
   const grantApproval: ApprovalGrant | undefined = approval?.cartHash
-    ? { cartHash: approval.cartHash, expiresAt: approval.expiresAt.toISOString() } : undefined;
+    ? {
+      cartHash: approval.cartHash, expiresAt: approval.expiresAt.toISOString(),
+      ...(approval.liftsBudget ? { liftsBudget: true, overCents: approval.overCents ?? 0 } : {}), // R40; capped again under the lock
+    } : undefined;
   const gate1 = decide(grant, cart, await ledgerView(db, p.familyId, now), now, grantApproval, p.cartHash);
   const stored = (p.decision as Partial<StoredDecision>).gate2 ?? [];
   // A semantic rule with no stored finding (rule added after propose) fails closed.

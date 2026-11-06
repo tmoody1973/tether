@@ -9,7 +9,7 @@ async function askAgent(page: Page, token: string) {
   await open(page, token, "/shop");
   await page.getByLabel("What are you after?").fill("something for school under $20");
   await page.getByRole("button", { name: "Find options" }).click();
-  await expect(page.getByRole("article").first()).toBeVisible();
+  await expect(page.getByRole("article").first()).toBeVisible({ timeout: 20_000 }); // the first action compiles cold in dev
 }
 
 const card = (page: Page, name: RegExp) => page.getByRole("article", { name });
@@ -30,17 +30,18 @@ test("agent request shows 2–3 cards each with fits/needs approval/over budget 
 });
 
 test("over-budget cart shows amber sheet with \"$\" remaining and two routes", async ({ page }) => {
-  await askAgent(page, E2E.teen.agent);
+  await askAgent(page, E2E.teen.sheet); // its own family: an agent run within 5s of the last is throttled
   await card(page, /Running shoes/).getByRole("link", { name: "Why not?" }).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText("Not this time");
-  await expect(sheet).toContainText("You've spent $6.00 of your $20.00, so there's $14.00 left.");
+  await expect(sheet).toContainText("You've got $14.00 left this week and this is $15.00."); // the arithmetic, once
+  await expect(sheet).toContainText("You've spent $6.00 of your $20.00 this week.");
   await expect(sheet).toContainText("$15.00 · Target");
   const routes = sheet.getByRole("link");
   await expect(routes).toHaveCount(2);
   await expect(routes.nth(0)).toHaveText("Ask Amara");
-  await expect(routes.nth(1)).toHaveText("Wait until Monday");
+  await expect(routes.nth(1)).toHaveText(/^Wait (until later today|until tomorrow|\d+ days)$/); // to the real ISO-week reset
   // Amber, never red.
   const chip = sheet.locator(".t-chip");
   expect(await chip.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(154, 91, 0)");
@@ -108,4 +109,51 @@ test("reset link ⇒ old link shows the not-found page", async ({ page }) => {
   await open(page, E2E.teen.reset);
   await expect(page.getByText("This link doesn't work any more.")).toBeVisible();
   await expect(page.locator(".t-hero")).toHaveCount(0);
+});
+
+async function searchShops(page: Page, token: string) {
+  await open(page, token, "/shop");
+  await page.getByLabel("Search your shops").fill("shoes");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("article").first()).toBeVisible({ timeout: 20_000 });
+}
+
+test("buy flash follows the purchase, not the URL: ?buy=paid on a refused cart says nothing was spent", async ({ page }) => {
+  await searchShops(page, E2E.teen.sheet);
+  const href = await card(page, /Running shoes/).getByRole("link", { name: "Why not?" }).getAttribute("href");
+  const refusedId = new URL(href!, "http://x").searchParams.get("sheet");
+  await open(page, E2E.teen.sheet, `?buy=paid&p=${refusedId}`);
+  await expect(page.getByRole("status").first()).toHaveText("That doesn't fit your rules any more, so nothing was spent.");
+  await expect(page.getByText(/^Paid/)).toHaveCount(0);
+});
+
+test("R40: Zoe asks $15 with $9.50 left ⇒ Amara approves ⇒ paid, and her week shows $0.00 left", async ({ page }) => {
+  await searchShops(page, E2E.teen.over);
+  await expect(card(page, /Running shoes.*Over budget/)).toBeVisible();
+  await card(page, /Running shoes/).getByRole("link", { name: "Why not?" }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "Ask Amara" }).click();
+  await expect(page.getByText("This week won't count toward Level 2.", { exact: false })).toBeVisible();
+  await page.getByLabel("Why (optional)").fill("the ones I have are falling apart");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("status").first()).toContainText("Sent. Amara will see it");
+
+  await page.goto(`/g/enter/${E2E.teenOverKey}`);
+  await page.getByRole("link", { name: /Zoe is asking for \$15\.00 at Target/ }).click();
+  await expect(page.getByText("This would use the rest and $5.50 more.")).toBeVisible();
+  await expect(page.getByText("A one-off: this week won't count toward her next level.")).toBeVisible();
+  await page.getByRole("button", { name: "Approve $15.00" }).click();
+  await expect(page.getByRole("status").first()).toContainText("Approved and paid — $15.00 at Target.");
+
+  await open(page, E2E.teen.over);
+  await expect(page.locator(".t-hero")).toHaveText("$0.00");
+  await expect(page.getByRole("region", { name: "This week" })).toContainText("Running shoes · Amara approved this one");
+});
+
+test("paused rules: a calm page and no shopping", async ({ page }) => {
+  await open(page, E2E.teen.paused);
+  await expect(page.getByRole("heading", { name: "Amara paused your rules." })).toBeVisible();
+  await expect(page.locator(".t-hero")).toHaveCount(0);
+  await open(page, E2E.teen.paused, "/shop");
+  await expect(page.getByRole("heading", { name: "Amara paused your rules." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Find options|Search|Check it/ })).toHaveCount(0);
 });
