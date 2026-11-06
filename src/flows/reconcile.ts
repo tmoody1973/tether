@@ -30,6 +30,38 @@ export const FLAG_WORDS: Record<ReconFlag["kind"], string> = {
 };
 export const LAG_NOTE = "PayPal's list can lag a few hours.";
 
+type Slip = { tokenId: string; purchaseId: string; consumedAt: Date };
+
+/** This family's slips used for purchases of `month`: a purchase belongs to the month its money left the budget (demo clock), receipt or not. */
+async function slipsForMonth(db: Db, familyId: string, month: string): Promise<Slip[]> {
+  const [tokens, spends] = await Promise.all([
+    purchaseTokensForFamily(db, familyId),
+    db.select({ ref: t.journal.ref, at: t.journal.at }).from(t.journal)
+      .where(and(eq(t.journal.familyId, familyId), eq(t.journal.kind, "spend"))),
+  ]);
+  const monthPurchases = new Set(spends.filter((s) => s.at.toISOString().startsWith(month)).map((s) => s.ref));
+  return tokens.filter((tk) => monthPurchases.has(tk.purchaseId));
+}
+
+/** PayPal dates rows in real time, not demo time: search from just before the first slip was used. Null: nothing to search for. */
+function windowFor(slips: Slip[], hasReceipts: boolean, realNow: Date): { start: Date; end: Date } | null {
+  if (!hasReceipts && slips.length === 0) return null;
+  const firstUse = slips.length
+    ? Math.min(...slips.map((tk) => tk.consumedAt.getTime()))
+    : realNow.getTime() - MAX_WINDOW_MS + DAY_MS;
+  const start = new Date(firstUse - DAY_MS);
+  return { start, end: new Date(Math.min(realNow.getTime(), start.getTime() + MAX_WINDOW_MS)) };
+}
+
+/** The real-time PayPal search window for one family's demo month ('YYYY-MM'); null when that month has no receipts or used slips. */
+export async function paypalWindowForMonth(
+  db: Db, familyId: string, month: string, realNow: Date = new Date(),
+): Promise<{ start: Date; end: Date } | null> {
+  if (!MONTH_RE.test(month)) return null;
+  const [receipts, slips] = await Promise.all([receiptsForMonth(db, familyId, month), slipsForMonth(db, familyId, month)]);
+  return windowFor(slips, receipts.length > 0, realNow);
+}
+
 /**
  * R35: compares one family's month (demo-clock month, 'YYYY-MM') with PayPal's Transaction Search.
  * Tether's merchant account holds every family's charges, so a PayPal row counts as this family's only if its
@@ -40,24 +72,10 @@ export async function reconcileMonth(
 ): Promise<Reconciliation> {
   if (!MONTH_RE.test(month)) throw new Error(`bad month ${month}`);
   const { db } = deps;
-  const [receipts, tokens, spends] = await Promise.all([
-    receiptsForMonth(db, familyId, month),
-    purchaseTokensForFamily(db, familyId),
-    db.select({ ref: t.journal.ref, at: t.journal.at }).from(t.journal)
-      .where(and(eq(t.journal.familyId, familyId), eq(t.journal.kind, "spend"))),
-  ]);
-  // A purchase belongs to the month its money left the budget (demo clock), receipt or not.
-  const monthPurchases = new Set(spends.filter((s) => s.at.toISOString().startsWith(month)).map((s) => s.ref));
-  const monthTokens = tokens.filter((tk) => monthPurchases.has(tk.purchaseId));
-  if (receipts.length === 0 && monthTokens.length === 0) return { receiptsChecked: 0, flags: [] };
-
-  // PayPal dates rows in real time, not demo time: search from just before the first slip was used.
-  const firstUse = monthTokens.length
-    ? Math.min(...monthTokens.map((tk) => tk.consumedAt.getTime()))
-    : realNow.getTime() - MAX_WINDOW_MS + DAY_MS;
-  const start = new Date(firstUse - DAY_MS);
-  const end = new Date(Math.min(realNow.getTime(), start.getTime() + MAX_WINDOW_MS));
-  const rows = await listTransactions(deps.paypal, start, end);
+  const [receipts, monthTokens] = await Promise.all([receiptsForMonth(db, familyId, month), slipsForMonth(db, familyId, month)]);
+  const window = windowFor(monthTokens, receipts.length > 0, realNow);
+  if (!window) return { receiptsChecked: 0, flags: [] };
+  const rows = await listTransactions(deps.paypal, window.start, window.end);
 
   const mine = new Set(monthTokens.map((tk) => tk.tokenId));
   const byId = new Map(rows.map((r) => [r.id, r]));
