@@ -76,6 +76,7 @@ function fakePaypal() {
     captureNow: (id: string) => captureIt(byId.get(id)!),
     set: (c: { create?: CreateMode; capture?: CaptureMode }) => { create = c.create ?? create; capture = c.capture ?? capture; },
     forgetCapture: () => { search.length = 0; },
+    markSearchStatus: (status: string) => { for (const r of search) r.transaction_info.transaction_status = status; },
   };
 }
 
@@ -166,6 +167,15 @@ describe("R38: resume never charges twice", () => {
     real = T0 + 5 * HOUR + MIN;
     expect(await resumePayingPurchase(deps(), id)).toMatchObject({ status: "paying" });
     expect(posts()).toBe(0);
+    expect((await row(id)).chargeError).toBe("NEEDS_CHECK");
+    expect(await journal()).toEqual([["spend", 600]]);
+  });
+
+  it("at 5h01m a DENIED Transaction Search row is not proof of a charge: stays NEEDS_CHECK, never paid", async () => {
+    const id = await lostAnswer();
+    pp.markSearchStatus("D");
+    real = T0 + 5 * HOUR + MIN;
+    expect(await resumePayingPurchase(deps(), id)).toMatchObject({ status: "paying" });
     expect((await row(id)).chargeError).toBe("NEEDS_CHECK");
     expect(await journal()).toEqual([["spend", 600]]);
   });

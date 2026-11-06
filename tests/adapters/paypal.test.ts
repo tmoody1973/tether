@@ -147,6 +147,12 @@ describe("chargeVaulted", () => {
     expect(other).toMatchObject({ ok: false, outcome: "unknown", orderId: "O1" }); // read the order: still not captured
     const conflict = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => issue(409, "DUPLICATE_REQUEST_ID"))), args);
     expect(conflict).toMatchObject({ ok: false, outcome: "unknown" });
+    for (const inFlight of ["DUPLICATE_REQUEST_ID", "PREVIOUS_REQUEST_IN_PROGRESS"]) {
+      const r = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => issue(422, inFlight))), args);
+      expect(r).toMatchObject({ ok: false, outcome: "unknown" }); // the original request may still charge
+    }
+    const refused = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => issue(422, "UNPROCESSABLE_ENTITY"))), args);
+    expect(refused).toMatchObject({ ok: false, outcome: "declined" });
   });
 
   it("payee email passed through when given", async () => {

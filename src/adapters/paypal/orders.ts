@@ -24,6 +24,8 @@ const firstCapture = (o: OrderResponse): Capture | undefined => o.purchase_units
 const DECLINED_CAPTURE = new Set(["DECLINED", "FAILED"]);
 /** Create-order answers that mean PayPal refused the request outright (nothing was created or charged). */
 const CREATE_REFUSED = new Set([400, 401, 403, 404, 422]);
+/** Create-order 422s that mean "same request id seen before / still processing" — the original may still charge. */
+const CREATE_IN_FLIGHT_ISSUES = new Set(["DUPLICATE_REQUEST_ID", "PREVIOUS_REQUEST_IN_PROGRESS"]);
 /** The only capture-step issues that mean "no money moved". Anything else at capture: go and look. */
 const CAPTURE_DECLINE_ISSUES = new Set(["INSTRUMENT_DECLINED", "TRANSACTION_REFUSED", "PAYER_ACTION_REQUIRED", "ORDER_NOT_APPROVED"]);
 
@@ -71,7 +73,9 @@ export async function sendOrder(
       body: { intent: "CAPTURE", purchase_units: [unit], payment_source: { paypal: { vault_id: args.vaultId } } },
     })).data;
   } catch (err) {
-    if (err instanceof PaypalError && CREATE_REFUSED.has(err.status)) return { ok: false, outcome: "declined", error: err.message };
+    // A repeat of this request id may still be running at PayPal (or already done): that is not a refusal.
+    const inFlight = err instanceof PaypalError && CREATE_IN_FLIGHT_ISSUES.has(err.issue ?? "");
+    if (err instanceof PaypalError && CREATE_REFUSED.has(err.status) && !inFlight) return { ok: false, outcome: "declined", error: err.message };
     return unknown(errText(err));
   }
   await onOrder?.(order.id).catch(() => { /* resume still has the request id inside the window */ });

@@ -269,7 +269,10 @@ async function searchBySlip(paypal: PaypalHttp, tokenId: string, sentAt: Date | 
     const rows = await listTransactions(paypal, start, end);
     const hit = rows.find((r) => r.customField === tokenId && r.amountCents > 0);
     // Charged (even if later refunded, which the record's PayPal check then shows as "Refunded in PayPal").
-    if (hit) return { ok: true, orderId: "", captureId: hit.id, status: hit.status === "P" ? "PENDING" : "COMPLETED" };
+    // S = success, V = later reversed (still charged once; the record shows "Refunded in PayPal"), P = pending.
+    // Anything else (e.g. D, denied) isn't proof of a charge: keep checking, never mark it paid.
+    if (hit?.status === "S" || hit?.status === "V") return { ok: true, orderId: "", captureId: hit.id, status: "COMPLETED" };
+    if (hit?.status === "P") return { ok: true, orderId: "", captureId: hit.id, status: "PENDING" };
     return { ok: false, outcome: "unknown", error: "NEEDS_CHECK" };
   } catch (err) {
     return { ok: false, outcome: "unknown", error: `NEEDS_CHECK: ${err instanceof Error ? err.message : "search failed"}` };
