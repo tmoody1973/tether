@@ -1,21 +1,10 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { formatCents } from "@/ui/grantWords";
 import { needsBadge } from "@/ui/activityWords";
 
-export function Money({ cents }: { cents: number }) {
-  return <span className="money">{formatCents(cents)}</span>;
-}
-
-export function Bar({ value, max, goal = false, label }: { value: number; max: number; goal?: boolean; label: string }) {
-  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
-  return (
-    <div className={goal ? "g-bar g-bar--goal" : "g-bar"} role="img" aria-label={label}>
-      <span style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
+// Money and Bar live in @/ui/money so client components (the assistant's answer cards) can use them too.
+export { Bar, Money } from "@/ui/money";
 
 const ICON = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
 
