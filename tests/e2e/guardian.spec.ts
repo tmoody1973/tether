@@ -182,7 +182,8 @@ test("activity lists purchases in plain words, with the proof folded under each"
   await page.goto("/g/activity");
   await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
   await expect(nav(page).getByRole("link", { name: "Activity" })).toHaveAttribute("aria-current", "page");
-  const row = page.locator(".g-rows > li", { hasText: "$6.00" });
+  // The paid $6.00 row (it has a Proof). A parallel teen test can add its own $6.00 Notebook that is still paying.
+  const row = page.locator(".g-rows > li").filter({ has: page.locator("summary", { hasText: /^Proof for \$6\.00 at Target, / }) }).first();
   await expect(row).toContainText("Target");
   await expect(row.locator(".g-row__items")).toHaveText("Notebook"); // the seeded item, under the shop
   await expect(row).toContainText("Within her rules");
