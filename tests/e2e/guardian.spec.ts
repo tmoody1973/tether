@@ -87,6 +87,22 @@ test("Zoe's link: send and reset live on her rules page", async ({ page }) => {
   await expect(page.getByLabel("Zoe's link")).toHaveValue(new RegExp(`/t/${E2E.teenToken}$`));
 });
 
+test("Add a shop finds shops that sell what she typed, not only shops with that name", async ({ page }) => {
+  await enter(page); // read-only: she opens the Add confirm and backs out
+  await page.goto("/g/rules");
+  await page.getByLabel("Add a shop").fill("sneakers");
+  await page.getByRole("button", { name: "Search" }).click();
+  const sells = page.getByRole("list", { name: "Shops that sell sneakers" });
+  await expect(sells.getByRole("listitem").first()).toContainText("kickscrew.com", { timeout: 20_000 });
+  await expect(sells.getByRole("listitem").first()).toContainText("2 matching products");
+  await expect(sells.getByRole("listitem").nth(1)).toContainText("nike.com1 matching product · usually opens at Level 3");
+  await expect(page.getByRole("list", { name: "Shops named sneakers" })).toHaveCount(0); // no shop is named that
+  await sells.getByRole("button", { name: "Add kickscrew.com" }).click();
+  await expect(page.getByText("Add kickscrew.com to Zoe's shops?")).toBeVisible();
+  await page.getByRole("button", { name: "Go back" }).click();
+  await expect(page.getByText("Add kickscrew.com to Zoe's shops?")).toHaveCount(0);
+});
+
 test("changing her saving re-signs her rules, with the plain-words clause", async ({ page }) => {
   await enter(page, E2E.grantKey);
   await page.goto("/g/rules");

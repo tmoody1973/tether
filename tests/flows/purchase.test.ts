@@ -58,7 +58,7 @@ function fakeChannel3(prices: Record<string, number | null>) {
     return { id: productId, title: `T-${productId}`, priceCents: cents, domain: DOMAIN, available: true };
   });
   const nope = async () => { throw new Error("not used"); };
-  const adapter: Channel3Adapter = { retrieve, search: nope, lookup: nope, websites: nope };
+  const adapter: Channel3Adapter = { retrieve, search: nope, lookup: nope, websites: nope, shopsSelling: nope };
   return { adapter, retrieve };
 }
 

@@ -106,7 +106,7 @@ async function seed() {
 function deps(): Deps {
   const no = async () => { throw new Error("unused"); };
   const channel3: Channel3Adapter = {
-    retrieve: async (sku) => ({ id: sku, title: "Thing", priceCents: 600, domain: "shop.example", available: true }), search: no, lookup: no, websites: no,
+    retrieve: async (sku) => ({ id: sku, title: "Thing", priceCents: 600, domain: "shop.example", available: true }), search: no, lookup: no, websites: no, shopsSelling: no,
   };
   return {
     db, paypal: pp.http, channel3, secret: "resume-secret", now: async () => demo, realNow: () => real,

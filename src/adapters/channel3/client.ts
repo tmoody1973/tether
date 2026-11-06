@@ -19,6 +19,8 @@ export interface Channel3Adapter {
   /** Free endpoint; used for the settle-time price re-check. */
   retrieve(productId: string, allowedDomains: string[]): Promise<Product | null>;
   websites(query: string): Promise<{ domain: string; name: string }[]>;
+  /** Shops that sell what `query` means: product search across every shop, products counted per shop, most first. */
+  shopsSelling(query: string, limit?: number): Promise<{ domain: string; products: number }[]>;
 }
 
 interface RawOffer {
@@ -36,7 +38,7 @@ interface RawProduct {
 /** The slice of the @channel3/sdk client that we call; the real client must satisfy it (checked at compile time below). */
 export interface Channel3Like {
   products: {
-    search(req: { query: string; filters: { website_ids: string[] }; limit: number }): Promise<{ data: RawProduct[] }>;
+    search(req: { query: string; filters?: { website_ids: string[] }; limit: number }): Promise<{ data: RawProduct[] }>;
     lookup(req: { url: string }): Promise<{ product: RawProduct }>;
     retrieve(req: { product_id: string; website_ids: string[] }): Promise<RawProduct>;
   };
@@ -52,6 +54,7 @@ export type LookupResult =
   | { kind: "shop_not_allowed"; domains: string[] };
 
 const DEFAULT_LIMIT = 10;
+const SELLING_LIMIT = 30; // 30 products gave a useful spread of shops in real calls (1–10 s)
 // 422 not a product page, 404 gone, 500 extraction failed, 504 timeout (per Channel3 lookup docs).
 const LOOKUP_MISS = new Set([404, 422, 500, 504]);
 
@@ -136,6 +139,15 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
         const domain = bareDomain(w.url);
         return { domain, name: w.name || domain };
       });
+    },
+
+    async shopsSelling(query, limit = SELLING_LIMIT) {
+      const page = await c.products.search({ query, limit }); // no website filter: every shop Channel3 indexes
+      const counts = new Map<string, number>();
+      for (const r of page.data) {
+        for (const d of new Set((r.offers ?? []).map((o) => bareDomain(o.domain)))) counts.set(d, (counts.get(d) ?? 0) + 1);
+      }
+      return [...counts].map(([domain, products]) => ({ domain, products })).sort((a, b) => b.products - a.products);
     },
   };
 }

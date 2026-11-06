@@ -68,7 +68,11 @@ const monthName = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numer
 export const formatMonth = (month: string): string => monthName.format(new Date(`${month}-01T00:00:00Z`));
 
 // ---- shop search (Amara's "Add a shop" and Zoe's "Suggest a shop") ----
-export const noShopsFound = (q: string) => `No shops found for "${q}". Try the shop's name.`;
+/** Under a shop that sells what she searched for. */
+export const matchingProducts = (n: number) => (n === 1 ? "1 matching product" : `${n} matching products`);
+/** Product search ran past its time limit: say so instead of hiding the group. */
+export const sellsTooSlow = (q: string) => `Shops that sell ${q} took too long — try again.`;
+export const noShopsFound = (q: string) => `No shops found for "${q}". Try another word, or the shop's name.`;
 export const SHOP_QUERY_MAX = 60; // a shop search is 1–60 characters, trimmed
-export const SHOP_QUERY_WORDS = "Type a shop's name to search.";
+export const SHOP_QUERY_WORDS = "Type what you'd buy there, or the shop's name.";
 export const SHOP_SEARCH_DOWN = "Shop search isn't working right now. Try again in a bit.";

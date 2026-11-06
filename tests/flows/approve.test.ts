@@ -32,7 +32,7 @@ function deps(price: number | null, paypalOk = true): ApproveDeps {
   const no = async () => { throw new Error("unused"); };
   const channel3: Channel3Adapter = {
     retrieve: async (sku, allowed) => (price === null ? null : { id: sku, title: "Shoes", priceCents: price, domain: allowed[0], available: true }),
-    search: no, lookup: no, websites: no,
+    search: no, lookup: no, websites: no, shopsSelling: no,
   };
   return {
     db, paypal, channel3, secret: "approve-secret", now: async () => NOW,

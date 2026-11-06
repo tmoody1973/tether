@@ -27,7 +27,7 @@ let n = 0;
 const deps = (): Deps => ({
   db, now: async () => clock, secret: "s",
   paypal: { configured: false, request: async () => { throw new Error("no paypal in this test"); } },
-  channel3: { search: async () => [], lookup: async () => ({ kind: "not_a_product" }), retrieve: async () => null, websites: async () => [] },
+  channel3: { search: async () => [], lookup: async () => ({ kind: "not_a_product" }), retrieve: async () => null, websites: async () => [], shopsSelling: async () => [] },
   classifier: { ask: async () => ({ probability: null, model: "none", modelVersion: "none" }) },
 });
 

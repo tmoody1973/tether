@@ -65,6 +65,14 @@ function bars(symbol: string, start: string | null, end: string | null) {
   }).filter((b) => Date.parse(b.t) >= listedMs);
 }
 
+// Searched with no shop filter (shops that SELL it): matched by title. Two shoe shops, one product offered by both.
+const CATALOGUE = [
+  { ...c3("sku-6000", "Canvas high-top sneakers", 6000, "kickscrew.com"), offers: [
+    { domain: "kickscrew.com", price: { price: 60, currency: "USD" }, availability: "InStock" },
+    { domain: "nike.com", price: { price: 65, currency: "USD" }, availability: "InStock" }] },
+  c3("sku-7000", "Retro running sneakers", 7000, "kickscrew.com"),
+];
+
 const SITES = [["Etsy", "etsy.com"], ["Nike", "nike.com"], ["Target", "target.com"], ["Lego", "lego.com"]]
   .map(([name, domain]) => ({ id: domain, name, url: `https://www.${domain}/` }));
 
@@ -98,7 +106,12 @@ createServer((req, res) => {
       const domain = w.startsWith("[") ? (JSON.parse(w) as string[])[0] : w; // the SDK sends a JSON list
       return send(200, { id: `sku-${product[1]}`, title: "Item", offers: [{ domain, price: { price: Number(product[1]) / 100, currency: "USD" }, availability: "InStock" }] });
     }
-    if (req.method === "POST" && path === "/v1/search") return send(200, { products: SEARCH, next_page_token: null });
+    if (req.method === "POST" && path === "/v1/search") {
+      const body = JSON.parse(raw || "{}") as { query?: string; filters?: { website_ids?: string[] } | null };
+      if (body.filters?.website_ids) return send(200, { products: SEARCH, next_page_token: null }); // Zoe's product search
+      const q = (body.query ?? "").toLowerCase();
+      return send(200, { products: CATALOGUE.filter((p) => p.title.toLowerCase().includes(q)), next_page_token: null });
+    }
     if (req.method === "GET" && path === "/v1/websites/search") { // shop search by name (Amara's "Add a shop", Zoe's "Suggest a shop")
       const q = (url.searchParams.get("query") ?? "").toLowerCase();
       return send(200, { websites: SITES.filter((w) => w.name.toLowerCase().includes(q)) });
