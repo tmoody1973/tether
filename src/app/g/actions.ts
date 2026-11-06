@@ -58,7 +58,7 @@ export async function resetTeenLinkAction(): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");
   await resetTeenLink(g.deps, g.familyId);
-  redirect("/g?link=reset");
+  redirect("/g/rules?link=reset");
 }
 
 /** Demo clock (D10): moves this family's "today" forward, closes ended weeks and, at a month end, runs the review. */
@@ -68,7 +68,7 @@ export async function advanceClockAction(form: FormData): Promise<void> {
   const to = String(form.get("to") ?? "");
   if (!(ADVANCES as readonly string[]).includes(to)) redirect("/g");
   const { review } = await advanceDemoClock(g.deps, g.familyId, to as Advance);
-  redirect(review?.action === "PROMOTE" ? "/g/review?promoted=1" : `/g?advanced=${to}`);
+  redirect(review?.action === "PROMOTE" ? "/g/activity?promoted=1" : `/g?advanced=${to}`);
 }
 
 /** Reset demo (D11): only the shared demo family, identified by the configured demo keys; anyone else is refused. */
@@ -117,9 +117,9 @@ export async function confirmReleaseAction(form: FormData): Promise<void> {
     await confirmRelease(g.deps, String(form.get("releaseId") ?? "").slice(0, 100), g.familyId);
   } catch (err) {
     if (!(err instanceof GrantError)) throw err;
-    redirect("/g/review");
+    redirect("/g/activity");
   }
-  redirect("/g/review?sent=1");
+  redirect("/g/activity?sent=1");
 }
 
 export type LevelState = { error?: string };
@@ -139,7 +139,7 @@ export async function setLevelAction(_prev: LevelState, form: FormData): Promise
     console.error("guardianSetLevel failed", err);
     return { error: "The level couldn't be changed. Nothing changed." };
   }
-  redirect(`/g/review?level=${level}`);
+  redirect(`/g/rules?level=${level}`);
 }
 
 /** Stop Zoe's rules (after the page's confirm step). The rules stop even if PayPal won't remove the saved wallet. */
@@ -150,10 +150,10 @@ export async function revokeAction(): Promise<void> {
   if (r.error) console.error("revoke: PayPal delete failed", r.error);
   const how = r.paypalTokenDeleted ? "wallet-removed"
     : r.reason === "no_vault" ? "no-wallet" : r.reason === "demo_kept" ? "demo-kept" : "wallet-kept";
-  redirect(`/g/review?stopped=${how}`);
+  redirect(`/g/rules?stopped=${how}`);
 }
 
-// ---- Zoe's shops (the Shops section on the Grant page). No AI: Channel3 website search and plain rules. ----
+// ---- Zoe's shops (the Shops section on Zoe's rules page). No AI: Channel3 website search and plain rules. ----
 
 export type ShopSearchState = { query?: string; sites?: FoundSite[]; note?: string; error?: string };
 export type ShopChangeState = { done?: string; error?: string };

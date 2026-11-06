@@ -13,6 +13,7 @@ async function resetDemo(page: Page) {
   await page.goto("/");
   await page.getByRole("link", { name: "Open Amara's view" }).click();
   await expect(page).toHaveURL(/\/g$/);
+  await page.getByText("Demo controls").click(); // folded on Home
   await page.getByRole("button", { name: "Reset demo" }).click();
   await page.getByRole("button", { name: "Yes, reset the demo" }).click();
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
@@ -44,22 +45,25 @@ test("landing → Zoe's view → shop agent cards → Amara approves the waiting
   await expect(page.getByRole("status").first()).toContainText(/Approved and paid/, { timeout: 60_000 });
 
   // The receipt is in the record (the PayPal webhook then confirms the capture).
-  await page.goto("/g/record");
-  await expect(page.getByRole("heading", { level: 1, name: "The record" })).toBeVisible();
-  await expect(page.getByText(/You approved it/).first()).toBeVisible();
+  await page.goto("/g/activity");
+  await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+  await expect(page.getByText("You approved", { exact: true }).first()).toBeVisible();
 });
 
 test("month end → Level 3 → Zoe proposes a fund → Amara approves → investment queued or filled", async ({ page }) => {
   await resetDemo(page);
 
   // End of month, then Amara moves Zoe to Level 3 (the demo family is seeded at Level 2).
+  await page.getByText("Demo controls").click();
   await page.getByRole("button", { name: "Advance to end of month" }).click();
-  await page.goto("/g/review");
-  await expect(page.getByRole("heading", { level: 1, name: "Monthly review" })).toBeVisible();
+  await page.goto("/g/rules");
+  await expect(page.getByRole("heading", { level: 1, name: "Zoe's rules" })).toBeVisible();
+  // Rules in force: the level change path (reason, Move, Yes). Ended after the month: the signing path (reason, Sign, Yes).
   await page.getByLabel("Level 3").check();
-  await page.getByLabel("Why? It goes on the record.").fill("Careful all month; ready to look at investing.");
-  await page.getByRole("button", { name: "Change her level" }).click();
-  await expect(page.getByRole("status")).toContainText("Zoe is now at Level 3.");
+  await page.getByLabel(/It goes on the record\./).fill("Careful all month; ready to look at investing.");
+  await page.getByRole("button", { name: /^(Move Zoe to Level 3|Sign and send)$/ }).click();
+  await page.getByRole("button", { name: /^(Yes, move her|Yes, sign)$/ }).click();
+  await expect(page.getByRole("status").first()).toContainText(/Zoe is now at Level 3\.|Signed\. Rules v\d+ are in force now\./);
 
   // Zoe proposes $5 in VTI (already on Amara's fund list in the seeded grant).
   await page.goto("/");

@@ -29,7 +29,8 @@ async function Request({ params }: { params: Promise<{ id: string }> }) {
   const [v, fam] = await Promise.all([requestView(db, familyId, id, await clockNow(db, familyId)), getFamily(db, familyId)]);
   const zoe = fam?.teenName ?? "";
   return (
-    <GuardianShell active={null} teenName={zoe}>
+    <GuardianShell active="home" teenName={zoe}>
+      <Link className="g-back" href="/g">‹ Home</Link>
       {v ? <Open v={v} /> : <Closed />}
     </GuardianShell>
   );
@@ -151,10 +152,10 @@ function Open({ v }: { v: RequestView }) {
       <form action={decideRequestAction} style={{ display: "grid", gap: 9 }}>
         <input type="hidden" name="approvalId" value={v.id} />
         <DecideButtons approveLabel={approveLabel(v)} />
-        {v.purchase && <Seam center kinds={["sandbox", "merchant"]} />}
+        {v.purchase && <Seam center kinds={["sandbox"]} />}
         <p className="g-note" style={{ textAlign: "center" }}>
           Open until {formatDay(v.expiresAt)}.{" "}
-          {v.purchase && <Link className="g-textlink" href="/g/grant">or change her limit instead</Link>}
+          {v.purchase && <Link className="g-textlink" href="/g/rules">or change her rules instead</Link>}
         </p>
       </form>
     </div>

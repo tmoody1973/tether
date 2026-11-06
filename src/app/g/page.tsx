@@ -3,19 +3,22 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
+import { getLatestGrant, receiptsForMonth } from "@/db/repo";
+import { commitmentFloorCents } from "@/engine/ladder";
 import { guardianHome, type NeedsYou } from "@/flows/home";
+import { guardianShops } from "@/flows/shops";
+import { shownReceipts, weekEnd } from "@/ui/activityWords";
 import { teenMessage } from "@/flows/approvals";
 import { APPROVE_CODES, approvedPurchase, type ApproveCode } from "@/flows/approve";
 import { approveWords } from "@/ui/approveWords";
-import { formatCents, formatDay } from "@/ui/grantWords";
+import { approvalShort, formatCents, formatDay, listWords } from "@/ui/grantWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
 import { advanceClockAction } from "./actions";
-import { appBaseUrl } from "./connect-paypal/setup";
+import { AskBox } from "./AskBox";
+import { PaymentRow } from "./PaymentRow";
 import { ResetDemo } from "./ResetDemo";
-import { ResetLink } from "./ResetLink";
-import { TeenLink } from "./TeenLink";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
   return (
@@ -40,7 +43,6 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "connected") return { text: "Your PayPal is saved. Tether charges it only for purchases that pass the rules." };
   if (paypal === "failed") return { text: "PayPal didn't finish saving, so nothing was saved. Try again.", warn: true };
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
-  if (one("link") === "reset") return { text: "The old link has stopped working. Send the new one." };
   const demo = one("demo");
   if (demo === "reset" || demo === "reset-paypal") {
     const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
@@ -59,54 +61,35 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   const familyId = await guardianFamilyId();
   if (!familyId) return <SignedOut />;
   const db = await getDb();
-  const h = await guardianHome(db, familyId, await clockNow(db, familyId));
+  const now = await clockNow(db, familyId);
+  const [h, latest, shops, receipts] = await Promise.all([
+    guardianHome(db, familyId, now), getLatestGrant(db, familyId), guardianShops(db, familyId, now),
+    receiptsForMonth(db, familyId, now.toISOString().slice(0, 7)),
+  ]);
   const sp = await searchParams;
   const paid = sp.decided === "paid" && typeof sp.req === "string" ? await approvedPurchase(db, familyId, sp.req) : null;
   const note = flash(sp, { teen: h.teenName, guardian: h.guardianName }, paid);
   const zoe = h.teenName;
+  // ponytail: "Recent" is this (demo-clock) month only; early in a month it can be empty. Activity pages back.
+  const recent = shownReceipts(receipts).shown.slice(-3).reverse();
+  const leftCents = Math.max(0, h.weeklyCents - h.spentThisWeekCents);
 
   return (
-    <GuardianShell active="home" teenName={zoe} side={
-      <>
-        <div className="g-side__head">This week</div>
-        <div className="g-side__note">
-          Spent <b><Money cents={h.spentThisWeekCents} /></b> of <Money cents={h.weeklyCents} /><br />
-          {h.level ? `Level ${h.level}` : "No rules in force"}
-        </div>
-      </>
-    }>
-      <div className="g-head">
+    <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
+      <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}</h1>
         {h.level && <span className="g-chip g-chip--accent">Level {h.level}</span>}
+        <span className="g-sub">{!h.expiresAt ? "No rules in force" : h.grantEnded ? `Her rules ended ${formatDay(h.expiresAt)}` : `Rules in force until ${formatDay(h.expiresAt)}`}</span>
       </div>
       {note && (
         <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">
           {note.text}{note.connectPaypal && <> <a className="g-textlink" href="/g/connect-paypal">Save your PayPal</a></>}
         </p>
       )}
+      <NotifyCard />
 
       <div className="g-two">
         <div className="g-stack">
-          <section className="g-card" aria-labelledby="week-h">
-            <h2 className="g-label" id="week-h">This week</h2>
-            <div className="g-card__figure"><Money cents={h.spentThisWeekCents} /> of <Money cents={h.weeklyCents} /></div>
-            <Bar value={h.spentThisWeekCents} max={h.weeklyCents}
-              label={`${formatCents(h.spentThisWeekCents)} spent of ${formatCents(h.weeklyCents)}`} />
-            {h.expiresAt && (
-              <div className="g-muted">{h.grantEnded ? "Her rules ended" : "Her rules end"} {formatDay(h.expiresAt)}</div>
-            )}
-          </section>
-
-          <section className="g-card" aria-labelledby="saved-h">
-            <h2 className="g-label" id="saved-h">{h.goal ? h.goal.title : "Saved so far"}</h2>
-            <div className="g-card__figure">
-              <Money cents={h.savingsCents} />{h.goal && <> of <Money cents={h.goal.targetCents} /></>}
-            </div>
-            {h.goal && <Bar goal value={h.savingsCents} max={h.goal.targetCents}
-              label={`${formatCents(h.savingsCents)} saved of ${formatCents(h.goal.targetCents)}`} />}
-            <div className="g-card__sub">What {zoe} didn&apos;t spend. It stays in your PayPal — your promise, kept track of here.</div>
-          </section>
-
           {h.needsYou.length === 0 ? (
             <div className="g-quiet" role="status">
               <div className="g-quiet__big">Nothing needs you today.</div>
@@ -120,17 +103,55 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
               </ul>
             </section>
           )}
+
+          <section className="g-card" aria-labelledby="recent-h">
+            <h2 className="g-label" id="recent-h">Recent</h2>
+            {recent.length === 0 ? <p className="g-muted">No payments yet this month.</p>
+              : <ul className="g-rows">{recent.map((p) => <PaymentRow key={p.captureId} p={p} />)}</ul>}
+            <p className="g-more"><Link className="g-textlink" href="/g/activity">See all activity</Link></p>
+          </section>
+
+          <section className="g-card" aria-labelledby="ask-h">
+            <h2 className="g-label" id="ask-h">Ask about {zoe}&apos;s month</h2>
+            <AskBox />
+          </section>
         </div>
 
         <div className="g-stack">
-          <section className="g-card" aria-labelledby="link-h">
-            <h2 className="g-label" id="link-h">{zoe}&apos;s way in</h2>
-            <TeenLink url={`${appBaseUrl()}/t/${h.teenToken}`} teenName={zoe} />
-            <ResetLink teenName={zoe} />
+          <section className="g-card" aria-labelledby="week-h">
+            <h2 className="g-label" id="week-h">This week</h2>
+            <div className="g-figure"><Money cents={leftCents} /> left <small>of <Money cents={h.weeklyCents} /></small></div>
+            <Bar value={h.spentThisWeekCents} max={h.weeklyCents}
+              label={`${formatCents(h.spentThisWeekCents)} spent of ${formatCents(h.weeklyCents)}`} />
+            <div className="g-muted"><Money cents={h.spentThisWeekCents} /> spent · week ends {formatDay(weekEnd(now))}</div>
           </section>
 
-          <section className="g-card g-demo" aria-labelledby="demo-h">
-            <h2 className="g-label" id="demo-h">Demo controls</h2>
+          <section className="g-card" aria-labelledby="saved-h">
+            <h2 className="g-label" id="saved-h">{h.goal ? `${zoe}'s savings goal` : `${zoe}'s savings`}</h2>
+            {h.goal && <div className="g-goal__name">{h.goal.title}</div>}
+            <div className="g-figure" style={{ fontSize: 19 }}>
+              <Money cents={h.savingsCents} /> <small>{h.goal ? <>of <Money cents={h.goal.targetCents} /> saved</> : "saved"}</small>
+            </div>
+            {h.goal && <Bar goal value={h.savingsCents} max={h.goal.targetCents}
+              label={`${formatCents(h.savingsCents)} saved of ${formatCents(h.goal.targetCents)}`} />}
+            <div className="g-card__sub">What {zoe} didn&apos;t spend. It stays in your PayPal; Tether keeps count.</div>
+          </section>
+
+          <section className="g-card" aria-labelledby="glance-h">
+            <h2 className="g-label" id="glance-h">Her rules at a glance</h2>
+            {latest && h.level ? (
+              <>
+                <Def k="Each week" v={formatCents(h.weeklyCents)} />
+                <Def k="Shops" v={shops.shops.length ? listWords(shops.shops.map((s) => s.name)) : "no shops yet"} />
+                <Def k="Asks you first" v={approvalShort(h.level)} />
+                <Def k="Saves at least" v={`${formatCents(commitmentFloorCents(h.weeklyCents, latest.body.commitmentFloorPct))} a week`} />
+              </>
+            ) : <p className="g-muted">No rules in force. {zoe} can&apos;t spend until you sign them.</p>}
+            <p className="g-more"><Link className="g-textlink" href="/g/rules">{h.level && !h.grantEnded ? "Change her rules" : "Sign her rules"}</Link></p>
+          </section>
+
+          <details className="g-card g-demo">
+            <summary>Demo controls</summary>
             <div style={{ margin: "4px 0 10px" }}>
               <Seam kinds={["clock"]}>Demo date: <b>{formatDay(h.now)}</b>.</Seam>
             </div>
@@ -139,20 +160,29 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
                 .map(([to, label]) => <PendingButton key={to} name="to" value={to} label={label} pendingLabel="Moving the clock…" className="g-btn g-btn--ghost" />)}
             </form>
             <p className="g-note" style={{ marginTop: 8 }}>
-              Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly review.
+              Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly check-in.
             </p>
             {h.isDemo && <ResetDemo />}
-          </section>
+          </details>
         </div>
       </div>
     </GuardianShell>
   );
 }
 
+function Def({ k, v }: { k: string; v: React.ReactNode }) {
+  return <div className="g-def"><span className="g-def__k">{k}</span><span className="g-def__lead" /><span className="g-def__v">{v}</span></div>;
+}
+
+/** Slot for the "get a buzz when Zoe asks" notification card (mockup). Empty for now; a later task fills it. */
+function NotifyCard() {
+  return null;
+}
+
 function NeedsYouRow({ item, zoe, guardian, hadRules }: { item: NeedsYou; zoe: string; guardian: string; hadRules: boolean }) {
   if (item.kind === "rules") {
     return (
-      <li><Link href="/g/grant">
+      <li><Link href="/g/rules">
         <span>{hadRules ? `${zoe}'s week has ended` : `${zoe} has no rules yet`}
           <small>{item.nudged ? `${zoe} nudged you to renew them. ` : ""}Sign her rules so she can spend.</small></span>
       </Link></li>

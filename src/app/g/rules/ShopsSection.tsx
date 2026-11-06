@@ -28,7 +28,7 @@ export function ShopsSection({ teenName: zoe, inForce, shops }: ShopsSectionProp
   const listed = new Set(shops.map((s) => s.domain)); // from the server after every change: results stay current
 
   return (
-    <section className="g-card g-section" aria-labelledby="shops-h" style={{ marginTop: 22 }}>
+    <section className="g-card g-section" aria-labelledby="shops-h">
       <div className="g-section__head">
         <h2 id="shops-h">Shops</h2>
         <span className="g-muted">{shops.length === 1 ? "1 shop" : `${shops.length} shops`}</span>

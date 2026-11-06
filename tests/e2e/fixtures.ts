@@ -15,6 +15,7 @@ export const E2E = {
   approveApprovalId: "e2e-approval-approve-0001",
   levelKey: "e2e-guardian-key-for-tests-only-0005",
   revokeKey: "e2e-guardian-key-for-tests-only-0006",
+  signKey: "e2e-guardian-key-for-tests-only-0013", // rules stopped: Rules page shows the first-signing flow
   // Teen screens (Task 18a): one family per state-changing test, each with a $6 paid purchase at Target.
   teen: {
     agent: "e2e-teen-agent-0001", buy: "e2e-teen-buy-0001", ask: "e2e-teen-ask-0001",
