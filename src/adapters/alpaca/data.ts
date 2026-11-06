@@ -1,17 +1,28 @@
-import type { AlpacaBroker } from "./broker";
+import { brokerFromEnv, type AlpacaBroker } from "./broker";
 import type { Cents } from "@/engine/types";
 
 export interface AssetHit { symbol: string; name: string; exchange: string; fractionable: boolean }
-export interface Change { startCents: Cents; endCents: Cents; /** percent, e.g. 12.5 */ pct: number }
-export interface MarketCompare { thisFund: Change; market: Change }
+/** since: null when the bars cover the whole window asked for; otherwise when this symbol's history really starts (R42). */
+export interface Change { startCents: Cents; endCents: Cents; /** percent, e.g. 12.5 */ pct: number; since: Date | null }
+/** Both sides cover the same dates: when the fund is younger than 5 years, the market is trimmed to its first day. */
+export interface MarketCompare { thisFund: Change; market: Change; since: Date | null }
+/** The fund page's one chart (D16): what $100 became along the way, for this fund and the whole market (SPY). */
+export interface FiveYear { compare: MarketCompare; lines: { thisFund: number[]; market: number[] } }
+interface Bar { t: number; c: number }
 
 const DAY_MS = 86_400_000;
+const YEAR_MS = 365 * DAY_MS;
 const ASSET_TTL_MS = 24 * 3_600_000;
+const BARS_TTL_MS = 3_600_000;
+const BARS_CACHE_MAX = 1000;
+/** A window counts as full when its first bar is within this of the window's start (weekends, holidays, listing gaps). */
+const FULL_WINDOW_SLACK_MS = 30 * DAY_MS;
 const LIMIT = 20;
 const MAX_PAGES = 20;
 /** Free plan: full-market (SIP) bars are allowed only if they end at least 15 minutes ago. */
 const SIP_DELAY_MS = 16 * 60_000;
 
+/** Fewer than two bars, or (for the 5-year comparison) less than a year of trading. */
 export class NotEnoughHistoryError extends Error {
   constructor(readonly symbol: string) {
     super(`Not enough history for ${symbol}`);
@@ -20,17 +31,34 @@ export class NotEnoughHistoryError extends Error {
 }
 
 const cents = (dollars: number): Cents => Math.round(dollars * 100);
-const usd = (c: Cents) => `$${(c / 100).toFixed(2)}`;
+const CHART_POINTS = 61;
 
-/** "$A today, $B a year ago." */
-export const oneYearLine = (c: Change) => `${usd(c.endCents)} today, ${usd(c.startCents)} a year ago.`;
+/** Closes as "what $100 became", thinned to at most CHART_POINTS (first and last kept). */
+export function hundredLine(closes: number[]): number[] {
+  const step = Math.max(1, (closes.length - 1) / (CHART_POINTS - 1));
+  const picked: number[] = [];
+  for (let i = 0; i < closes.length - 1; i += step) picked.push(closes[Math.round(i)]);
+  picked.push(closes[closes.length - 1]);
+  return picked.map((c) => (c / closes[0]) * 100);
+}
+const usd = (c: Cents) => `$${(c / 100).toFixed(2)}`;
+const monthYear = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+/** "March 2024" (UTC). */
+export const sinceWords = (d: Date) => monthYear.format(d);
+
+/** "$A today, $B a year ago." — or, for a younger symbol, "...when it started trading in {Month YYYY}." */
+export const oneYearLine = (c: Change) =>
+  `${usd(c.endCents)} today, ${usd(c.startCents)} ${c.since ? `when it started trading in ${sinceWords(c.since)}` : "a year ago"}.`;
 
 /** Whole-dollar value today of $100 put in at the first bar. */
 export const hundredBecame = (c: Change) => Math.round((c.endCents / c.startCents) * 100);
 
-/** Same words in up and down years; never a verdict. */
+/** The single source of the comparison copy (R42). Same words in up and down years; never a verdict. */
 export const compareSentence = (m: MarketCompare) =>
-  `Over 5 years, $100 became: this $${hundredBecame(m.thisFund)}, the whole market $${hundredBecame(m.market)}.`;
+  `${m.since ? `Since ${sinceWords(m.since)}` : "Over 5 years"}, $100 became: this $${hundredBecame(m.thisFund)}, the whole market $${hundredBecame(m.market)}.`;
+
+/** The comparison card's heading. */
+export const compareHeading = (m: MarketCompare) => (m.since ? `Since ${sinceWords(m.since)}` : "Five years");
 
 function rank(a: { symbol: string; name: string }, q: string): number {
   const sym = a.symbol.toLowerCase(), name = (a.name ?? "").toLowerCase();
@@ -66,38 +94,81 @@ export function alpacaMarket(broker: AlpacaBroker, dataBaseUrl: string, now: () 
 
   // adjustment=all so splits and dividends never read as crashes. feed=sip (every exchange, not just IEX) is
   // free when the request ends 15+ minutes ago, so `end` is held back 16 minutes (verified live 2026-11-05).
-  async function bars(symbol: string, start: Date, wantedEnd: Date): Promise<number[]> {
+  async function fetchBars(symbol: string, start: Date, wantedEnd: Date): Promise<Bar[]> {
     const end = new Date(Math.min(wantedEnd.getTime(), Date.now() - SIP_DELAY_MS));
-    const closes: number[] = [];
+    const out: Bar[] = [];
     let token: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const qs = new URLSearchParams({
         timeframe: "1Day", adjustment: "all", feed: "sip", start: start.toISOString(), end: end.toISOString(), limit: "10000",
         ...(token ? { page_token: token } : {}),
       });
-      const r = await broker.getAbsolute<{ bars?: Array<{ c: number }> | null; next_page_token?: string | null }>(
+      const r = await broker.getAbsolute<{ bars?: Array<{ t: string; c: number }> | null; next_page_token?: string | null }>(
         `${dataBaseUrl}/v2/stocks/${encodeURIComponent(symbol)}/bars?${qs}`);
-      for (const b of r.bars ?? []) closes.push(b.c);
+      for (const b of r.bars ?? []) out.push({ t: Date.parse(b.t), c: b.c });
       token = r.next_page_token ?? undefined;
       if (!token) break;
     }
-    return closes;
+    return out.filter((b) => Number.isFinite(b.t));
+  }
+
+  // Daily bars change once a day: one 5-year fetch per symbol per UTC day serves the search line, the fund page's
+  // one-year line and its comparison. The promise is cached so concurrent views share one request; failures aren't kept.
+  const barCache = new Map<string, { at: number; bars: Promise<Bar[]> }>();
+  function history(symbol: string, asOf: Date): Promise<Bar[]> {
+    const key = `${symbol}:5:${asOf.toISOString().slice(0, 10)}`;
+    const hit = barCache.get(key);
+    if (hit && now() - hit.at < BARS_TTL_MS) return hit.bars;
+    if (barCache.size >= BARS_CACHE_MAX) barCache.clear(); // ponytail: crude bound; an LRU if this ever matters
+    const bars = fetchBars(symbol, new Date(asOf.getTime() - 5 * YEAR_MS), asOf);
+    barCache.set(key, { at: now(), bars });
+    bars.catch(() => barCache.delete(key));
+    return bars;
+  }
+
+  const changeOf = (bars: Bar[], since: Date | null): Change => {
+    const startCents = cents(bars[0].c), endCents = cents(bars[bars.length - 1].c);
+    return { startCents, endCents, pct: ((endCents - startCents) / startCents) * 100, since };
+  };
+
+  /** The last `years` of bars; `since` is set when they start more than 30 days after the window does. */
+  function windowOf(symbol: string, all: Bar[], years: 1 | 5, asOf: Date): { bars: Bar[]; since: Date | null } {
+    const requestedStart = asOf.getTime() - years * YEAR_MS;
+    const bars = all.filter((b) => b.t >= requestedStart);
+    if (bars.length < 2) throw new NotEnoughHistoryError(symbol);
+    return { bars, since: bars[0].t - requestedStart > FULL_WINDOW_SLACK_MS ? new Date(bars[0].t) : null };
   }
 
   async function changeOver(symbol: string, years: 1 | 5, asOf: Date): Promise<Change> {
-    const start = new Date(asOf.getTime() - years * 365 * DAY_MS);
-    const closes = await bars(symbol, start, asOf);
-    if (closes.length < 2) throw new NotEnoughHistoryError(symbol);
-    const startCents = cents(closes[0]), endCents = cents(closes[closes.length - 1]);
-    return { startCents, endCents, pct: ((endCents - startCents) / startCents) * 100 };
+    const { bars, since } = windowOf(symbol, await history(symbol, asOf), years, asOf);
+    return changeOf(bars, since);
   }
 
-  async function marketCompare(symbol: string, asOf: Date): Promise<MarketCompare> {
-    const [thisFund, market] = await Promise.all([changeOver(symbol, 5, asOf), changeOver("SPY", 5, asOf)]);
-    return { thisFund, market };
+  /** Like with like: a younger fund is compared with the market from its own first day. Under a year => no comparison. */
+  async function fiveYear(symbol: string, asOf: Date): Promise<FiveYear> {
+    const [f, m] = await Promise.all([history(symbol, asOf), history("SPY", asOf)]);
+    const fund = windowOf(symbol, f, 5, asOf);
+    if (fund.bars[fund.bars.length - 1].t - fund.bars[0].t < YEAR_MS) throw new NotEnoughHistoryError(symbol);
+    const from = fund.bars[0].t;
+    const market = windowOf("SPY", m, 5, asOf).bars.filter((b) => !fund.since || b.t >= from);
+    if (market.length < 2) throw new NotEnoughHistoryError("SPY");
+    return {
+      compare: { thisFund: changeOf(fund.bars, fund.since), market: changeOf(market, fund.since), since: fund.since },
+      lines: { thisFund: hundredLine(fund.bars.map((b) => b.c)), market: hundredLine(market.map((b) => b.c)) },
+    };
   }
 
-  return { searchAssets, changeOver, marketCompare };
+  const marketCompare = async (symbol: string, asOf: Date): Promise<MarketCompare> => (await fiveYear(symbol, asOf)).compare;
+
+  return { searchAssets, changeOver, marketCompare, fiveYear };
 }
 
 export type AlpacaMarket = ReturnType<typeof alpacaMarket>;
+
+let shared: AlpacaMarket | null = null;
+
+/** One per server process, so Alpaca's asset list is cached for 24h. Throws (each call) when Alpaca isn't configured. */
+export function marketFromEnv(): AlpacaMarket {
+  shared ??= alpacaMarket(brokerFromEnv(), process.env.ALPACA_DATA_BASE_URL ?? "https://data.sandbox.alpaca.markets");
+  return shared;
+}

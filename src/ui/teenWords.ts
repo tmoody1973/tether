@@ -5,6 +5,9 @@ import type { Cents, Decision } from "@/engine/types";
 import { formatCents } from "@/ui/grantWords";
 import { CHARGE_FAILED_MESSAGE } from "@/flows/purchase";
 import type { PurchaseStatus } from "@/db/repo";
+import type * as schema from "@/db/schema";
+import { NEEDS_REVIEW_LABEL, QUEUED_LABEL } from "@/engine/invest";
+import type { ShopTile } from "@/flows/teenMap";
 
 export type CardKind = "fits" | "needs" | "over" | "refused";
 
@@ -108,4 +111,43 @@ export function buyFlash(
   if (p.status === "needs_approval") return { text: `That one needs ${guardian}'s OK now, so nothing was spent.`, warn: true, ask: true };
   if (code === "nopaypal") return { text: `${guardian}'s PayPal isn't saved, so nothing was spent.`, warn: true };
   return { text: NOT_CHARGED[code] ?? "That doesn't fit your rules any more, so nothing was spent.", warn: true };
+}
+
+/** D12 moment 3, the goal screen's one number. 0 = saved enough; null = no weekly promise to count with. */
+export function weeksToGoal(targetCents: Cents, savedCents: Cents, commitmentCents: Cents): number | null {
+  const short = Math.max(0, targetCents - savedCents);
+  if (short === 0) return 0;
+  return commitmentCents > 0 ? Math.ceil(short / commitmentCents) : null;
+}
+
+/** "$5", "5.5", "$1,250.00" → integer cents; anything else (negative, more than 2 decimals, words) → null. */
+export function parseDollars(input: string): Cents | null {
+  const m = input.trim().replace(/^\$/, "").replace(/,/g, "").match(/^(\d{1,7})(?:\.(\d{1,2}))?$/);
+  return m ? Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0")) : null;
+}
+
+type InvestStatus = (typeof schema.investments.$inferSelect)["status"];
+
+/** Her investments, in her words. The hard states use the engine's labels (QUEUED_LABEL is the designed closed-market state). */
+export function investStatusWords(s: InvestStatus, guardian: string, declined = false): string {
+  if (declined) return `${guardian} said not this time.`;
+  const words: Record<InvestStatus, string> = {
+    proposed: `Waiting for ${guardian}`,
+    approved: `${guardian} said yes. Sending it.`,
+    depositing: "Moving your money to your investing account",
+    queued: QUEUED_LABEL,
+    filled: "Bought",
+    rejected: "Didn't go through. Nothing was moved.", // after her yes; her "no" is shown from the approval, not this
+
+    cash_held: `Held as cash in your investing account. ${guardian} can try the order again.`,
+    needs_review: NEEDS_REVIEW_LABEL,
+  };
+  return words[s];
+}
+
+/** A map tile's label: Open / Ask first / Locked, plus one plain line. No prices, no ratings (F4). */
+export function tileWords(tile: ShopTile, guardian: string): { label: string; line: string } {
+  if (tile.kind === "open") return { label: "Open", line: tile.booksOnly ? "Books only" : "In your rules now" };
+  if (tile.kind === "ask") return { label: "Ask first", line: `${guardian} says yes the first time` };
+  return { label: "Locked", line: tile.opensAt ? `Opens at Level ${tile.opensAt}` : `Not on your list. Ask ${guardian} to add it` };
 }

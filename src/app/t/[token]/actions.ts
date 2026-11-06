@@ -2,8 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { runAgent } from "@/ai/agent";
-import { teenFamily } from "@/auth/teen";
-import { getDb } from "@/db/client";
+import { teenFromForm } from "@/auth/teen";
 import { getActiveGrant } from "@/db/repo";
 import { ledgerView } from "@/ledger/ledger";
 import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, type Proposed } from "@/flows/teen";
@@ -19,12 +18,7 @@ const SHOP_DOWN = "Can't reach the shops right now. Nothing was bought. Try agai
 const text = (v: FormDataEntryValue | null, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 /** R39: the family comes only from the link's token, re-checked on every action; a stale link gets nothing. */
-async function family(form: FormData) {
-  const token = form.get("token");
-  const db = await getDb();
-  const fam = await teenFamily(db, token);
-  return fam ? { db, fam, token: token as string } : null;
-}
+const family = teenFromForm;
 
 /** Agent box, pasted link, or search inside her shops: all three end as engine-labelled cards. */
 export async function shopAction(_prev: ShopState, form: FormData): Promise<ShopState> {

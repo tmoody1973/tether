@@ -1,16 +1,8 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { alpacaFromEnv } from "@/adapters/alpaca/broker";
-import { alpacaMarket, type AlpacaMarket } from "@/adapters/alpaca/data";
+import { marketFromEnv } from "@/adapters/alpaca/data";
 import { fundWords } from "@/ai/fundWords";
 import { fundFacts } from "@/flows/funds";
-
-let market: AlpacaMarket | null = null; // one per server process: it caches Alpaca's asset list for 24h
-
-function getMarket(): AlpacaMarket {
-  market ??= alpacaMarket(alpacaFromEnv(), process.env.ALPACA_DATA_BASE_URL ?? "https://data.sandbox.alpaca.markets");
-  return market;
-}
 
 /** Alpaca's facts for one fund in fixed template sentences (no model call per row). Streams in; never blocks the page. */
 export function FundFactsLine({ symbol }: { symbol: string }) {
@@ -25,7 +17,7 @@ async function Facts({ symbol }: { symbol: string }) {
   await connection(); // market data is read at request time, never prerendered
   let text: string | null = null;
   try {
-    const facts = await fundFacts(getMarket(), symbol, new Date());
+    const facts = await fundFacts(marketFromEnv(), symbol, new Date());
     text = facts ? await fundWords(null, facts) : null;
   } catch (err) {
     console.error("fund facts unavailable", symbol, err instanceof Error ? err.message : err);

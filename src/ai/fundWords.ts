@@ -1,11 +1,12 @@
+import { compareSentence, oneYearLine, type Change, type MarketCompare } from "@/adapters/alpaca/data";
 import type { Llm } from "./llm";
 
 export interface FundFacts {
   name: string; symbol: string; exchange: string; fractionable: boolean;
-  /** Dollar values from adjusted daily bars. Never shown to the model. */
-  oneYear?: { todayDollars: number; yearAgoDollars: number };
-  /** Whole-dollar value of $100 over 5 years. Never shown to the model. */
-  compare?: { thisFundDollars: number; marketDollars: number };
+  /** From adjusted daily bars, with their real span (R42). Never shown to the model. */
+  oneYear?: Change;
+  /** $100 over 5 years (or since it started trading). Never shown to the model. */
+  compare?: MarketCompare;
 }
 
 const MAX_LEN = 200;
@@ -22,16 +23,14 @@ const SYSTEM = `You describe what one fund is, for a teenager, in one plain sent
 Use only the name, symbol, exchange and whether it can be held in fractions. Write no numbers, no comparisons, no opinions, no advice, no links.
 Reply as JSON: {"text": "..."}.`;
 
-const money = (n: number) => `$${n.toFixed(2)}`;
-
 const description = (f: FundFacts) =>
   `${f.name} (${f.symbol}) is listed on ${f.exchange}. ${f.fractionable ? "It can be held in part-shares." : "It can only be held in whole shares."}`;
 
 /** The only numbers a reader sees: fixed sentences written by code, never by the model. */
 function numeric(f: FundFacts): string[] {
   return [
-    ...(f.oneYear ? [`${money(f.oneYear.todayDollars)} today, ${money(f.oneYear.yearAgoDollars)} a year ago.`] : []),
-    ...(f.compare ? [`Over 5 years, $100 became: this $${f.compare.thisFundDollars}, the whole market $${f.compare.marketDollars}.`] : []),
+    ...(f.oneYear ? [oneYearLine(f.oneYear)] : []),
+    ...(f.compare ? [compareSentence(f.compare)] : []),
   ];
 }
 
@@ -42,15 +41,23 @@ function valid(text: unknown, f: FundFacts): text is string {
   return !BANNED.some((re) => re.test(rest));
 }
 
+const CACHE_MAX = 500;
+/** Validated model sentences by symbol: what a fund is doesn't change, so the model is asked once per process. */
+const said = new Map<string, string>();
+
 export async function fundWords(llm: Llm | null, facts: FundFacts): Promise<string> {
-  let sentence = description(facts);
-  if (llm) {
+  let sentence = said.get(facts.symbol) ?? description(facts);
+  if (llm && !said.has(facts.symbol)) {
     try {
       const user = JSON.stringify({ name: facts.name, symbol: facts.symbol, exchange: facts.exchange, fractionable: facts.fractionable });
       const out = await llm.json<{ text: string }>({ system: SYSTEM, user, schema: SCHEMA, maxTokens: 100 });
       const text = out?.text?.trim();
-      if (valid(text, facts)) sentence = text;
-    } catch { /* model down: plain description */ }
+      if (valid(text, facts)) {
+        sentence = text;
+        if (said.size >= CACHE_MAX) said.delete(said.keys().next().value as string); // oldest first
+        said.set(facts.symbol, text);
+      }
+    } catch { /* model down: plain description, asked again next time */ }
   }
   return [sentence, ...numeric(facts)].join(" ");
 }

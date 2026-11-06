@@ -2,7 +2,7 @@ import { clockFor } from "@/clock/clock";
 import type { Db } from "@/db/client";
 import { paypalFromEnv, type PaypalHttp } from "@/adapters/paypal/http";
 import { createChannel3, type Channel3Adapter } from "@/adapters/channel3/client";
-import { alpacaFromEnv } from "@/adapters/alpaca/broker";
+import { brokerFromEnv } from "@/adapters/alpaca/broker";
 import type { ApproveDeps } from "@/flows/approve";
 
 const unavailable = (what: string) => async (): Promise<never> => { throw new Error(`${what} is not configured here`); };
@@ -35,6 +35,6 @@ export function paymentDeps(db: Db): ApproveDeps {
     classifier: { ask: async () => ({ probability: null, model: "none", modelVersion: "none" }) },
     // ponytail: the permission-slip HMAC shares the cookie signing key; split it if keys ever rotate separately
     secret: process.env.TETHER_SIGNING_KEY ?? "",
-    alpaca: () => alpacaFromEnv(),
+    alpaca: () => brokerFromEnv(),
   };
 }

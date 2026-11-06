@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buyFlash, cardOutcome, daysToReset, levelLine, levelProgress, reflection, resetsWords, setsBack, sheetNumbers, waitWords, whatChanged,
+  buyFlash, cardOutcome, daysToReset, investStatusWords, levelLine, levelProgress, parseDollars, reflection, resetsWords, setsBack, sheetNumbers,
+  tileWords, waitWords, weeksToGoal, whatChanged,
 } from "@/ui/teenWords";
 import type { Decision } from "@/engine/types";
 import type { PurchaseStatus } from "@/db/repo";
@@ -66,5 +67,34 @@ describe("teen words", () => {
     expect(levelProgress(5, 3)).toBe("You're at the top level.");
     expect(whatChanged(1, 2, "Amara")).toBe("Your weekly limit is now $30.00, and only things over $20.00 need Amara's OK. A bookshop opens too.");
     expect(whatChanged(2, 3, "Amara")).toBe("Your weekly limit is now $50.00, and nothing inside your shops needs asking. Clothes and sneaker shops open too.");
+  });
+});
+
+describe("goals, invest and map words (18b)", () => {
+  it("weeksToGoal: the goal screen's one number", () => {
+    expect(weeksToGoal(8900, 3400, 200)).toBe(28); // $55 short at $2 a week
+    expect(weeksToGoal(8900, 3400, 400)).toBe(14);
+    expect(weeksToGoal(8900, 9000, 0)).toBe(0); // saved enough
+    expect(weeksToGoal(8900, 3400, 0)).toBeNull(); // no promise, no count
+  });
+  it("parseDollars → integer cents, or null", () => {
+    expect(parseDollars("5")).toBe(500);
+    expect(parseDollars("$5.5")).toBe(550);
+    expect(parseDollars(" 1,250.05 ")).toBe(125005);
+    for (const bad of ["", "-5", "5.555", "five", "1e3", "5.", ".5"]) expect(parseDollars(bad)).toBeNull();
+  });
+  it("investment statuses in her words; queued is the designed closed-market state", () => {
+    expect(investStatusWords("queued", "Amara")).toBe("Queued for market open");
+    expect(investStatusWords("proposed", "Amara")).toBe("Waiting for Amara");
+    expect(investStatusWords("cash_held", "Amara")).toMatch(/your investing account/);
+    expect(investStatusWords("rejected", "Amara")).toBe("Didn't go through. Nothing was moved.");
+    expect(investStatusWords("rejected", "Amara", true)).toBe("Amara said not this time.");
+  });
+  it("map tiles: open / ask first / locked, never a price", () => {
+    const tile = (kind: "open" | "ask" | "locked", opensAt: number | null = null, booksOnly = false) => ({ id: "x", name: "X", kind, opensAt, booksOnly });
+    expect(tileWords(tile("open"), "Amara")).toEqual({ label: "Open", line: "In your rules now" });
+    expect(tileWords(tile("open", null, true), "Amara").line).toBe("Books only");
+    expect(tileWords(tile("ask"), "Amara")).toEqual({ label: "Ask first", line: "Amara says yes the first time" });
+    expect(tileWords(tile("locked", 3), "Amara")).toEqual({ label: "Locked", line: "Opens at Level 3" });
   });
 });

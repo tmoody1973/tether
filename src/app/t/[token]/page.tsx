@@ -34,13 +34,13 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
 
   if (w.state === "active" && w.levelUp) return <LevelUp token={token} w={w} />;
   if (w.state === "ended") return <WeekEnded token={token} w={w} />;
-  if (w.state !== "active") return <TeenShell token={token} active="week" center><NotShopping w={w} /></TeenShell>;
+  if (w.state !== "active") return <TeenShell token={token} active="week" level={w.level} center><NotShopping w={w} /></TeenShell>;
 
   const flash = await flashFor(sp, w, db, fam.id);
   const sheet = one(sp, "sheet");
   const g = w.guardianName;
   return (
-    <TeenShell token={token} active="week">
+    <TeenShell token={token} active="week" level={w.level}>
       <div>
         <div className="t-eyebrow">Your week</div>
         <div className="t-hero money">{formatCents(w.leftCents)}</div>
@@ -126,7 +126,7 @@ async function flashFor(sp: Search, w: TeenWeek, db: Db, familyId: string): Prom
 function LevelUp({ token, w }: { token: string; w: TeenWeek }) {
   const u = w.levelUp!;
   return (
-    <TeenShell token={token} active="week" center>
+    <TeenShell token={token} active="week" level={w.level} center>
       <div style={{ textAlign: "center" }}>
         <div className="t-badge" aria-hidden>{u.toLevel}</div>
         <h1 className="t-h2">Level {u.toLevel} unlocked.</h1>
@@ -155,7 +155,7 @@ function WeekEnded({ token, w }: { token: string; w: TeenWeek }) {
   const g = w.guardianName;
   const last = w.weeks.at(-1) ?? { spentCents: w.spentCents, allowanceCents: w.weeklyCents };
   return (
-    <TeenShell token={token} active="week" center>
+    <TeenShell token={token} active="week" level={w.level} center>
       <span className="t-chip t-chip--needs">Week ended</span>
       <h1 className="t-h2">Your week&apos;s finished.</h1>
       <p className="t-small">Your next <Money cents={w.weeklyCents} /> starts when {g} renews your rules.</p>

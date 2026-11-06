@@ -20,3 +20,11 @@ export async function teenSession(token: string): Promise<{ db: Db; fam: Family 
   const fam = await teenFamily(db, token);
   return fam ? { db, fam } : null;
 }
+
+/** For teen server actions: the family from the form's token, re-checked on every action (R39). */
+export async function teenFromForm(form: FormData): Promise<{ db: Db; fam: Family; token: string } | null> {
+  const token = form.get("token");
+  const db = await getDb();
+  const fam = await teenFamily(db, token);
+  return fam ? { db, fam, token: token as string } : null;
+}
