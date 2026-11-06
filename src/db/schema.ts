@@ -23,6 +23,10 @@ export const families = pgTable("families", {
   commitmentCents: integer("commitment_cents").notNull().default(0),
   pendingCommitmentCents: integer("pending_commitment_cents"), // takes effect at the next week close
   alpacaAccountId: text("alpaca_account_id"), // the family's one investing account, created once and reused
+  // Zoe's latest nudge to Amara (demo clock). note null = "renew my rules"; text = she asked about something the rules can't pay for.
+  teenNudgeAt: ts("teen_nudge_at"),
+  teenNudgeNote: text("teen_nudge_note"),
+  teenSeenLevelAt: ts("teen_seen_level_at"), // the level change Zoe last tapped "Nice" on; a newer one shows the level-up moment
 });
 
 export const merchants = pgTable("merchants", {

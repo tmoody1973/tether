@@ -87,6 +87,7 @@
   display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 48px; padding: 12px 2px;
   text-decoration: none; font-weight: 600;
 }
+.g-needs__note { display: block; padding: 12px 2px; font-weight: 600; }
 .g-needs a::after { content: "›"; color: var(--ink-3-text); font-size: 20px; line-height: 1; }
 .g-needs small { display: block; font-weight: 400; color: var(--ink-2); font-size: 13px; }
 

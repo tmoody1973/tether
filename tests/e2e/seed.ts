@@ -9,6 +9,7 @@ import * as t from "@/db/schema";
 import { clockFor } from "@/clock/clock";
 import { cartHash } from "@/engine/hash";
 import { signGrant } from "@/flows/grant";
+import { advanceDemoClock } from "@/flows/demo";
 import type { Cart } from "@/engine/types";
 import { E2E } from "./fixtures";
 
@@ -46,7 +47,7 @@ async function asking(db: Db, f: Fam, approvalId: string, c: Cart, note: string)
 }
 
 /** A purchase as settlePurchase leaves it: money out of the budget, slip used, and (if PayPal answered) a receipt. */
-async function bought(db: Db, f: Fam, cents: number, tokenId: string, captureId: string | null) {
+async function bought(db: Db, f: Fam, cents: number, tokenId: string, captureId: string | null): Promise<void> {
   const c = cart("m_target", cents, "Notebook");
   const p = await insertPurchase(db, { familyId: f.id, cart: c, cartHash: cartHash(c), status: captureId ? "paid" : "paying", decision: ALLOW });
   await appendJournal(db, { familyId: f.id, kind: "spend", amountCents: cents, at: new Date(), ref: p.id, note: null });
@@ -71,6 +72,19 @@ async function main() {
   await asking(db, await family(db, E2E.approveKey, "e2e-teen-approve"), E2E.approveApprovalId, cart("m_bestbuy", 800, "Earbuds"), "mine broke");
   await family(db, E2E.levelKey, "e2e-teen-level");
   await family(db, E2E.revokeKey, "e2e-teen-revoke");
+
+  // Teen screens: Zoe has bought at Target this week ($6 of $20), so Target counts as a shop she's used.
+  const teen = async (token: string, key: string) => {
+    const f = await family(db, key, token);
+    await bought(db, f, 600, `e2e-token-${token}`, `E2E-CAP-${token}`);
+    return f;
+  };
+  await teen(E2E.teen.agent, "e2e-guardian-key-teen-agent");
+  await teen(E2E.teen.buy, "e2e-guardian-key-teen-buy");
+  await teen(E2E.teen.ask, E2E.teenAskKey);
+  await teen(E2E.teen.reset, E2E.teenResetKey);
+  const ended = await teen(E2E.teen.ended, "e2e-guardian-key-teen-ended");
+  await advanceDemoClock({ db, now: clockFor(db) }, ended.id, "week"); // her 7-day rules run out; the week closes
 
   const other = await family(db, E2E.otherGuardianKey, "e2e-teen-other", { guardianName: "Sam", teenName: "Kai" });
   await asking(db, other, E2E.otherApprovalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");

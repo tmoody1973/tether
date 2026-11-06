@@ -2,12 +2,13 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getVault } from "@/db/repo";
-import { ledgerView } from "@/ledger/ledger";
+import { ledgerView, weekKey } from "@/ledger/ledger";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
 import type { Level } from "@/engine/ladder";
 
 export type NeedsYou =
-  | { kind: "rules" } // no grant in force: Zoe can't spend until Amara signs
+  | { kind: "rules"; nudged?: true } // no grant in force: Zoe can't spend until Amara signs (nudged: she asked for it)
+  | { kind: "message"; note: string } // this week Zoe asked about something her rules can't pay for
   | { kind: "paypal" } // no saved PayPal: approved purchases can't be charged
   | { kind: "approval"; id: string; subject: PendingApproval["subject"]; amountCents?: number; shop?: string; symbol?: string; note: string | null };
 
@@ -36,13 +37,19 @@ export async function guardianHome(db: Db, familyId: string, now: Date): Promise
     goal: goal ? { title: goal.title, targetCents: goal.targetCents } : null,
     paypalSaved: vault !== null,
     needsYou: [
-      ...(grantEnded ? [{ kind: "rules" } as const] : []),
+      ...(grantEnded ? [nudgedToRenew(fam, grant?.expiresAt ?? null) ? { kind: "rules", nudged: true } as const : { kind: "rules" } as const] : []),
+      ...(fam.teenNudgeAt && fam.teenNudgeNote && weekKey(fam.teenNudgeAt) === weekKey(now)
+        ? [{ kind: "message", note: fam.teenNudgeNote } as const] : []),
       ...(vault ? [] : [{ kind: "paypal" } as const]),
       ...approvals,
     ],
     now,
   };
 }
+
+/** Zoe's "Nudge Amara" counts only if she sent it after these rules ended. */
+const nudgedToRenew = (fam: { teenNudgeAt: Date | null; teenNudgeNote: string | null }, endedAt: Date | null) =>
+  fam.teenNudgeAt !== null && fam.teenNudgeNote === null && (endedAt === null || fam.teenNudgeAt >= endedAt);
 
 async function describe(db: Db, a: PendingApproval): Promise<NeedsYou> {
   const base = { kind: "approval" as const, id: a.id, subject: a.subject, note: a.note };
