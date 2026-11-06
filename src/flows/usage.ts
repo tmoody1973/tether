@@ -5,7 +5,7 @@ import * as t from "@/db/schema";
 export type UsageKind = (typeof t.usage.kind.enumValues)[number];
 
 /** Per-family DAILY caps (real time) on top of the hourly/5s throttle: the demo key is public, so model and Channel3 spend is bounded. */
-export const DAILY_CAPS: Record<UsageKind, number> = { shop_agent: 150, shop_lookup: 400, month_ask: 60, fund_words: 300 };
+export const DAILY_CAPS: Record<UsageKind, number> = { shop_agent: 150, shop_lookup: 400, month_ask: 60, fund_words: 300, shop_sites: 200, teen_shop_sites: 200, push: 200 };
 export const DAILY_CAP_MESSAGE = "That's a lot for one day — try again tomorrow.";
 
 /**

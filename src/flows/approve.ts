@@ -10,11 +10,11 @@ import { settlePurchase, type Deps } from "@/flows/purchase";
 export type ApproveCode =
   | "paid" | "paying" | "changed" | "rules" | "nopaypal" | "paypal-off" | "paypal-declined" | "notstarted"
   | "inv-filled" | "inv-queued" | "inv-depositing" | "inv-rejected" | "inv-waiting" | "inv-cash-held" | "inv-review"
-  | "fund" | "shop";
+  | "fund" | "shop" | "shop-later";
 
 export const APPROVE_CODES: readonly ApproveCode[] = [
   "paid", "paying", "changed", "rules", "nopaypal", "paypal-off", "paypal-declined", "notstarted",
-  "inv-filled", "inv-queued", "inv-depositing", "inv-rejected", "inv-waiting", "inv-cash-held", "inv-review", "fund", "shop",
+  "inv-filled", "inv-queued", "inv-depositing", "inv-rejected", "inv-waiting", "inv-cash-held", "inv-review", "fund", "shop", "shop-later",
 ];
 
 export type ApproveDeps = Deps & { alpaca: () => AlpacaBroker };
@@ -25,8 +25,9 @@ export type ApproveDeps = Deps & { alpaca: () => AlpacaBroker };
  * start is reported as "nothing was charged / nothing has moved yet".
  */
 export async function approveAndSettle(deps: ApproveDeps, familyId: string, approvalId: string): Promise<ApproveCode> {
-  const { subject, subjectId } = await decideApproval(deps, approvalId, "approved", familyId); // throws if not open / not hers
-  if (subject === "fund" || subject === "shop") return subject;
+  const { subject, subjectId, shopApplied } = await decideApproval(deps, approvalId, "approved", familyId); // throws if not open / not hers
+  if (subject === "shop") return shopApplied === false ? "shop-later" : "shop"; // no rules in force: recorded for next signing
+  if (subject === "fund") return subject;
   if (subject === "purchase") {
     try {
       const r = await settlePurchase(deps, subjectId);

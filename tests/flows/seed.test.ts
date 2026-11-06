@@ -9,7 +9,8 @@ import type { Channel3Adapter, Product } from "@/adapters/channel3/client";
 import type { AlpacaBroker } from "@/adapters/alpaca/broker";
 import { approveAndSettle, type ApproveDeps } from "@/flows/approve";
 import { advanceDemoClock } from "@/flows/demo";
-import { resetTeenLink, revoke } from "@/flows/grant";
+import { resetTeenLink, revoke, signGrant } from "@/flows/grant";
+import { addShop, removeShop } from "@/flows/shops";
 import { guardianHome } from "@/flows/home";
 import { DEMO_STALE_MS, DemoResetError, freshenDemoIfStale, resetDemo } from "@/flows/reset";
 import { DEMO_COMMITMENT_CENTS, DEMO_NOW, seedDemo, type SeedResult } from "@/flows/seed";
@@ -214,6 +215,22 @@ describe("resetDemo (Task 19, R43)", () => {
     const rows = await db.select().from(t.releases).where(eq(t.releases.familyId, r.familyId));
     expect(rows).toHaveLength(1);
     expect(rows[0].confirmedAt).not.toBeNull();
+  });
+
+  it("reset clears Amara's shop choices: a removed shop is back and an added one is gone", async () => {
+    const { r, keys } = await seeded();
+    const fam = r.familyId;
+    await removeShop(d(), fam, "m_target");
+    await addShop(d(), fam, { domain: "nike.com", name: "Nike" });
+    await resetDemo(d(), fam, keys);
+    expect(await db.select().from(t.shopChoices).where(eq(t.shopChoices.familyId, fam))).toHaveLength(0);
+    const payees = () => getActiveGrant(db, fam).then((g) =>
+      (g!.body.constraints.find((c) => c.type === "payment.allowed_payees") as { merchantIds: string[] }).merchantIds);
+    expect(await payees()).toContain("m_target");
+    expect(await payees()).not.toContain("m_nike");
+    await signGrant(d(), fam, { level: 2 }); // nothing left over to come back on the next signing
+    expect(await payees()).toContain("m_target");
+    expect(await payees()).not.toContain("m_nike");
   });
 
   it("a shop first used after the seed is a first-time shop again after a reset", async () => {

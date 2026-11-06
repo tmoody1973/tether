@@ -9,6 +9,7 @@ import type { Cart, Grant } from "@/engine/types";
 import { settlePurchase, proposePurchase, type Deps } from "@/flows/purchase";
 import { ledgerView } from "@/ledger/ledger";
 import { askAmara } from "@/flows/teen";
+import { NO_LEVEL } from "@/flows/grant";
 import {
   ApprovalError, decideApproval, liftableOverage, normaliseDomain, pendingApprovals, proposeShop, requestApproval, teenMessage,
 } from "@/flows/approvals";
@@ -106,7 +107,8 @@ describe("approvals", () => {
     const d = deps();
     const a = await requestApproval(d, familyId, "fund", "p1", "h");
     const b = await requestApproval(d, familyId, "fund", "p1", "h");
-    expect(b).toEqual(a);
+    expect(b).toEqual({ approvalId: a.approvalId, created: false }); // only the first opens one (and pushes)
+    expect(a.created).toBe(true);
   });
 
   it("deciding an expired approval throws", async () => {
@@ -133,7 +135,7 @@ describe("approvals", () => {
     const g = (await repo.getActiveGrant(db, familyId))!;
     const m = (await db.select().from(t.merchants).where(eq(t.merchants.channel3WebsiteId, "newshop.example")))[0];
     expect(g.version).toBe(2);
-    expect(m).toMatchObject({ class: "general", opensAtLevel: 1 });
+    expect(m).toMatchObject({ class: "general", opensAtLevel: NO_LEVEL, addedByFamilyId: familyId }); // in only by her choice
     const payees = g.body.constraints.find((c) => c.type === "payment.allowed_payees") as { merchantIds: string[] };
     expect(payees.merchantIds).toContain(m.id);
     const old = await db.select().from(t.grants).where(eq(t.grants.familyId, familyId));
@@ -167,16 +169,17 @@ describe("approvals", () => {
     await expect(requestApproval(d, familyId, "purchase", purchaseId, p!.cartHash)).rejects.toBeInstanceOf(ApprovalError);
   });
 
-  it("shop approval throws without an allowed_payees list or for a higher-level shop, and rolls back", async () => {
+  it("a higher-level shop can be approved (levels are defaults); without an allowed_payees list it throws and rolls back", async () => {
     const { familyId } = await seed("2026-11-04T12:00:00Z", false);
     const d = deps();
     const { approvalId } = await proposeShop(d, familyId, "high.example", "r");
     await db.insert(t.merchants).values({ id: `hi${n}`, name: "Hi", domain: "high.example", class: "general", channel3WebsiteId: "high.example", opensAtLevel: 3 });
-    await expect(decideApproval(d, approvalId, "approved")).rejects.toBeInstanceOf(ApprovalError);
-    expect((await db.select().from(t.approvals).where(eq(t.approvals.id, approvalId)))[0].result).toBeNull();
-    expect((await repo.getActiveGrant(db, familyId))!.version).toBe(1);
+    await decideApproval(d, approvalId, "approved");
+    const after = (await repo.getActiveGrant(db, familyId))!;
+    expect(after.version).toBe(2);
+    expect((after.body.constraints.find((c) => c.type === "payment.allowed_payees") as { merchantIds: string[] }).merchantIds).toContain(`hi${n}`);
 
-    const g = (await repo.getActiveGrant(db, familyId))!;
+    const g = after;
     const body = { ...g.body, constraints: g.body.constraints.filter((c) => c.type !== "payment.allowed_payees") };
     await db.update(t.grants).set({ body }).where(eq(t.grants.id, g.id));
     const r = await proposeShop(d, familyId, "plain.example", "r");

@@ -65,6 +65,9 @@ function bars(symbol: string, start: string | null, end: string | null) {
   }).filter((b) => Date.parse(b.t) >= listedMs);
 }
 
+const SITES = [["Etsy", "etsy.com"], ["Nike", "nike.com"], ["Target", "target.com"], ["Lego", "lego.com"]]
+  .map(([name, domain]) => ({ id: domain, name, url: `https://www.${domain}/` }));
+
 createServer((req, res) => {
   let raw = "";
   req.on("data", (c) => { raw += c; });
@@ -96,6 +99,10 @@ createServer((req, res) => {
       return send(200, { id: `sku-${product[1]}`, title: "Item", offers: [{ domain, price: { price: Number(product[1]) / 100, currency: "USD" }, availability: "InStock" }] });
     }
     if (req.method === "POST" && path === "/v1/search") return send(200, { products: SEARCH, next_page_token: null });
+    if (req.method === "GET" && path === "/v1/websites/search") { // shop search by name (Amara's "Add a shop", Zoe's "Suggest a shop")
+      const q = (url.searchParams.get("query") ?? "").toLowerCase();
+      return send(200, { websites: SITES.filter((w) => w.name.toLowerCase().includes(q)) });
+    }
     if (req.method === "POST" && path === "/v1/lookup") {
       const link = String((JSON.parse(raw || "{}") as { url?: string }).url ?? "");
       const sku = link.match(/sku-(\d+)/);

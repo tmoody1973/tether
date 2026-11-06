@@ -25,3 +25,15 @@ Dated entries. Each answers: what did we expect, what happened, what do we now b
 **Expected:** Sending each PayPal charge with a request ID (an idempotency key: a label that makes a repeated request return the original result instead of charging again) would make retries safe forever, so Tether could keep re-asking PayPal about a charge it wasn't sure of.
 **What happened:** A reviewer flagged it from memory and PayPal's own migration guide confirmed it: in the current Orders API, PayPal remembers a request ID for only 6 hours by default. After that, the same request silently becomes a brand-new charge, with no error to warn you.
 **What we now believe:** Every safety mechanism has limits; read the fine print on the one you lean on most. Tether now re-sends only within 5 real hours, and after that only *looks up* what happened, never charges again.
+
+## 2026-11-05 — The live site found what 400 local tests didn't
+
+**Expected:** With 400+ tests passing locally and in CI, the first deploy would just work.
+**What happened:** The live tests found two problems in an hour. Vercel had registered the project as a generic site rather than a Next.js app, so every page returned 404. And a 5-second "don't spam the shopping agent" rule refused a judge's very first search, because the demo's own reset creates a fresh purchase row that the rule mistook for a recent search. Neither could happen on a laptop.
+**What we now believe:** Tests on your own machine prove the code; only a test against the real deployment proves the product. Run the live suite after every deploy, and treat "the demo resets itself" as a user of the system like any other.
+
+## 2026-11-06 — A negative number isn't a refund
+
+**Expected:** If PayPal's transaction list shows a negative row that points back at one of our payments, that payment was refunded. Tether's "checked against PayPal" panel was built on that rule.
+**What happened:** On the live site, every single payment showed "Refunded in PayPal", yet no code in Tether can refund. PayPal's list carried an event code (a T-code: PayPal's label for what kind of money movement a row is) on every row. The negative rows were all T2002, "withdraw funds to partner account": the sandbox merchant account automatically sweeps each payment's net amount out. Of 61 rows that month, 30 were payments, 30 were sweeps and none were refunds.
+**What we now believe:** A row's shape (negative, references a payment) is a guess; its label (the T-code) is the fact. When reconciling money, classify by what the provider says a row *is*, not by what it looks like. Tether now counts only reversal, refund and chargeback codes (T11xx, T12xx).

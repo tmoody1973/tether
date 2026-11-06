@@ -3,10 +3,11 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getPurchase } from "@/db/repo";
 import { now as demoNow } from "@/clock/clock";
-import type { Cart, Constraint } from "@/engine/types";
+import type { Cart } from "@/engine/types";
 import { budgetOverage } from "@/engine/decide";
 import type { StoredDecision } from "@/flows/purchase";
 import type { Deps } from "@/flows/purchase";
+import { chooseShop, merchantForDomain } from "@/flows/grant";
 
 const DAY_MS = 86_400_000;
 type Subject = (typeof t.approvals.$inferSelect)["subject"];
@@ -34,7 +35,7 @@ export function normaliseDomain(input: string): string {
 
 export async function requestApproval(
   deps: Pick<Deps, "db" | "now">, familyId: string, subject: Subject, subjectId: string, cartHash: string | null, note: string | null = null,
-): Promise<{ approvalId: string }> {
+): Promise<{ approvalId: string; created: boolean }> {
   const { db } = deps;
   await expireStale(deps, familyId);
   const now = await deps.now(familyId);
@@ -51,24 +52,25 @@ export async function requestApproval(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subject, subject), eq(t.approvals.subjectId, subjectId),
     isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now))).limit(1);
   const [existing] = await find();
-  if (existing) return { approvalId: existing.id };
+  if (existing) return { approvalId: existing.id, created: false };
   const expiresAt = new Date(Math.min(now.getTime() + DAY_MS, weekEnd(now).getTime()));
   const approvalId = crypto.randomUUID();
   const ins = await db.insert(t.approvals).values({ id: approvalId, familyId, subject, subjectId, cartHash, expiresAt, note, ...lift })
     .onConflictDoNothing().returning({ id: t.approvals.id });
-  if (ins.length) return { approvalId };
+  if (ins.length) return { approvalId, created: true };
   const [raced] = await find(); // lost a race to the one-open-approval index
   if (!raced) throw new ApprovalError("could not open approval");
-  return { approvalId: raced.id };
+  return { approvalId: raced.id, created: false };
 }
 
 /** `familyId`, when given (every guardian surface gives it), must own the approval: another family's id is "unknown". */
 export async function decideApproval(
   deps: Pick<Deps, "db" | "now">, approvalId: string, result: "approved" | "declined", familyId?: string,
-): Promise<{ subject: Subject; subjectId: string }> {
+): Promise<{ subject: Subject; subjectId: string; shopApplied?: boolean }> {
   const [a] = await deps.db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
   if (!a || (familyId !== undefined && a.familyId !== familyId)) throw new ApprovalError(`unknown approval ${approvalId}`);
   // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
+  let shopApplied: boolean | undefined;
   await deps.db.transaction(async (tx) => {
     await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, a.familyId)).for("update");
     const now = await deps.now(a.familyId, tx);
@@ -77,11 +79,11 @@ export async function decideApproval(
       .returning();
     if (!won) throw new ApprovalError("approval is not open (already decided or expired)");
     if (a.subject === "purchase") await decidePurchase(tx, a.subjectId, result, a.liftsBudget);
-    else if (a.subject === "shop" && result === "approved") await applyShop(tx, a.familyId, a.subjectId, now);
+    else if (a.subject === "shop" && result === "approved") shopApplied = await applyShop(tx, a.familyId, a.subjectId, now);
     else if (a.subject === "investment") await decideInvestmentRow(tx, a.subjectId, result);
     else if (a.subject === "fund") await decideFund(tx, a.familyId, a.subjectId, result);
   });
-  return { subject: a.subject, subjectId: a.subjectId };
+  return { subject: a.subject, subjectId: a.subjectId, ...(shopApplied !== undefined ? { shopApplied } : {}) };
 }
 
 /**
@@ -172,30 +174,15 @@ export async function proposeShop(deps: Deps, familyId: string, domain: string, 
   return requestApproval(deps, familyId, "shop", normaliseDomain(domain), null, reason);
 }
 
-const addId = (c: Constraint, merchantId: string): Constraint =>
-  (c.type === "payment.allowed_payees" || c.type === "checkout.allowed_merchants") && Array.isArray(c.merchantIds)
-    ? { ...c, merchantIds: [...new Set([...(c.merchantIds as string[]), merchantId])] } : c;
-
-async function applyShop(db: Db, familyId: string, domain: string, now: Date) {
+/**
+ * Amara said yes to Zoe's shop: recorded as her choice ('added', so it sticks) and applied to the rules in force, at
+ * any level (levels are defaults, not gates). Rules without an allowed-payees list can't take a shop: refused, rolled back.
+ */
+async function applyShop(db: Db, familyId: string, domain: string, now: Date): Promise<boolean> {
   const grant = await getActiveGrant(db, familyId);
-  if (!grant) throw new ApprovalError("no active grant");
-  const hasPayees = grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds));
-  if (!hasPayees) throw new ApprovalError("active grant has no allowed_payees list to add the shop to");
-  const [found] = await db.select().from(t.merchants).where(eq(t.merchants.channel3WebsiteId, domain));
-  if (found && found.opensAtLevel > grant.level) throw new ApprovalError("that shop opens at a higher level");
-  const merchantId = found?.id ?? crypto.randomUUID();
-  if (!found) {
-    await db.insert(t.merchants).values({
-      id: merchantId, name: domain, domain, class: "general", channel3WebsiteId: domain, opensAtLevel: grant.level,
-      addedByFamilyId: familyId,
-    });
+  if (grant && grant.expiresAt > now && !grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds))) {
+    throw new ApprovalError("active grant has no allowed_payees list to add the shop to");
   }
-  const body = {
-    ...grant.body, id: crypto.randomUUID(), version: grant.version + 1, signedAt: now.toISOString(),
-    constraints: grant.body.constraints.map((c) => addId(c, merchantId)),
-  };
-  await db.update(t.grants).set({ status: "expired" }).where(eq(t.grants.id, grant.id));
-  await db.insert(t.grants).values({
-    id: body.id, familyId, version: body.version, level: grant.level, body, signedAt: now, expiresAt: grant.expiresAt, status: "active",
-  });
+  const m = await merchantForDomain(db, familyId, domain, domain);
+  return (await chooseShop(db, familyId, m.id, "added", now)) !== null; // false: recorded, applies at her next signing
 }

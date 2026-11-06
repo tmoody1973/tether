@@ -15,6 +15,7 @@ import { setGoal, setTeenCommitment, teenGoals } from "@/flows/teenGoals";
 import { shopMap, suggestShop } from "@/flows/teenMap";
 import { canPropose, fundStatus, proposeFromTeen, teenInvestments, type Answers } from "@/flows/teenInvest";
 import { proposeInvestment } from "@/flows/invest";
+import { pushedBody, recordNotify } from "./pushHelper";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -111,12 +112,25 @@ describe("shop map", () => {
     expect(await suggestShop(deps(), s.familyId, "not a shop", "why")).toEqual({ ok: false, error: "domain" });
     expect(await suggestShop(deps(), s.familyId, "etsy.com", "  ")).toEqual({ ok: false, error: "reason" });
     expect(await suggestShop(deps(), s.familyId, `https://www.${s.m.tgt}.com/x`, "hi")).toEqual({ ok: false, error: "have" });
-    expect(await suggestShop(deps(), s.familyId, `${s.m.nike}.com`, "hi")).toEqual({ ok: false, error: "level", level: 3 });
+    expect(await suggestShop(deps(), s.familyId, `${s.m.nike}.com`, "hi")).toEqual({ ok: true, domain: `${s.m.nike}.com` }); // above her level: Amara decides
     expect(await suggestShop(deps(), s.familyId, "HTTPS://www.Etsy.com/shop", "art supplies")).toEqual({ ok: true, domain: "etsy.com" });
     expect(await suggestShop(deps(), s.familyId, "etsy.com", "again")).toEqual({ ok: false, error: "asked" });
-    expect((await shopMap(db, s.familyId, NOW)).suggested).toEqual(["etsy.com"]);
+    expect((await shopMap(db, s.familyId, NOW)).suggested.sort()).toEqual(["etsy.com", `${s.m.nike}.com`].sort());
     const home = await guardianHome(db, s.familyId, NOW);
     expect(home.needsYou).toContainEqual(expect.objectContaining({ kind: "approval", subject: "shop", shop: "etsy.com", note: "art supplies" }));
+  });
+
+  it("a shop suggestion schedules exactly one push; a refused suggestion pushes nothing", async () => {
+    const s = await seed(1);
+    const r = recordNotify();
+    expect(await suggestShop({ ...deps(), notify: r.notify }, s.familyId, "etsy.com", "art supplies")).toEqual({ ok: true, domain: "etsy.com" });
+    expect(await suggestShop({ ...deps(), notify: r.notify }, s.familyId, "etsy.com", "again")).toEqual({ ok: false, error: "asked" });
+    expect(r.calls).toHaveLength(1);
+    expect(await pushedBody(deps(), s.familyId, r.calls[0].approvalId)).toMatchObject({
+      contents: { en: "Zoe suggests a new shop: etsy.com" }, url: `https://tether.example/g/requests/${r.calls[0].approvalId}`,
+    });
+    const boom = () => { throw new Error("push down"); };
+    expect((await suggestShop({ ...deps(), notify: boom }, s.familyId, "lego.com", "bricks")).ok).toBe(true);
   });
 
   it("at most five suggestions wait at once", async () => {
@@ -166,6 +180,24 @@ describe("investing from Zoe's side", () => {
     expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ symbol: "VTI", amountCents: 500, status: "proposed" })]);
     const home = await guardianHome(db, s.familyId, NOW);
     expect(home.needsYou).toContainEqual(expect.objectContaining({ subject: "investment", symbol: "VTI", amountCents: 500 }));
+  });
+
+  it("an investment proposal and a fund proposal each schedule exactly one push; a refused one pushes nothing", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    const r = recordNotify();
+    const d = { ...deps(), notify: r.notify };
+    expect(await proposeFromTeen(d, s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(r.calls).toHaveLength(1);
+    expect(await pushedBody(deps(), s.familyId, r.calls[0].approvalId)).toMatchObject({
+      contents: { en: "Zoe proposes investing $5.00 in VTI" }, url: `https://tether.example/g/requests/${r.calls[0].approvalId}`,
+    });
+    expect(await proposeFromTeen(d, s.familyId, "VOO", 500, ANSWERS)).toEqual({ ok: true, sent: "fund" });
+    expect(r.calls).toHaveLength(2);
+    expect(await pushedBody(deps(), s.familyId, r.calls[1].approvalId)).toMatchObject({ contents: { en: "Zoe proposes adding VOO to your fund list" } });
+    expect(await proposeFromTeen(d, s.familyId, "VTI", 5000, ANSWERS)).toEqual({ ok: false, error: "savings", savingsCents: 1000 });
+    expect(r.calls).toHaveLength(2);
+    const boom = () => { throw new Error("push down"); };
+    expect(await proposeFromTeen({ ...deps(), notify: boom }, s.familyId, "QQQ", 500, ANSWERS)).toEqual({ ok: true, sent: "fund" });
   });
 
   it("another family's investments are never listed", async () => {

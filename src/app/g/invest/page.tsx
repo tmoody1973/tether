@@ -36,7 +36,7 @@ async function Invest() {
   const custodial = process.env.ALPACA_CUSTODIAL_ENABLED === "true";
 
   return (
-    <GuardianShell active="invest" teenName={zoe}>
+    <GuardianShell active="rules" teenName={zoe}>
       <h1 className="g-title">Investing</h1>
       {!custodial && <div className="g-card"><Seam>{STAND_IN_LABEL}</Seam></div>}
 

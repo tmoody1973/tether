@@ -11,7 +11,7 @@ export default function ErrorPage({ error, retry }: { error: unknown; retry: () 
   useEffect(() => { console.error("page error", error); }, [error]);
   const path = usePathname() ?? "";
   const teen = path.match(/^\/t\/([^/]+)/);
-  const record = teen ? `/t/${teen[1]}` : "/g/record"; // Zoe's home lists her purchases; Amara's record is /g/record
+  const record = teen ? `/t/${teen[1]}` : "/g/activity"; // Zoe's home lists her purchases; Amara's are in Activity
   return (
     <div className="g-app">
       <main className="g-gate">

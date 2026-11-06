@@ -38,7 +38,7 @@ async function family() {
   return { familyId: fam.id, buy };
 }
 
-type Row = { transaction_id: string; transaction_amount: { value: string }; transaction_status: string; custom_field?: string; paypal_reference_id?: string };
+type Row = { transaction_id: string; transaction_amount: { value: string }; transaction_status: string; custom_field?: string; paypal_reference_id?: string; transaction_event_code?: string };
 function fakePaypal(rows: Row[]) {
   const f = vi.fn(async (url: string | URL | Request) => {
     const body = String(url).endsWith("/v1/oauth2/token")
@@ -84,7 +84,7 @@ describe("reconcileMonth (R35)", () => {
     await buy(`tok-f${n}`, 800, `CAP-F${n}`);
     const { paypal } = fakePaypal([
       tx(`CAP-E${n}`, "7.00", `tok-e${n}`),
-      tx(`REF-E${n}`, "-7.00", `tok-e${n}`, { paypal_reference_id: `CAP-E${n}` }),
+      tx(`REF-E${n}`, "-7.00", `tok-e${n}`, { paypal_reference_id: `CAP-E${n}`, transaction_event_code: "T1107" }),
       tx(`CAP-F${n}`, "8.00", `tok-f${n}`, { transaction_status: "V" }),
     ]);
     const r = await reconcileMonth({ db, paypal }, familyId, "2026-11", realNow);
@@ -93,6 +93,18 @@ describe("reconcileMonth (R35)", () => {
       { kind: "refunded", captureId: `CAP-E${n}`, amountCents: 700, shop: "Target" },
       { kind: "refunded", captureId: `CAP-F${n}`, amountCents: 800, shop: "Target" },
     ]);
+  });
+
+  it("a sweep to a partner account (T2002) is not a refund", async () => {
+    // Seen in the real sandbox (2026-11-06): each capture is followed by a T2002 row for the net amount,
+    // referencing the capture. Money moved on, nothing was given back.
+    const { familyId, buy } = await family();
+    await buy(`tok-g${n}`, 799, `CAP-G${n}`);
+    const { paypal } = fakePaypal([
+      tx(`CAP-G${n}`, "7.99", `tok-g${n}`, { transaction_event_code: "T0003" }),
+      tx(`SWP-G${n}`, "-7.22", undefined, { paypal_reference_id: `CAP-G${n}`, transaction_event_code: "T2002" }),
+    ]);
+    expect(await reconcileMonth({ db, paypal }, familyId, "2026-11", realNow)).toEqual({ receiptsChecked: 1, flags: [] });
   });
 
   it("searches PayPal from just before the first slip was used, and skips PayPal for an empty month", async () => {

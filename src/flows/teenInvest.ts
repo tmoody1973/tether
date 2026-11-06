@@ -7,6 +7,7 @@ import { availableSavingsCents } from "@/ledger/ledger";
 import { MIN_INVEST_CENTS } from "@/engine/invest";
 import { proposeFund, proposeInvestment } from "@/flows/invest";
 import type { Deps } from "@/flows/purchase";
+import { tellAmara } from "@/flows/notify";
 import { formatCents } from "@/ui/grantWords";
 import { ANSWER_MAX, ANSWER_MIN, QUESTIONS, type Answers } from "@/ui/investQuestions";
 
@@ -82,7 +83,7 @@ export type ProposeResult =
  * On her list: an investment request with her answers; the engine checks level, list and savings.
  */
 export async function proposeFromTeen(
-  deps: Pick<Deps, "db" | "now">, familyId: string, symbol: string, amountCents: number, answers: Answers,
+  deps: Pick<Deps, "db" | "now" | "notify">, familyId: string, symbol: string, amountCents: number, answers: Answers,
 ): Promise<ProposeResult> {
   const blocked = await canPropose(deps, familyId);
   if (blocked) return { ok: false, error: blocked };
@@ -97,11 +98,13 @@ export async function proposeFromTeen(
   const status = await fundStatus(deps.db, familyId, symbol, now);
   if (status === "asked") return { ok: false, error: "asked" };
   if (status === "new") {
-    await proposeFund(deps, familyId, symbol, { ...words, "How much she has in mind": formatCents(amountCents) });
+    const { approvalId } = await proposeFund(deps, familyId, symbol, { ...words, "How much she has in mind": formatCents(amountCents) });
+    tellAmara(deps, familyId, approvalId); // a fresh proposal row: always a new request
     return { ok: true, sent: "fund" };
   }
   if (await investmentWaiting(deps.db, familyId, symbol, now)) return { ok: false, error: "asked" };
-  const { decision } = await proposeInvestment(deps, familyId, { symbol, amountCents }, words);
+  const { decision, approvalId } = await proposeInvestment(deps, familyId, { symbol, amountCents }, words);
+  if (approvalId) tellAmara(deps, familyId, approvalId);
   if (decision.outcome !== "REFUSE") return { ok: true, sent: "investment" };
   const c = decision.reasons[0]?.constraint;
   return c === "invest.savings" ? { ok: false, error: "savings", savingsCents: saved }

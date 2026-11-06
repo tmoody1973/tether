@@ -3,7 +3,7 @@ import type { PaypalHttp } from "./http";
 
 interface TxInfo {
   transaction_id: string; transaction_amount?: { value: string }; transaction_status?: string;
-  custom_field?: string; paypal_reference_id?: string;
+  custom_field?: string; paypal_reference_id?: string; transaction_event_code?: string;
 }
 interface TxResponse { transaction_details?: { transaction_info: TxInfo }[]; total_pages?: number }
 
@@ -13,6 +13,8 @@ export interface PaypalTx {
   customField?: string;
   /** For a refund or reversal: the transaction it undoes. */
   referenceId?: string;
+  /** PayPal T-code, e.g. T0003 payment, T1107 refund, T2002 sweep to a partner account. */
+  eventCode?: string;
 }
 
 const PAGE_SIZE = 500;
@@ -34,6 +36,7 @@ export async function listTransactions(p: PaypalHttp, start: Date, end: Date): P
         status: t.transaction_status ?? "UNKNOWN",
         ...(t.custom_field ? { customField: t.custom_field } : {}),
         ...(t.paypal_reference_id ? { referenceId: t.paypal_reference_id } : {}),
+        ...(t.transaction_event_code ? { eventCode: t.transaction_event_code } : {}),
       });
     }
     if (page >= (data.total_pages ?? 1)) break;

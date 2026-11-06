@@ -39,7 +39,7 @@ export type Review = { action: "PROMOTE" | "HOLD"; streak: number; reason: strin
 
 export function reviewMonth(weeks: WeekRecord[], level: Level): Review {
   const s = streak(weeks);
-  if (s >= 4 && level < 3) return { action: "PROMOTE", streak: s, reason: `Kept your savings commitment ${s} weeks running.` };
+  if (s >= 4 && level < 3) return { action: "PROMOTE", streak: s, reason: `Kept her savings promise ${s} weeks running.` }; // Amara reads this, about Zoe
   if (level === 3) return { action: "HOLD", streak: s, reason: "Already at the top level." };
   const recent = weeks.slice(-4);
   return { action: "HOLD", streak: s, reason: `${recent.filter(commitmentKept).length} of ${recent.length} weeks kept — keep going.` };

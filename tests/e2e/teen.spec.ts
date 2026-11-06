@@ -103,9 +103,11 @@ test("reset link ⇒ old link shows the not-found page", async ({ page }) => {
   await open(page, E2E.teen.reset);
   await expect(page.locator(".t-hero")).toHaveText("$14.00");
   await page.goto(`/g/enter/${E2E.teenResetKey}`);
+  await page.goto("/g/rules"); // her link lives on her rules page
   await page.getByRole("button", { name: "Reset Zoe's link" }).click();
   await page.getByRole("button", { name: "Yes, reset" }).click();
-  await expect(page).toHaveURL(/\/g\?link=reset$/);
+  await expect(page).toHaveURL(/\/g\/rules\?link=reset$/);
+  await expect(page.getByRole("status").first()).toContainText("The old link has stopped working.");
   await open(page, E2E.teen.reset);
   await expect(page.getByText("This link doesn't work any more.")).toBeVisible();
   await expect(page.locator(".t-hero")).toHaveCount(0);
@@ -201,7 +203,9 @@ test("suggest a shop ⇒ appears on Amara's home", async ({ page }) => {
   await expect(page.locator("main a[href^='http']")).toHaveCount(0);
   await expect(page.getByRole("main")).not.toContainText(/\$\d|rating|stars/i); // no prices or ratings on the map
 
-  await page.getByLabel("The shop's web address").fill("https://www.etsy.com/");
+  await page.getByLabel("Find the shop").fill("etsy");
+  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("radio", { name: "Etsy" }).check();
   await page.getByLabel("Why this shop?").fill("art supplies for my portfolio");
   await page.getByRole("button", { name: "Suggest to Amara" }).click();
   await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your suggestion for etsy.com.");

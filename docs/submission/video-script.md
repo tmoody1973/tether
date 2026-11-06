@@ -1,0 +1,20 @@
+# Tether — demo video script (under 3:00)
+
+Recorded on the live site, https://tether-five-beta.vercel.app, in this order. PayPal first, because the judges' first gate is whether PayPal is central. No third-party music. Record Zoe's side on a phone (installed to the home screen) and Amara's side on a laptop, or both in a browser.
+
+**Before recording:** open Amara's view and press **Reset demo**. Zoe is at Level 2 with an over-budget ask and a shop suggestion waiting. The demo clock reads late December 2026; say so once.
+
+| Time | On screen | Voice-over (plain, short) |
+|---|---|---|
+| 0:00–0:20 | Landing page, then Zoe's week: one big number. | "Fifteen-year-olds want to buy things online. Parents either hand over a card, or say no to everything. Tether is the middle: Amara signs the rules, an AI agent proposes, plain code decides, and PayPal pays." |
+| 0:20–0:50 | Amara's **Grant** page: the rules in plain words, the contract-style clause, **Sign and send**. Then **Connect PayPal**: the PayPal sandbox approval page, approve, back to Tether. | "Amara signs a weekly mandate: how much, which shops, how much Zoe promises to save. No AI touches this screen. Then she saves her PayPal once, with PayPal's vault, so Tether can charge it later without her password. Zoe never has a PayPal account; PayPal requires users to be eighteen." |
+| 0:50–1:15 | Zoe's **Shop**: type "headphones under $30", **Find options**. Cards appear, each labelled *Fits your week / Needs Amara's OK / Over budget*. | "Zoe asks the shopping agent. It can only search the shops Amara allowed, through Channel3, and it can't buy anything. Every card it proposes has already been checked against the signed rules." |
+| 1:15–1:35 | Open an over-budget card: the amber refusal sheet with the arithmetic and two ways forward. | "Over budget isn't a dead end. One sentence, with the real numbers, and two ways forward: ask Amara, or wait. Amber, never red. A refusal is a rule, not a punishment." |
+| 1:35–2:10 | Amara's home: "Needs you". Open Zoe's ask: the budget consequence first, her reason. **Approve**. Flash: "Approved and paid". Open **Record**: the receipt, the PayPal capture id, "Rules v…", expand the permission slip. | "Amara sees what it does to the week before she decides. One tap: Tether re-checks the cart, mints a single-use permission slip good for two minutes, and charges her saved PayPal. Every payment in the record carries its PayPal capture id and the exact rules that allowed it." |
+| 2:10–2:30 | Demo box: **Advance to end of month**. **Review**: "Zoe has moved to Level 3", the evidence, the release card with "I've sent it". | "Freedom is earned. Zoe kept her own savings promise four weeks running, so her rules open up a level. What she didn't spend is her savings; Amara sends it herself. Tether never holds money." |
+| 2:30–2:50 | Zoe's **Invest**: search, fund page with facts, the one five-year line, the three questions including "How would you feel if this dropped by a third next year?", **Propose to Amara**. Amara approves; "Queued for market open". | "At Level 3 Zoe can invest. Tether shows facts, never advice; she answers in her own words and proposes. Amara approves, and the order goes to an Alpaca sandbox account." |
+| 2:50–3:00 | Back to the landing headline. | "A model may add friction. Only code may remove it. Tether: PayPal-powered, parent-signed, earned." |
+
+**Say once, on screen or in voice:** sandbox only; the demo clock is fast-forwarded; investing uses a labelled stand-in for a custodial account.
+
+**Checklist after recording:** upload to YouTube as Public, under 3:00, paste the link into the README (`Demo video:` line) and Devpost.

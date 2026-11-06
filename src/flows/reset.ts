@@ -62,6 +62,9 @@ export async function resetDemo(
     // release stays: it is Amara's record that she sent money (its journal row is set aside with the rest).
     await tx.delete(t.releases).where(and(eq(t.releases.familyId, familyId), isNull(t.releases.confirmedAt)));
     await tx.delete(t.fundProposals).where(eq(t.fundProposals.familyId, familyId));
+    // The seed makes no shop choices, so every one is post-seed activity. Shops outside the catalogue (NO_LEVEL) were
+    // in her rules only by a choice, so they leave with it; the re-installed seeded rules below never named them.
+    await tx.delete(t.shopChoices).where(eq(t.shopChoices.familyId, familyId));
     if (fam.ledgerVoidFrom) {
       await tx.delete(t.fundAllowlist).where(and(eq(t.fundAllowlist.familyId, familyId), gt(t.fundAllowlist.addedAt, fam.ledgerVoidFrom)));
     }

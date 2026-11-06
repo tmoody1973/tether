@@ -3,9 +3,10 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { getFamily } from "@/db/repo";
+import { guardianHome } from "@/flows/home";
 import { requestView, type RequestView } from "@/flows/request";
 import { formatCents, formatDay } from "@/ui/grantWords";
+import { requestTitle as title } from "@/ui/approveWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "../../invest/FundFacts";
 import { decideRequestAction } from "../../actions";
@@ -26,10 +27,14 @@ async function Request({ params }: { params: Promise<{ id: string }> }) {
   if (!familyId) return <SignedOut />;
   const { id } = await params;
   const db = await getDb();
-  const [v, fam] = await Promise.all([requestView(db, familyId, id, await clockNow(db, familyId)), getFamily(db, familyId)]);
-  const zoe = fam?.teenName ?? "";
+  const now = await clockNow(db, familyId);
+  // In order, not in parallel: guardianHome expires stale asks first (as on Home), then this request is read.
+  const h = await guardianHome(db, familyId, now);
+  const v = await requestView(db, familyId, id, now);
+  const zoe = h.teenName;
   return (
-    <GuardianShell active={null} teenName={zoe}>
+    <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
+      <Link className="g-back" href="/g">‹ Home</Link>
       {v ? <Open v={v} /> : <Closed />}
     </GuardianShell>
   );
@@ -46,14 +51,6 @@ function Closed() {
       <Link className="g-btn g-btn--ghost" href="/g">Back to home</Link>
     </div>
   );
-}
-
-function title(v: RequestView): string {
-  const zoe = v.teenName;
-  if (v.purchase) return `${zoe} is asking for ${formatCents(v.purchase.amountCents)} at ${v.purchase.shop}`;
-  if (v.investment) return `${zoe} proposes investing ${formatCents(v.investment.amountCents)} in ${v.investment.symbol}`;
-  if (v.fund) return `${zoe} proposes adding ${v.fund.symbol} to your fund list`;
-  return `${zoe} suggests a new shop: ${v.shop?.domain}`;
 }
 
 function approveLabel(v: RequestView): string {
@@ -151,10 +148,10 @@ function Open({ v }: { v: RequestView }) {
       <form action={decideRequestAction} style={{ display: "grid", gap: 9 }}>
         <input type="hidden" name="approvalId" value={v.id} />
         <DecideButtons approveLabel={approveLabel(v)} />
-        {v.purchase && <Seam center kinds={["sandbox", "merchant"]} />}
+        {v.purchase && <Seam center kinds={["sandbox"]} />}
         <p className="g-note" style={{ textAlign: "center" }}>
           Open until {formatDay(v.expiresAt)}.{" "}
-          {v.purchase && <Link className="g-textlink" href="/g/grant">or change her limit instead</Link>}
+          {v.purchase && <Link className="g-textlink" href="/g/rules">or change her rules instead</Link>}
         </p>
       </form>
     </div>

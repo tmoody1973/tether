@@ -20,10 +20,22 @@ export class GuardianAuthError extends Error {
   constructor() { super("guardian sign-in required"); }
 }
 
-function mac(payload: string): string {
+function signingKey(): string {
   const key = process.env.TETHER_SIGNING_KEY;
   if (!key) throw new Error("TETHER_SIGNING_KEY is not set");
-  return createHmac("sha256", key).update(payload).digest("base64url");
+  return key;
+}
+
+function mac(payload: string): string {
+  return createHmac("sha256", signingKey()).update(payload).digest("base64url");
+}
+
+/**
+ * The family's OneSignal external id: HMAC-SHA256 of the family id under the signing key, hex. Opaque and stable, never
+ * the raw id. The "push-alias:" prefix keeps it from ever equalling a cookie signature made with the same key.
+ */
+export function pushAlias(familyId: string): string {
+  return createHmac("sha256", signingKey()).update(`push-alias:${familyId}`).digest("hex");
 }
 
 export function signGuardianCookie(familyId: string, now: Date): string {

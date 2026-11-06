@@ -64,11 +64,14 @@ async function main() {
   await bought(db, zoe, 450, E2E.tokens.missing, null); // PayPal has it; Tether crashed before the receipt
   await asking(db, zoe, E2E.approvalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");
 
-  await family(db, E2E.grantKey, "e2e-teen-grant");
+  const grantFam = await family(db, E2E.grantKey, "e2e-teen-grant");
+  await db.insert(t.goals).values({ familyId: grantFam.id, title: "Space One Pro headphones", targetCents: 16999 }); // Home labels the goal by name
   // $8 at a shop she hasn't used: needs Amara at Level 1, and fits the $20 week, so approving pays it.
   await asking(db, await family(db, E2E.approveKey, "e2e-teen-approve"), E2E.approveApprovalId, cart("m_bestbuy", 800, "Earbuds"), "mine broke");
   await family(db, E2E.levelKey, "e2e-teen-level");
   await family(db, E2E.revokeKey, "e2e-teen-revoke");
+  const unsigned = await family(db, E2E.signKey, "e2e-teen-sign");
+  await db.update(t.grants).set({ status: "revoked" }).where(eq(t.grants.id, unsigned.grant.id)); // no rules in force
 
   // Teen screens: Zoe has bought at Target this week ($6 of $20), so Target counts as a shop she's used.
   const teen = async (token: string, key: string) => {
