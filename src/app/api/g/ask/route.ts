@@ -1,6 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
 import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
+import { now } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 
@@ -33,6 +34,7 @@ export async function POST(req: Request): Promise<Response> {
       model: createAnthropic({ apiKey })("claude-haiku-5-5"),
       paypalTools: readOnlyPaypalTools({ clientId, clientSecret, sandbox: true }),
       db,
+      now: await now(db, familyId), // the family's demo clock: the model must ask about the months Tether shows
     }, familyId, question);
     return Response.json(result);
   } catch (err) {

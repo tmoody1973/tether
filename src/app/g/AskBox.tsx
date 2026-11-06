@@ -6,6 +6,7 @@ const EXAMPLES = [
   "What did Zoe buy this month?",
   "Which purchases did I approve myself?",
   "Do Tether's receipts match PayPal?",
+  "Is Zoe on track for her next level?",
 ];
 const CANT_SEE_NOW = "I can't see that right now.";
 
@@ -49,7 +50,7 @@ export function AskBox() {
         {pending && <p className="g-note">Looking at this month&apos;s receipts and PayPal…</p>}
         {answer && <p className="g-ask__answer">{answer}</p>}
       </div>
-      <p className="g-note">Read-only: it can look at receipts and PayPal&apos;s list, and can&apos;t move money.</p>
+      <p className="g-note">Read-only: it can look at receipts, her check-in and PayPal&apos;s list, and can&apos;t move money.</p>
     </form>
   );
 }

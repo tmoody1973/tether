@@ -166,14 +166,6 @@ export async function recentReceipts(db: Db, familyId: string, n: number): Promi
   return (await receiptsForMonth(db, familyId, "")).filter((r) => !r.setAside).slice(-n).reverse();
 }
 
-/** Capture ids of every receipt belonging to this family (used to filter PayPal's shared merchant account). */
-export async function captureIdsForFamily(db: Db, familyId: string): Promise<Set<string>> {
-  const rows = await db.select({ id: t.receipts.captureId }).from(t.receipts)
-    .innerJoin(t.purchases, eq(t.purchases.id, t.receipts.purchaseId))
-    .where(eq(t.purchases.familyId, familyId));
-  return new Set(rows.map((r) => r.id));
-}
-
 /** This family's permission-slip tokens (the token id is what PayPal echoes back as custom_field), with when each was used. */
 export async function purchaseTokensForFamily(
   db: Db, familyId: string,

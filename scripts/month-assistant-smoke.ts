@@ -23,6 +23,7 @@ async function main() {
     model: createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })("claude-haiku-5-5"),
     paypalTools: readOnlyPaypalTools({ clientId: process.env.PAYPAL_CLIENT_ID!, clientSecret: process.env.PAYPAL_CLIENT_SECRET!, sandbox: true }),
     db,
+    now: new Date(), // a fresh family: its demo clock is real time
   }, familyId, `How much did Zoe spend this month (${month})?`);
   console.log({ answer, toolsUsed });
 }
