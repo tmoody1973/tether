@@ -1,5 +1,6 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { clockFor } from "@/clock/clock";
@@ -10,6 +11,10 @@ import { ADVANCES, advanceDemoClock, type Advance } from "@/flows/demo";
 import { GrantError, ReasonRequiredError, RulesStoppedError, guardianSetLevel, resetTeenLink, revoke, signGrant } from "@/flows/grant";
 import { confirmRelease } from "@/flows/month";
 import { DemoResetError, resetDemo } from "@/flows/reset";
+import { SHOP_QUERY_MAX, addShop, removeShop, searchShopSites, type FoundSite } from "@/flows/shops";
+import { DAILY_CAP_MESSAGE } from "@/flows/usage";
+import { getFamily } from "@/db/repo";
+import { SHOP_QUERY_WORDS, SHOP_SEARCH_DOWN, noShopsFound } from "@/ui/grantWords";
 import type { Level } from "@/engine/ladder";
 import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
 
@@ -146,4 +151,59 @@ export async function revokeAction(): Promise<void> {
   const how = r.paypalTokenDeleted ? "wallet-removed"
     : r.reason === "no_vault" ? "no-wallet" : r.reason === "demo_kept" ? "demo-kept" : "wallet-kept";
   redirect(`/g/review?stopped=${how}`);
+}
+
+// ---- Zoe's shops (the Shops section on the Grant page). No AI: Channel3 website search and plain rules. ----
+
+export type ShopSearchState = { query?: string; sites?: FoundSite[]; note?: string; error?: string };
+export type ShopChangeState = { done?: string; error?: string };
+
+/** "Add a shop": Channel3 website search, counted against the family's daily cap before Channel3 is called. */
+export async function searchShopsAction(_prev: ShopSearchState, form: FormData): Promise<ShopSearchState> {
+  const g = await guardianDeps();
+  if (!g) return { error: SIGNED_OUT };
+  const query = String(form.get("q") ?? "").trim().slice(0, SHOP_QUERY_MAX + 1);
+  try {
+    const r = await searchShopSites({ ...g.deps, channel3: paymentDeps(g.deps.db).channel3 }, g.familyId, query);
+    if (!r.ok) return { query, error: r.error === "cap" ? DAILY_CAP_MESSAGE : SHOP_QUERY_WORDS };
+    return r.sites.length ? { query, sites: r.sites } : { query, sites: [], note: noShopsFound(query) };
+  } catch (err) {
+    console.error("shop search failed", err instanceof Error ? err.message : err);
+    return { query, error: SHOP_SEARCH_DOWN };
+  }
+}
+
+/** The line after a change: the new rules version, or (no rules in force) that it waits for her next signing. */
+async function changed(db: Awaited<ReturnType<typeof getDb>>, familyId: string, what: string, version: number | null): Promise<string> {
+  const teen = (await getFamily(db, familyId))?.teenName ?? "Her";
+  return version === null ? `${what}. It applies when you next sign ${teen}'s rules.` : `${what}. ${teen}'s rules are now version ${version}.`;
+}
+
+/** Add a shop after the in-page confirm. It applies right away, at any level (levels are defaults, not gates). */
+export async function addShopAction(_prev: ShopChangeState, form: FormData): Promise<ShopChangeState> {
+  const g = await guardianDeps();
+  if (!g) return { error: SIGNED_OUT };
+  try {
+    const r = await addShop(g.deps, g.familyId, { domain: String(form.get("domain") ?? "").slice(0, 200), name: String(form.get("name") ?? "") });
+    refresh();
+    return { done: await changed(g.deps.db, g.familyId, `${r.name} added`, r.version) };
+  } catch (err) {
+    if (err instanceof ApprovalError) return { error: "That isn't a shop's web address. Nothing changed." };
+    console.error("addShop failed", err instanceof Error ? err.message : err);
+    return { error: "That shop couldn't be added. Nothing changed." };
+  }
+}
+
+/** Remove a shop after the in-page confirm: off every list right away, and it stays off until she adds it back. */
+export async function removeShopAction(_prev: ShopChangeState, form: FormData): Promise<ShopChangeState> {
+  const g = await guardianDeps();
+  if (!g) return { error: SIGNED_OUT };
+  try {
+    const r = await removeShop(g.deps, g.familyId, String(form.get("merchantId") ?? "").slice(0, 100));
+    refresh();
+    return { done: await changed(g.deps.db, g.familyId, `${r.name} removed`, r.version) };
+  } catch (err) {
+    if (!(err instanceof GrantError)) console.error("removeShop failed", err instanceof Error ? err.message : err);
+    return { error: "That shop couldn't be removed. Nothing changed." };
+  }
 }

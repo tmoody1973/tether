@@ -5,9 +5,11 @@ import { getDb } from "@/db/client";
 import { getLatestGrant } from "@/db/repo";
 import { shopsForLevel } from "@/flows/grant";
 import { guardianHome } from "@/flows/home";
+import { guardianShops } from "@/flows/shops";
 import type { Level } from "@/engine/ladder";
 import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { GrantEditor } from "./GrantEditor";
+import { ShopsSection } from "./ShopsSection";
 
 const WEEK_MS = 7 * 86_400_000;
 
@@ -25,9 +27,10 @@ async function Grant() {
   if (!familyId) return <SignedOut />;
   const db = await getDb();
   const now = await clockNow(db, familyId);
-  const [h, cur, l1, l2, l3] = await Promise.all([
+  const [h, cur, l1, l2, l3, shops] = await Promise.all([
     guardianHome(db, familyId, now), getLatestGrant(db, familyId), // after a stop she keeps her level
     shopsForLevel(db, familyId, 1, now), shopsForLevel(db, familyId, 2, now), shopsForLevel(db, familyId, 3, now),
+    guardianShops(db, familyId, now),
   ]);
   return (
     <GuardianShell active="grant" teenName={h.teenName} side={
@@ -49,6 +52,7 @@ async function Grant() {
         expiresAt={new Date(now.getTime() + WEEK_MS).toISOString()}
         paypalSaved={h.paypalSaved}
       />
+      <ShopsSection teenName={h.teenName} inForce={shops.inForce} shops={shops.shops} />
     </GuardianShell>
   );
 }

@@ -8,8 +8,9 @@ import { normaliseDomain } from "@/flows/approvals";
 import { GrantError, NO_LEVEL, buildForLevel, chooseShop, merchantForDomain, withFamilyLock } from "@/flows/grant";
 import type { Deps } from "@/flows/purchase";
 import { takeDaily } from "@/flows/usage";
+import { SHOP_QUERY_MAX } from "@/ui/grantWords";
 
-export const SHOP_QUERY_MAX = 60;
+export { SHOP_QUERY_MAX };
 const MAX_SITES = 10;
 const NAME_MAX = 80;
 

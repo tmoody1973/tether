@@ -1,22 +1,52 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { PendingButton } from "@/ui/PendingButton";
-import { suggestAction, type SuggestState } from "./actions";
+import { SHOP_QUERY_MAX } from "@/ui/grantWords";
+import { searchSitesAction, suggestAction, type SiteSearchState, type SuggestState } from "./actions";
 
+/** "Suggest a shop": she searches by name, picks one, says why in a line, and it goes to her guardian's Needs you. */
 export function SuggestForm({ token, guardian }: { token: string; guardian: string }) {
-  const [state, action] = useActionState<SuggestState, FormData>(suggestAction, {});
+  const [found, search] = useActionState<SiteSearchState, FormData>(searchSitesAction, {});
+  const [state, suggest] = useActionState<SuggestState, FormData>(suggestAction, {});
+  const [picked, setPicked] = useState<string | null>(null);
+  const sites = found.sites ?? [];
+  const choice = sites.some((s) => s.domain === picked && !s.onList) ? picked : null; // a new search clears an old pick
+
   return (
-    <form action={action} className="t-form t-card" aria-labelledby="suggest-h">
+    <section className="t-form t-card" aria-labelledby="suggest-h">
       <h2 className="t-label" id="suggest-h" style={{ fontSize: 16 }}>Suggest a shop</h2>
       <p className="t-small">{guardian} says yes or no. If she says yes, it goes into your rules.</p>
-      <input type="hidden" name="token" value={token} />
-      <label className="t-label" htmlFor="shop-domain">The shop&apos;s web address</label>
-      <input id="shop-domain" name="domain" className="t-input" placeholder="etsy.com" autoCapitalize="none" autoComplete="off" maxLength={200} required />
-      <label className="t-label" htmlFor="shop-why">Why this shop?</label>
-      <textarea id="shop-why" name="why" className="t-input t-textarea" maxLength={200} required />
-      {state.error && <p className="t-flash t-flash--warn" role="alert">{state.error}</p>}
-      <PendingButton label={`Suggest to ${guardian}`} pendingLabel="Sending…" className="t-btn t-btn--primary" />
-    </form>
+      <form action={search} className="t-form" role="search">
+        <input type="hidden" name="token" value={token} />
+        <label className="t-label" htmlFor="shop-q">Find the shop</label>
+        <input id="shop-q" name="q" type="search" className="t-input" placeholder="Its name, like Etsy" autoComplete="off"
+          maxLength={SHOP_QUERY_MAX} required defaultValue={found.query ?? ""} />
+        <PendingButton label="Search" pendingLabel="Searching…" className="t-btn t-btn--ghost" />
+      </form>
+      {found.error && <p className="t-flash t-flash--warn" role="alert">{found.error}</p>}
+      {found.note && <p className="t-small" role="status">{found.note}</p>}
+      {sites.length > 0 && (
+        <form action={suggest} className="t-form">
+          <input type="hidden" name="token" value={token} />
+          <fieldset className="t-form" style={{ border: "none" }}>
+            <legend className="t-label">Pick the shop</legend>
+            {sites.map((s) => (
+              <label key={s.domain} className="t-row" style={{ alignItems: "center", cursor: s.onList ? "default" : "pointer" }}>
+                <span className="t-row__who">{s.name}
+                  <small>{s.domain}{s.onList ? " · already on your map" : s.opensAt ? ` · usually opens at Level ${s.opensAt}` : ""}</small>
+                </span>
+                <input type="radio" name="domain" value={s.domain} disabled={s.onList} checked={choice === s.domain}
+                  onChange={() => setPicked(s.domain)} required aria-label={s.name} />
+              </label>
+            ))}
+          </fieldset>
+          <label className="t-label" htmlFor="shop-why">Why this shop?</label>
+          <input id="shop-why" name="why" className="t-input" maxLength={200} required autoComplete="off" />
+          {state.error && <p className="t-flash t-flash--warn" role="alert">{state.error}</p>}
+          <PendingButton label={`Suggest to ${guardian}`} pendingLabel="Sending…" className="t-btn t-btn--primary" />
+        </form>
+      )}
+    </section>
   );
 }
