@@ -24,7 +24,7 @@ async function Shop({ params }: { params: Promise<{ token: string }> }) {
   const w = await teenWeek(db, fam.id, await clockNow(db, fam.id));
   if (w.state !== "active") {
     return (
-      <TeenShell token={token} active="shop" center>
+      <TeenShell token={token} active="shop" level={w.level} center>
         {w.state === "ended"
           ? <><h1 className="t-h2">Your week&apos;s finished.</h1><p className="t-small">Shopping opens again when {w.guardianName} renews your rules.</p></>
           : <NotShopping w={w} />}
@@ -32,7 +32,7 @@ async function Shop({ params }: { params: Promise<{ token: string }> }) {
     );
   }
   return (
-    <TeenShell token={token} active="shop">
+    <TeenShell token={token} active="shop" level={w.level}>
       <div>
         <h1 className="t-eyebrow">Shop</h1>
         <p className="t-small" style={{ marginTop: 4 }}><b className="money">{formatCents(w.leftCents)}</b> left this week</p>

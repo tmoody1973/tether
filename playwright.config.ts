@@ -18,12 +18,15 @@ export default defineConfig({
       url: `${baseURL}/g`,
       reuseExistingServer: false,
       timeout: 180_000,
-      // PayPal and Channel3 = the local fakes. TETHER_E2E=1 is set ONLY here; without it (and outside production
-      // only) paypalFromEnv / createChannel3 refuse a localhost address. e2e never calls PayPal or Channel3.
+      // PayPal, Channel3 and Alpaca = the local fakes. TETHER_E2E=1 is set ONLY here; without it (and outside production
+      // only) paypalFromEnv / createChannel3 / alpacaFromEnv refuse a localhost address. e2e never calls PayPal, Channel3 or Alpaca.
       env: {
         DATABASE_URL: E2E.dbUrl, APP_BASE_URL: baseURL, TETHER_E2E: "1",
         PAYPAL_BASE_URL: `http://localhost:${E2E.fakePort}`, PAYPAL_CLIENT_ID: "e2e-fake", PAYPAL_CLIENT_SECRET: "e2e-fake",
         CHANNEL3_BASE_URL: `http://localhost:${E2E.fakePort}`, CHANNEL3_API_KEY: "e2e-fake",
+        ALPACA_BROKER_BASE_URL: `http://localhost:${E2E.fakePort}`, ALPACA_DATA_BASE_URL: `http://localhost:${E2E.fakePort}`,
+        ALPACA_AUTH_URL: `http://localhost:${E2E.fakePort}/v1/oauth2/token`, ALPACA_BROKER_KEY: "e2e-fake", ALPACA_BROKER_SECRET: "e2e-fake",
+        ALPACA_FIRM_ACCOUNT_ID: "e2e-firm", ALPACA_CUSTODIAL_ENABLED: "false",
       },
     },
   ],

@@ -157,3 +157,140 @@ test("paused rules: a calm page and no shopping", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Amara paused your rules." })).toBeVisible();
   await expect(page.getByRole("button", { name: /Find options|Search|Check it/ })).toHaveCount(0);
 });
+
+// ---- Task 18b: goals, map, investing -----------------------------------------------------------------------------
+
+test("goals shows weeks to goal", async ({ page }) => {
+  await open(page, E2E.teenB.goals, "/goals"); // $34 saved, promise at the $2 floor
+  await expect(page.getByText("What are you saving for?")).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel("What it is").fill("Headphones");
+  await page.getByLabel("How much it costs, in dollars").fill("89");
+  await page.getByRole("button", { name: "Save my goal" }).click();
+  await expect(page.getByRole("main").getByRole("status")).toHaveText("Saved your goal.");
+  await expect(page.locator(".t-hero")).toHaveText("28"); // ($89 − $34) / $2, rounded up
+  await expect(page.getByText("weeks to Headphones")).toBeVisible();
+  await expect(page.getByRole("img", { name: "$34.00 saved of $89.00" })).toBeVisible(); // the one bar
+  await expect(page.getByText(/stay in Amara's PayPal until she releases them/)).toBeVisible();
+  await expect(page.getByRole("main")).not.toContainText(/Venmo/);
+});
+
+test("commitment below the floor shows the minimum", async ({ page }) => {
+  await open(page, E2E.teenB.promise, "/goals");
+  const stepper = page.locator(".t-stepper");
+  await expect(stepper).toContainText("$2.00", { timeout: 20_000 }); // the 10% floor of $20
+  await page.getByRole("button", { name: "Save $1 less each week" }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("At least $2.00 a week");
+  await expect(page.getByRole("button", { name: "Save my promise" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save $1 more each week" }).click();
+  await page.getByRole("button", { name: "Save $1 more each week" }).click();
+  await expect(stepper).toContainText("$3.00");
+  await page.getByRole("button", { name: "Save my promise" }).click();
+  await expect(page.getByText("From next week")).toBeVisible();
+  await expect(page.getByText("This week you're still on $2.00.")).toBeVisible();
+  await expect(page.getByText(/Keeping this promise helps you level up\. Breaking it won't block anything/)).toBeVisible();
+});
+
+test("suggest a shop ⇒ appears on Amara's home", async ({ page }) => {
+  await open(page, E2E.teenB.map, "/map");
+  const tile = (name: string) => page.getByRole("listitem", { name: new RegExp(`^${name}:`) });
+  await expect(tile("Target")).toContainText("Open", { timeout: 20_000 }); // she has bought there
+  await expect(tile("Best Buy")).toContainText("Ask first");
+  await expect(tile("Barnes & Noble")).toContainText("Opens at Level 2");
+  await expect(tile("Nike")).toContainText("Opens at Level 3");
+  await expect(page.locator("main a[href^='http']")).toHaveCount(0);
+  await expect(page.getByRole("main")).not.toContainText(/\$\d|rating|stars/i); // no prices or ratings on the map
+
+  await page.getByLabel("The shop's web address").fill("https://www.etsy.com/");
+  await page.getByLabel("Why this shop?").fill("art supplies for my portfolio");
+  await page.getByRole("button", { name: "Suggest to Amara" }).click();
+  await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your suggestion for etsy.com.");
+
+  await page.goto(`/g/enter/${E2E.teenMapKey}`);
+  const req = page.getByRole("link", { name: /Zoe suggests a new shop: etsy\.com/ });
+  await expect(req).toBeVisible();
+  await expect(req).toContainText("art supplies for my portfolio");
+});
+
+test("invest page hidden below level 3", async ({ page }) => {
+  await open(page, E2E.teenToken); // Level 1
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Goals" })).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Invest" })).toHaveCount(0);
+  await open(page, E2E.teenToken, "/invest");
+  await expect(page.getByRole("heading", { name: "Investing opens at Level 3." })).toBeVisible();
+  await expect(page.getByRole("search")).toHaveCount(0);
+  await open(page, E2E.teenToken, "/invest/VTI");
+  await expect(page.getByRole("heading", { name: "Investing opens at Level 3." })).toBeVisible();
+  await open(page, E2E.teenB.look); // Level 3: the tab is there
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Invest" })).toBeVisible();
+});
+
+test("fund page has no 1D/1W controls and one chart", async ({ page }) => {
+  await open(page, E2E.teenB.look, "/invest");
+  await page.getByLabel("A fund or company").fill("vanguard");
+  await page.getByRole("button", { name: "Search" }).click();
+  const results = page.getByRole("article");
+  await expect(results.first()).toBeVisible({ timeout: 20_000 });
+  await expect(results).toHaveCount(3); // match order, never popularity: VOO, VT, VTI (name prefix, by symbol)
+  await expect(results.nth(0)).toHaveAccessibleName("Vanguard S&P 500 ETF (VOO)");
+  for (let i = 0; i < 3; i++) {
+    await expect(results.nth(i)).toContainText(/1 year: \$[\d.]+ today, \$[\d.]+ a year ago\./);
+    await expect(results.nth(i).getByRole("link")).toHaveText("Look closer"); // the only action
+  }
+  await expect(page.getByRole("main")).not.toContainText(/most active|top movers|trending|today's move/i);
+
+  await results.nth(0).getByRole("link", { name: "Look closer" }).click();
+  await expect(page.getByRole("heading", { name: "Vanguard S&P 500 ETF" })).toBeVisible();
+  await expect(page.locator("svg[data-chart]")).toHaveCount(1);
+  await expect(page.getByRole("img", { name: /^Over 5 years, \$100 became: this \$\d+, the whole market \$\d+\.$/ })).toHaveCount(1);
+  await expect(page.getByText(/^\$[\d.]+ today, \$[\d.]+ a year ago\.$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(1D|1W|1M|1Y|5Y|All)$/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^(1D|1W|1M|1Y|5Y|All)$/ })).toHaveCount(0);
+  await expect(page.getByRole("main")).not.toContainText(/good fit|could be|recommend|friends|bought stock/i);
+  await expect(page.getByLabel("How would you feel if this dropped by a third next year?")).toBeVisible();
+  await expect(page.locator("main a[href^='http']")).toHaveCount(0);
+  // Down years are drawn in the same neutral colours as up years: nothing red on the page.
+  const strokes = await page.locator("svg[data-chart] polyline").evaluateAll((els) => els.map((el) => getComputedStyle(el).stroke));
+  for (const s of strokes) expect(s).not.toMatch(/rgb\((2[0-5]\d|1[5-9]\d), (\d|[1-9]\d), (\d|[1-9]\d)\)/);
+});
+
+async function propose(page: Page, token: string, symbol: string, amount: string) {
+  await open(page, token, `/invest/${symbol}`);
+  await page.getByLabel("Why this one?").fill("Lots of companies in one fund");
+  await page.getByLabel("What would make you sell it?").fill("If I needed it for college");
+  await page.getByLabel("How would you feel if this dropped by a third next year?").fill("Nervous, but I'd wait");
+  await page.getByLabel("How much, in dollars?").fill(amount);
+  await page.getByRole("button", { name: "Propose to Amara" }).click();
+}
+
+test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
+  await propose(page, E2E.teenB.fund, "VOO", "5");
+  await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers. If she adds VOO to her list, you can propose an amount.");
+  await expect(page.getByText("You asked Amara to add VOO to her list. She'll decide.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Propose to Amara" })).toHaveCount(0);
+
+  await page.goto(`/g/enter/${E2E.teenFundKey}`);
+  await page.getByRole("link", { name: /Zoe proposes adding VOO to your fund list/ }).click();
+  await expect(page.getByText("How would you feel if this dropped by a third next year?")).toBeVisible();
+  await expect(page.getByText("Nervous, but I'd wait")).toBeVisible();
+});
+
+test("queued order shows \"Queued for market open\"", async ({ page }) => {
+  await propose(page, E2E.teenB.queued, "VTI", "25"); // she has $20 saved
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 saved, so at most that.");
+  await expect(page.getByLabel("Why this one?")).toHaveValue("Lots of companies in one fund"); // her words are kept
+  await page.getByLabel("How much, in dollars?").fill("5");
+  await page.getByRole("button", { name: "Propose to Amara" }).click();
+  await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers and decide.");
+
+  await page.goto(`/g/enter/${E2E.teenQueuedKey}`);
+  await page.getByRole("link", { name: /Zoe proposes investing \$5\.00 in VTI/ }).click();
+  await page.getByRole("button", { name: "Approve $5.00" }).click();
+  await expect(page.getByRole("main").getByRole("status").first()).toContainText("Queued for market open");
+
+  await open(page, E2E.teenB.queued, "/invest");
+  const mine = page.getByRole("region", { name: "Your investments" });
+  await expect(mine).toContainText("VTI");
+  await expect(mine).toContainText("Queued for market open");
+  await expect(mine).toContainText("$5.00");
+  await expect(mine).toContainText("Sandbox stand-in for a custodial account.");
+});

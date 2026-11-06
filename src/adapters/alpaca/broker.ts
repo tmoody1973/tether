@@ -1,4 +1,5 @@
 import type { Cents } from "@/engine/types";
+import { isE2eLocal } from "@/adapters/paypal/http";
 
 /** Shown wherever a stand-in (non-custodial) sandbox account backs Zoe's investments. */
 export const STAND_IN_LABEL =
@@ -180,8 +181,23 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
 
 export type AlpacaBroker = ReturnType<typeof alpacaBroker>;
 
+const LOCAL = new Set(["localhost", "127.0.0.1"]);
+
+/**
+ * Alpaca from env. A localhost broker, data or auth address is the e2e suite's fake, allowed only under the same
+ * TETHER_E2E gate as fake PayPal and Channel3; ALPACA_AUTH_URL is read for that fake only.
+ */
 export function alpacaFromEnv(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): AlpacaBroker {
   const { ALPACA_BROKER_KEY: key, ALPACA_BROKER_SECRET: secret, ALPACA_BROKER_BASE_URL: baseUrl } = env;
   if (!key || !secret || !baseUrl) throw new Error("ALPACA_BROKER_KEY, ALPACA_BROKER_SECRET, ALPACA_BROKER_BASE_URL are required");
-  return alpacaBroker({ baseUrl, key, secret, firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID, custodialEnabled: env.ALPACA_CUSTODIAL_ENABLED === "true", dataBaseUrl: env.ALPACA_DATA_BASE_URL ?? "https://data.sandbox.alpaca.markets" }, fetchImpl);
+  const dataBaseUrl = env.ALPACA_DATA_BASE_URL ?? "https://data.sandbox.alpaca.markets";
+  const authUrl = env.ALPACA_AUTH_URL || undefined;
+  for (const u of [baseUrl, dataBaseUrl, authUrl]) {
+    if (u && LOCAL.has(new URL(u).hostname) && !isE2eLocal(new URL(u), env)) throw new Error("a localhost Alpaca address is only for the e2e suite");
+  }
+  if (authUrl && !LOCAL.has(new URL(authUrl).hostname)) throw new Error("ALPACA_AUTH_URL is only for the e2e suite's fake");
+  return alpacaBroker({
+    baseUrl, key, secret, dataBaseUrl, authUrl,
+    firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID, custodialEnabled: env.ALPACA_CUSTODIAL_ENABLED === "true",
+  }, fetchImpl);
 }

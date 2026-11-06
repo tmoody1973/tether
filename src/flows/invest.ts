@@ -38,7 +38,7 @@ async function withAllowlist(db: Db, grant: Grant): Promise<Grant> {
 // ---- propose ----------------------------------------------------------------
 
 export async function proposeInvestment(
-  deps: InvestDeps, familyId: string, p: InvestProposal, answers: Record<string, string>,
+  deps: Pick<InvestDeps, "db" | "now">, familyId: string, p: InvestProposal, answers: Record<string, string>,
 ): Promise<{ investmentId: string; decision: Decision; approvalId?: string }> {
   const { db } = deps;
   const symbol = normSymbol(p.symbol);

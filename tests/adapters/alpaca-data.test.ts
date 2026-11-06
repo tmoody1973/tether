@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { alpacaBroker } from "@/adapters/alpaca/broker";
-import { alpacaMarket, compareSentence, oneYearLine, NotEnoughHistoryError } from "@/adapters/alpaca/data";
+import { alpacaBroker, alpacaFromEnv } from "@/adapters/alpaca/broker";
+import { alpacaMarket, compareSentence, hundredLine, oneYearLine, NotEnoughHistoryError } from "@/adapters/alpaca/data";
 
 const DATA = "https://data.test";
 const ASSETS = [
@@ -110,5 +110,36 @@ describe("marketCompare", () => {
   it("compare sentence, down case", async () => {
     const { m } = market({ VTI: [[100, 70]], SPY: [[100, 120]] });
     expect(compareSentence(await m.marketCompare("VTI", asOf))).toBe("Over 5 years, $100 became: this $70, the whole market $120.");
+  });
+});
+
+describe("fiveYear (the fund page's one chart)", () => {
+  it("one fetch per symbol gives both the sentence and the two $100 lines", async () => {
+    const { m, calls } = market({ VTI: [[50, 40, 150]], SPY: [[100, 180]] });
+    const r = await m.fiveYear("VTI", asOf);
+    expect(compareSentence(r.compare)).toBe("Over 5 years, $100 became: this $300, the whole market $180.");
+    expect(r.lines).toEqual({ thisFund: [100, 80, 300], market: [100, 180] });
+    expect(calls.filter((c) => c.includes("/bars"))).toHaveLength(2);
+  });
+  it("hundredLine thins long histories to at most 61 points, keeping first and last", () => {
+    const closes = Array.from({ length: 1260 }, (_, i) => 10 + i);
+    const line = hundredLine(closes);
+    expect(line.length).toBeLessThanOrEqual(61);
+    expect(line[0]).toBe(100);
+    expect(line.at(-1)).toBeCloseTo((1269 / 10) * 100);
+  });
+});
+
+describe("alpacaFromEnv", () => {
+  const env = { ALPACA_BROKER_KEY: "k", ALPACA_BROKER_SECRET: "s", ALPACA_BROKER_BASE_URL: "http://localhost:3101" };
+  it("a localhost (fake) Alpaca needs the e2e gate", () => {
+    expect(() => alpacaFromEnv({ ...env, NODE_ENV: "test" })).toThrow(/e2e/);
+    expect(() => alpacaFromEnv({ ...env, NODE_ENV: "production", TETHER_E2E: "1" })).toThrow(/e2e/);
+    expect(() => alpacaFromEnv({ ...env, NODE_ENV: "test", TETHER_E2E: "1", ALPACA_DATA_BASE_URL: "http://localhost:3101" })).not.toThrow();
+  });
+  it("ALPACA_AUTH_URL is accepted only for the local fake", () => {
+    const real = { ...env, ALPACA_BROKER_BASE_URL: "https://broker-api.sandbox.alpaca.markets", NODE_ENV: "test" as const };
+    expect(() => alpacaFromEnv({ ...real, ALPACA_AUTH_URL: "https://evil.test/token" })).toThrow(/e2e/);
+    expect(() => alpacaFromEnv(real)).not.toThrow();
   });
 });

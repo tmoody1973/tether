@@ -25,11 +25,11 @@ async function Ask({ params }: { params: Promise<{ token: string; purchaseId: st
   const { db, fam } = session;
   const [w, p] = await Promise.all([teenWeek(db, fam.id, await clockNow(db, fam.id)), teenPurchase(db, fam.id, purchaseId)]);
   const g = w.guardianName;
-  if (w.state !== "active") return <TeenShell token={token} active="shop" center><NotShopping w={w} /></TeenShell>;
+  if (w.state !== "active") return <TeenShell token={token} active="shop" level={w.level} center><NotShopping w={w} /></TeenShell>;
   const kind = p ? askable(p) : null;
   if (!p || !kind) {
     return (
-      <TeenShell token={token} active="shop" center>
+      <TeenShell token={token} active="shop" level={w.level} center>
         <h1 className="t-h2">That one can&apos;t be asked about any more.</h1>
         <Link className="t-btn t-btn--ghost" href={`/t/${token}/shop`}>Back to Shop</Link>
       </TeenShell>
@@ -39,7 +39,7 @@ async function Ask({ params }: { params: Promise<{ token: string; purchaseId: st
   const oneOff = kind === "request" && p.status === "refused"; // R40: over budget, and only that
   const left = formatCents(w.leftCents);
   return (
-    <TeenShell token={token} active="shop">
+    <TeenShell token={token} active="shop" level={w.level}>
       <h1 className="t-eyebrow">Ask {g}</h1>
       <div className="t-card"><div className="t-card__k">What</div><div style={{ fontWeight: 650, marginTop: 3 }}>{p.title} · {p.shop}</div></div>
       <div className="t-card"><div className="t-card__k">How much</div><div className="money" style={{ fontSize: 30, fontWeight: 800, marginTop: 3 }}>{formatCents(p.amountCents)}</div></div>

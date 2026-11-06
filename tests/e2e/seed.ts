@@ -31,10 +31,13 @@ const DAY_MS = 86_400_000;
 
 type Fam = { id: string; grant: { id: string; version: number } };
 
-async function family(db: Db, guardianToken: string, teenToken: string, names = { guardianName: "Amara", teenName: "Zoe" }): Promise<Fam> {
+async function family(
+  db: Db, guardianToken: string, teenToken: string, names = { guardianName: "Amara", teenName: "Zoe" },
+  rules: { level: 1 | 2 | 3; fundAllowlist?: string[] } = { level: 1 },
+): Promise<Fam> {
   const fam = await insertFamily(db, { name: `${names.guardianName} & ${names.teenName}`, ...names, teenToken, guardianToken });
   await saveVault(db, fam.id, `e2e-placeholder-${teenToken}`); // only ever sent to the local fake PayPal
-  const grant = await signGrant({ db, now: clockFor(db) }, fam.id, { level: 1 });
+  const grant = await signGrant({ db, now: clockFor(db) }, fam.id, rules);
   return { id: fam.id, grant };
 }
 
@@ -92,9 +95,22 @@ async function main() {
   const ended = await teen(E2E.teen.ended, "e2e-guardian-key-teen-ended");
   await advanceDemoClock({ db, now: clockFor(db) }, ended.id, "week"); // her 7-day rules run out; the week closes
 
+  // Task 18b. Savings are a closed week's unspent allowance (D3), journalled as the week close would.
+  const saved = (f: Fam, cents: number) =>
+    appendJournal(db, { familyId: f.id, kind: "week_close", amountCents: cents, at: new Date(), ref: "2026-W44", note: null });
+  const zoeNames = { guardianName: "Amara", teenName: "Zoe" };
+  await saved(await teen(E2E.teenB.goals, "e2e-guardian-key-teen-goals"), 3400); // $34 toward a goal she names in the test
+  await teen(E2E.teenB.promise, "e2e-guardian-key-teen-promise");
+  await teen(E2E.teenB.map, E2E.teenMapKey);
+  await saved(await family(db, E2E.teenFundKey, E2E.teenB.fund, zoeNames, { level: 3 }), 2000);
+  await saved(await family(db, "e2e-guardian-key-teen-look", E2E.teenB.look, zoeNames, { level: 3 }), 2000);
+  await saved(await family(db, E2E.teenQueuedKey, E2E.teenB.queued, zoeNames, { level: 3, fundAllowlist: ["VTI"] }), 2000);
+
   const other = await family(db, E2E.otherGuardianKey, "e2e-teen-other", { guardianName: "Sam", teenName: "Kai" });
   await asking(db, other, E2E.otherApprovalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");
   await bought(db, other, 999, E2E.tokens.other, E2E.otherFamilyCapture);
+  // Seeded history isn't "just now": the shop throttle counts purchase rows by real creation time (AGENT_GAP_MS).
+  await db.update(t.purchases).set({ createdAt: new Date(Date.now() - 2 * 3_600_000) });
   await closeDb(db);
 }
 
