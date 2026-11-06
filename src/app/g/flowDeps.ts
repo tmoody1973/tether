@@ -21,7 +21,7 @@ function channel3OrUnavailable(): Channel3Adapter {
     return createChannel3();
   } catch {
     const no = unavailable("Channel3");
-    return { search: no, lookup: no, retrieve: no, websites: no };
+    return { search: no, lookup: no, retrieve: no, websites: no, shopsSelling: no };
   }
 }
 

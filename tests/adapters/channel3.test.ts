@@ -161,6 +161,20 @@ describe("channel3 adapter", () => {
     expect(await createChannel3(fakeSdk().sdk).websites("nike")).toEqual([{ domain: "nike.com", name: "nike.com" }]);
   });
 
+  it("shopsSelling: product search with no shop filter, offers tallied by shop (once per product), most first", async () => {
+    const f = fakeSdk();
+    f.search.mockResolvedValueOnce({ data: [
+      prod("p1", [offer("farfetch.com", 90), offer("kickscrew.com", 80), offer("kickscrew.com", 85)]), // two offers, one product
+      prod("p2", [offer("kickscrew.com", 70), offer("nike.com", 60, { availability: "OutOfStock" })]),
+      prod("p3", [offer("www.kickscrew.com", 75), offer("farfetch.com", 99)]),
+      { id: "p4", title: "No offers", category: null, ratings: { average: 0 }, offers: [] },
+    ] } as never);
+    expect(await createChannel3(f.sdk).shopsSelling("sneakers")).toEqual([
+      { domain: "kickscrew.com", products: 3 }, { domain: "farfetch.com", products: 2 }, { domain: "nike.com", products: 1 },
+    ]);
+    expect(f.search.mock.calls[0][0]).toEqual({ query: "sneakers", limit: 30 }); // no website_ids: every shop Channel3 knows
+  });
+
   it("missing CHANNEL3_API_KEY throws a clear error", () => {
     const saved = process.env.CHANNEL3_API_KEY;
     delete process.env.CHANNEL3_API_KEY;

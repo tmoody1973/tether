@@ -39,6 +39,7 @@ const channel3: Channel3Adapter = {
   },
   lookup: async () => { throw new Error("unused"); },
   websites: async () => [],
+  shopsSelling: async () => [],
 };
 
 let bump: number | "down" | null = null; // M7: the over-budget product's price moves, or Channel3 is down for it

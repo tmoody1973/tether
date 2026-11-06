@@ -11,7 +11,8 @@ import { takeDaily } from "@/flows/usage";
 import { SHOP_QUERY_MAX } from "@/ui/grantWords";
 
 export { SHOP_QUERY_MAX };
-const MAX_SITES = 10;
+const MAX_SELLING = 6; // shops that sell it
+const MAX_NAMED = 3; // shops named like it
 const NAME_MAX = 80;
 
 /** Every merchant id any list in the rules names. */
@@ -55,13 +56,36 @@ export async function guardianShops(db: Db, familyId: string, now: Date): Promis
   return { level, inForce: cur !== null, shops };
 }
 
-export interface FoundSite { domain: string; name: string; onList: boolean; opensAt: number | null }
-export type SiteSearch = { ok: true; sites: FoundSite[] } | { ok: false; error: "query" | "cap" };
+export interface FoundSite { domain: string; name: string; onList: boolean; opensAt: number | null; products?: number }
+export type SiteSearch = { ok: true; selling: FoundSite[]; named: FoundSite[] } | { ok: false; error: "query" | "cap" };
+
+type Site = { domain: string; name: string; products?: number };
+
+/** Usable, de-duplicated shop addresses, skipping any in `skip`; at most `max`. */
+function clean(raw: Site[], max: number, skip = new Set<string>()): Site[] {
+  const seen = new Set(skip);
+  return raw.flatMap((w) => {
+    let domain: string;
+    try { domain = normaliseDomain(w.domain); } catch { return []; } // not a usable shop address: left out
+    if (seen.has(domain)) return [];
+    seen.add(domain);
+    return [{ ...w, domain, name: (w.name || domain).trim().slice(0, NAME_MAX) || domain }];
+  }).slice(0, max);
+}
+
+/** A failed Channel3 call is an empty list when the other call answered; logged so it isn't silent. */
+function settled<T>(r: PromiseSettledResult<T[]>): T[] {
+  if (r.status === "fulfilled") return r.value;
+  console.error("shop search: one Channel3 call failed", r.reason instanceof Error ? r.reason.message : r.reason);
+  return [];
+}
 
 /**
- * Channel3 website search for a shop's name (Amara's "Add a shop" and Zoe's "Suggest a shop"). Counted against the
- * family's daily cap BEFORE Channel3 is called; Amara and Zoe have separate counters (`kind`), so Zoe (or a judge on her
- * side of the demo) using hers up never blocks Amara's. `opensAt` is set only when the shop usually opens above her level.
+ * Amara's "Add a shop" and Zoe's "Suggest a shop": shops that SELL what she typed (Channel3 product search, counted per
+ * shop) and shops whose NAME matches (website search), run side by side. One search = one count against the family's
+ * daily cap, taken BEFORE Channel3 is called; Amara and Zoe have separate counters (`kind`), so Zoe (or a judge on her
+ * side of the demo) using hers up never blocks Amara's. A shop in both groups stays under "sells". If one call fails the
+ * other's shops still come back; if both fail it throws. `opensAt` is set only when the shop usually opens above her level.
  */
 export async function searchShopSites(
   deps: Pick<Deps, "db" | "now" | "channel3">, familyId: string, query: string, kind: "shop_sites" | "teen_shop_sites",
@@ -69,28 +93,23 @@ export async function searchShopSites(
   const q = query.trim();
   if (!q || q.length > SHOP_QUERY_MAX) return { ok: false, error: "query" };
   if (!(await takeDaily(deps.db, familyId, kind))) return { ok: false, error: "cap" };
-  const raw = await deps.channel3.websites(q);
-  const seen = new Set<string>();
-  const found = raw.flatMap((w) => {
-    let domain: string;
-    try { domain = normaliseDomain(w.domain); } catch { return []; } // not a usable shop address: left out
-    if (seen.has(domain)) return [];
-    seen.add(domain);
-    return [{ domain, name: (w.name || domain).trim().slice(0, NAME_MAX) || domain }];
-  }).slice(0, MAX_SITES);
-  if (found.length === 0) return { ok: true, sites: [] };
+  const [sells, names] = await Promise.allSettled([deps.channel3.shopsSelling(q), deps.channel3.websites(q)]);
+  if (sells.status === "rejected" && names.status === "rejected") throw sells.reason;
+  // A selling shop has no display name from Channel3: its domain is its name.
+  const selling = clean(settled(sells).map((s) => ({ domain: s.domain, name: s.domain, products: s.products })), MAX_SELLING);
+  const named = clean(settled(names), MAX_NAMED, new Set(selling.map((s) => s.domain)));
+  if (selling.length + named.length === 0) return { ok: true, selling: [], named: [] };
   const list = await guardianShops(deps.db, familyId, await deps.now(familyId));
   const onList = new Set(list.shops.map((s) => s.domain));
-  const known = await deps.db.select().from(t.merchants).where(and(inArray(t.merchants.channel3WebsiteId, found.map((f) => f.domain)),
+  const known = await deps.db.select().from(t.merchants).where(and(
+    inArray(t.merchants.channel3WebsiteId, [...selling, ...named].map((f) => f.domain)),
     or(isNull(t.merchants.addedByFamilyId), eq(t.merchants.addedByFamilyId, familyId))));
   const opens = new Map(known.map((m) => [m.channel3WebsiteId, m.opensAtLevel]));
-  return {
-    ok: true,
-    sites: found.map((f) => {
-      const at = opens.get(f.domain);
-      return { ...f, onList: onList.has(f.domain), opensAt: at !== undefined && at > list.level && at !== NO_LEVEL ? at : null };
-    }),
+  const mark = (f: Site): FoundSite => {
+    const at = opens.get(f.domain);
+    return { ...f, onList: onList.has(f.domain), opensAt: at !== undefined && at > list.level && at !== NO_LEVEL ? at : null };
   };
+  return { ok: true, selling: selling.map(mark), named: named.map(mark) };
 }
 
 /** Amara adds a shop, at any level. Applies now if rules are in force (version returned), else is recorded (null). */

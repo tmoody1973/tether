@@ -203,9 +203,17 @@ test("suggest a shop ⇒ appears on Amara's home", async ({ page }) => {
   await expect(page.locator("main a[href^='http']")).toHaveCount(0);
   await expect(page.getByRole("main")).not.toContainText(/\$\d|rating|stars/i); // no prices or ratings on the map
 
+  await page.getByLabel("Find the shop").fill("sneakers"); // shops that sell it, not just shops named it
+  await page.getByRole("button", { name: "Search" }).click();
+  const sells = page.getByRole("group", { name: "Shops that sell sneakers" });
+  await expect(sells.getByRole("radio", { name: "kickscrew.com" })).toBeEnabled({ timeout: 20_000 });
+  await expect(sells).toContainText("2 matching products");
+  await expect(page.getByRole("group", { name: "Shops named sneakers" })).toHaveCount(0);
+
   await page.getByLabel("Find the shop").fill("etsy");
   await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("radio", { name: "Etsy" }).check();
+  await expect(page.getByRole("group", { name: "Shops that sell etsy" })).toHaveCount(0);
+  await page.getByRole("group", { name: "Shops named etsy" }).getByRole("radio", { name: "Etsy" }).check();
   await page.getByLabel("Why this shop?").fill("art supplies for my portfolio");
   await page.getByRole("button", { name: "Suggest to Amara" }).click();
   await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your suggestion for etsy.com.");

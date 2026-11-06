@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { FoundSite, ListedShop } from "@/flows/shops";
-import { SHOP_QUERY_MAX } from "@/ui/grantWords";
+import { SHOP_QUERY_MAX, matchingProducts } from "@/ui/grantWords";
 import {
   addShopAction, removeShopAction, searchShopsAction, type ShopChangeState, type ShopSearchState,
 } from "../actions";
@@ -14,7 +14,7 @@ type Pending = { op: "add"; site: FoundSite } | { op: "remove"; shop: ListedShop
 const Logo = ({ name }: { name: string }) => <span className="g-shop__logo" aria-hidden="true">{name.trim().charAt(0).toUpperCase() || "?"}</span>;
 
 /**
- * Amara's say over Zoe's shops: remove any, or search Channel3 and add any, at any level. One in-page confirm, then the
+ * Amara's say over Zoe's shops: remove any, or search Channel3 (shops that sell it, shops named it) and add any, at any level. One in-page confirm, then the
  * change applies right away (or, with no rules in force, at her next signing). Its own section so it can move pages.
  */
 export function ShopsSection({ teenName: zoe, inForce, shops }: ShopsSectionProps) {
@@ -56,33 +56,42 @@ export function ShopsSection({ teenName: zoe, inForce, shops }: ShopsSectionProp
       <form action={search} className="g-stack" style={{ gap: 8, marginTop: 6 }} role="search">
         <label htmlFor="shop-q" className="g-def__k">Add a shop</label>
         <div className="g-search">
-          <input id="shop-q" name="q" type="search" className="g-input" placeholder="Search by name, like Lego or Etsy"
+          <input id="shop-q" name="q" type="search" className="g-input" placeholder="What it sells or its name, like sneakers or Lego"
             autoComplete="off" maxLength={SHOP_QUERY_MAX} required defaultValue={found.query ?? ""} />
           <button type="submit" className="g-btn g-btn--ghost" disabled={searching}>{searching ? "Searching…" : "Search"}</button>
         </div>
       </form>
       {found.error && <p className="g-error" role="alert">{found.error}</p>}
       {found.note && <p className="g-muted" role="status">{found.note}</p>}
-      {found.sites && found.sites.length > 0 && (
-        <ul className="g-results" aria-label="Search results">
-          {found.sites.map((s) => (
-            <li key={s.domain}>
-              <Logo name={s.name} />
-              <span>
-                <span className="g-shop__name">{s.name}</span><br />
-                <span className="g-shop__meta">{s.domain}{s.opensAt ? ` · usually opens at Level ${s.opensAt}` : ""}</span>
-              </span>
-              <span className="g-shop__act">
-                {listed.has(s.domain)
-                  ? <span className="g-chip">On {zoe}&apos;s list</span>
-                  : <button type="button" className="g-btn g-btn--small" onClick={() => setConfirm({ op: "add", site: s })}
-                    aria-label={`Add ${s.name}`}>Add</button>}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="g-note">Search covers the shops Tether&apos;s product search knows. {zoe} can also ask for a shop; it lands in Needs you.</p>
+      {[
+        { title: `Shops that sell ${found.query}`, sites: found.selling ?? [] },
+        { title: `Shops named ${found.query}`, sites: found.named ?? [] },
+      ].filter((g) => g.sites.length > 0).map((g) => (
+        <div key={g.title}>
+          <h3 className="g-def__k" style={{ marginTop: 10 }}>{g.title}</h3>
+          <ul className="g-results" aria-label={g.title}>
+            {g.sites.map((s) => (
+              <li key={s.domain}>
+                <Logo name={s.name} />
+                <span>
+                  <span className="g-shop__name">{s.name}</span><br />
+                  <span className="g-shop__meta">{[
+                    s.products ? matchingProducts(s.products) : s.domain,
+                    s.opensAt ? `usually opens at Level ${s.opensAt}` : "",
+                  ].filter(Boolean).join(" · ")}</span>
+                </span>
+                <span className="g-shop__act">
+                  {listed.has(s.domain)
+                    ? <span className="g-chip">On {zoe}&apos;s list</span>
+                    : <button type="button" className="g-btn g-btn--small" onClick={() => setConfirm({ op: "add", site: s })}
+                      aria-label={`Add ${s.name}`}>Add</button>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <p className="g-note">Search covers the shops Tether&apos;s product search knows: ones that sell what you typed, and ones with that name. {zoe} can also ask for a shop; it lands in Needs you.</p>
     </section>
   );
 }

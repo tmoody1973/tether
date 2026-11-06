@@ -48,9 +48,10 @@ const paypal: PaypalHttp = {
   },
 };
 const websites = vi.fn(async (q: string) => [{ domain: `${q}.com`, name: q }]);
+const shopsSelling = vi.fn(async (): Promise<{ domain: string; products: number }[]> => []);
 const channel3: Channel3Adapter = {
   retrieve: async (id: string, domains: string[]): Promise<Product | null> => ({ id, title: "Shirt", priceCents: 600, domain: domains[0], available: true }),
-  search: async () => [], lookup: async () => ({ kind: "not_a_product" }), websites,
+  search: async () => [], lookup: async () => ({ kind: "not_a_product" }), websites, shopsSelling,
 };
 const deps = (): Deps & { alpaca: () => never } => ({
   db, paypal, channel3, classifier: { ask: async () => ({ probability: 0.99, model: "m", modelVersion: "1" }) },
@@ -207,7 +208,7 @@ describe("shop search", () => {
     ]);
     const r = await searchShopSites(deps(), familyId, "  shops ", "shop_sites");
     expect(websites).toHaveBeenLastCalledWith("shops");
-    expect(r).toEqual({ ok: true, sites: [
+    expect(r).toEqual({ ok: true, selling: [], named: [
       { domain: m.target.domain, name: "Target", onList: true, opensAt: null },
       { domain: m.nike.domain, name: "Nike", onList: false, opensAt: 3 },
       { domain: "etsy.com", name: "Etsy", onList: false, opensAt: null },
@@ -218,6 +219,57 @@ describe("shop search", () => {
     expect(websites).not.toHaveBeenCalled();
   });
 
+  it("shops that sell it come first (top 6, named by domain, with a product count); a shop is never in both groups", async () => {
+    const { familyId, m } = await seed(1);
+    shopsSelling.mockResolvedValueOnce([
+      { domain: "kickscrew.com", products: 14 }, { domain: m.nike.domain, products: 9 }, { domain: "not a domain", products: 5 },
+      { domain: "zulily.com", products: 3 }, { domain: "stadiumgoods.com", products: 3 }, { domain: "dtlr.com", products: 2 },
+      { domain: m.target.domain, products: 1 }, { domain: "shiekh.com", products: 1 },
+    ]);
+    websites.mockResolvedValueOnce([
+      { domain: "www.sneakers.com", name: "Sneakers.com" }, { domain: "kickscrew.com", name: "KicksCrew" },
+      { domain: "sneakerask.com", name: "Sneakerask" }, { domain: "sistersandseekers.com", name: "S&S" }, { domain: "four.com", name: "4" },
+    ]);
+    const r = await searchShopSites(deps(), familyId, "sneakers", "shop_sites");
+    expect(shopsSelling).toHaveBeenLastCalledWith("sneakers");
+    expect(r).toEqual({
+      ok: true,
+      selling: [
+        { domain: "kickscrew.com", name: "kickscrew.com", products: 14, onList: false, opensAt: null },
+        { domain: m.nike.domain, name: m.nike.domain, products: 9, onList: false, opensAt: 3 },
+        { domain: "zulily.com", name: "zulily.com", products: 3, onList: false, opensAt: null },
+        { domain: "stadiumgoods.com", name: "stadiumgoods.com", products: 3, onList: false, opensAt: null },
+        { domain: "dtlr.com", name: "dtlr.com", products: 2, onList: false, opensAt: null },
+        { domain: m.target.domain, name: m.target.domain, products: 1, onList: true, opensAt: null },
+      ],
+      named: [ // kickscrew.com is already under "sells": not repeated
+        { domain: "sneakers.com", name: "Sneakers.com", onList: false, opensAt: null },
+        { domain: "sneakerask.com", name: "Sneakerask", onList: false, opensAt: null },
+        { domain: "sistersandseekers.com", name: "S&S", onList: false, opensAt: null },
+      ],
+    });
+  });
+
+  it("one search counts once against the cap; one Channel3 call failing still returns the other's shops; both failing throws", async () => {
+    const { familyId } = await seed(1);
+    const day = new Date().toISOString().slice(0, 10);
+    const count = async () => (await db.select().from(t.usage).where(eq(t.usage.familyId, familyId)))
+      .find((u) => u.kind === "shop_sites" && u.day === day)?.count ?? 0;
+    shopsSelling.mockRejectedValueOnce(new Error("Channel3 504"));
+    websites.mockResolvedValueOnce([{ domain: "lego.com", name: "Lego" }]);
+    expect(await searchShopSites(deps(), familyId, "lego", "shop_sites")).toEqual({ ok: true, selling: [],
+      named: [{ domain: "lego.com", name: "Lego", onList: false, opensAt: null }] });
+    expect(await count()).toBe(1);
+    shopsSelling.mockResolvedValueOnce([{ domain: "toynk.com", products: 4 }]);
+    websites.mockRejectedValueOnce(new Error("Channel3 500"));
+    expect(await searchShopSites(deps(), familyId, "lego", "shop_sites")).toEqual({ ok: true, named: [],
+      selling: [{ domain: "toynk.com", name: "toynk.com", products: 4, onList: false, opensAt: null }] });
+    expect(await count()).toBe(2);
+    shopsSelling.mockRejectedValueOnce(new Error("down"));
+    websites.mockRejectedValueOnce(new Error("down"));
+    await expect(searchShopSites(deps(), familyId, "lego", "shop_sites")).rejects.toThrow("down");
+  });
+
   it("the 201st search in a day returns the cap without calling Channel3; Zoe's counter is separate from Amara's", async () => {
     const { familyId } = await seed(1);
     const day = new Date().toISOString().slice(0, 10);
@@ -225,13 +277,17 @@ describe("shop search", () => {
     expect(DAILY_CAPS.teen_shop_sites).toBe(200);
     await db.insert(t.usage).values({ familyId, kind: "teen_shop_sites", day, count: 200 });
     websites.mockClear();
+    shopsSelling.mockClear();
     expect(await searchShopSites(deps(), familyId, "lego", "teen_shop_sites")).toEqual({ ok: false, error: "cap" });
     expect(websites).not.toHaveBeenCalled();
+    expect(shopsSelling).not.toHaveBeenCalled();
     expect((await searchShopSites(deps(), familyId, "lego", "shop_sites")).ok).toBe(true); // Zoe used hers up; Amara's still works
     await db.update(t.usage).set({ count: 200 }).where(eq(t.usage.kind, "shop_sites"));
     websites.mockClear();
+    shopsSelling.mockClear();
     expect(await searchShopSites(deps(), familyId, "lego", "shop_sites")).toEqual({ ok: false, error: "cap" });
     expect(websites).not.toHaveBeenCalled();
+    expect(shopsSelling).not.toHaveBeenCalled();
   });
 });
 

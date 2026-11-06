@@ -11,7 +11,8 @@ import { DAILY_CAP_MESSAGE } from "@/flows/usage";
 let testDb: Db;
 let session: string | null = null;
 const websites = vi.fn(async (q: string) => [{ domain: `${q}.com`, name: q }]);
-const channel3 = { search: async () => [], lookup: async () => ({ kind: "not_a_product" as const }), retrieve: async () => null, websites };
+const shopsSelling = vi.fn(async (): Promise<{ domain: string; products: number }[]> => []);
+const channel3 = { search: async () => [], lookup: async () => ({ kind: "not_a_product" as const }), retrieve: async () => null, websites, shopsSelling };
 vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: async () => testDb }));
 vi.mock("@/auth/guardianSession", () => ({ guardianFamilyId: async () => session }));
 vi.mock("next/cache", () => ({ refresh: vi.fn() }));
@@ -32,7 +33,7 @@ beforeAll(async () => {
   await testDb.insert(t.merchants).values({ id: "m1", name: "Target", domain: "target.com", class: "general", opensAtLevel: 1, channel3WebsiteId: "target.com" });
   await signGrant({ db: testDb, now: clockFor(testDb) }, fam.id, { level: 1 });
 });
-beforeEach(() => { session = null; websites.mockClear(); });
+beforeEach(() => { session = null; websites.mockClear(); shopsSelling.mockClear(); });
 
 const form = (fields: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(fields)) f.set(k, v); return f; };
 const payees = async () => ((await repo.getActiveGrant(testDb, fam.id))!.body.constraints
@@ -52,10 +53,16 @@ describe("Amara's shop actions", () => {
   it("search, add and remove with her session", async () => {
     session = fam.id;
     const found = await searchShopsAction({}, form({ q: "lego" }));
-    expect(found).toMatchObject({ query: "lego", sites: [{ domain: "lego.com", name: "lego", onList: false }] });
-    expect((await searchShopsAction({}, form({ q: "nothing" }))).sites).toEqual([{ domain: "nothing.com", name: "nothing", onList: false, opensAt: null }]);
+    expect(found).toMatchObject({ query: "lego", selling: [], named: [{ domain: "lego.com", name: "lego", onList: false }] });
+    expect((await searchShopsAction({}, form({ q: "nothing" }))).named).toEqual([{ domain: "nothing.com", name: "nothing", onList: false, opensAt: null }]);
+    shopsSelling.mockResolvedValueOnce([{ domain: "toynk.com", products: 4 }, { domain: "target.com", products: 2 }]);
+    expect((await searchShopsAction({}, form({ q: "board games" }))).selling).toEqual([
+      { domain: "toynk.com", name: "toynk.com", products: 4, onList: false, opensAt: null },
+      { domain: "target.com", name: "target.com", products: 2, onList: true, opensAt: null },
+    ]);
     websites.mockResolvedValueOnce([]);
-    expect(await searchShopsAction({}, form({ q: "zzz" }))).toEqual({ query: "zzz", sites: [], note: `No shops found for "zzz". Try the shop's name.` });
+    expect(await searchShopsAction({}, form({ q: "zzz" }))).toEqual({ query: "zzz", selling: [], named: [],
+      note: `No shops found for "zzz". Try another word, or the shop's name.` });
 
     const added = await addShopAction({}, form({ domain: "lego.com", name: "Lego" }));
     expect(added.done).toMatch(/^Lego added\. Zoe's rules are now version \d+\.$/);
@@ -69,6 +76,7 @@ describe("Amara's shop actions", () => {
     expect((await searchShopsAction({}, form({ q: "  " }))).error).toBe("Type a shop's name to search.");
     expect((await searchShopsAction({}, form({ q: "x".repeat(61) }))).error).toBe("Type a shop's name to search.");
     expect(websites).not.toHaveBeenCalled();
+    expect(shopsSelling).not.toHaveBeenCalled();
   });
 });
 
@@ -82,7 +90,7 @@ describe("the daily cap on shop search", () => {
     await fill("teen_shop_sites");
     expect((await searchSitesAction({}, form({ token: "shop-teen-token", q: "lego" }))).error).toBe(DAILY_CAP_MESSAGE);
     expect(websites).not.toHaveBeenCalled();
-    expect((await searchShopsAction({}, form({ q: "lego" }))).sites).toHaveLength(1); // Amara's own counter
+    expect((await searchShopsAction({}, form({ q: "lego" }))).named).toHaveLength(1); // Amara's own counter
     websites.mockClear();
     await fill("shop_sites");
     expect((await searchShopsAction({}, form({ q: "lego" }))).error).toBe(DAILY_CAP_MESSAGE);

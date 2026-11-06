@@ -50,7 +50,7 @@ const paypal: PaypalHttp = {
 };
 const channel3: Channel3Adapter = {
   retrieve: vi.fn(async (id: string): Promise<Product | null> => ({ id, title: "T", priceCents: 600, domain: DOMAIN, available: true })),
-  search: async () => { throw new Error("x"); }, lookup: async () => { throw new Error("x"); }, websites: async () => { throw new Error("x"); },
+  search: async () => { throw new Error("x"); }, lookup: async () => { throw new Error("x"); }, websites: async () => { throw new Error("x"); }, shopsSelling: async () => { throw new Error("x"); },
 };
 const deps = (): Deps => ({
   db, paypal, channel3, classifier: { ask: async () => ({ probability: 0.99, model: "m", modelVersion: "1" }) },
