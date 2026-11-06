@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
@@ -18,9 +19,13 @@ describe("service worker routing (money screens are never cached)", () => {
     expect(route("POST", "navigate", O + "/g", O)).toBe("network");
     expect(route("GET", "cors", "https://cdn.example/brand/icon-192.png", O)).toBe("network");
   });
-  it("never caches OneSignal's push worker (it lives beside this one, under /push/onesignal/)", () => {
-    expect(route("GET", "same-origin", O + "/push/onesignal/OneSignalSDKWorker.js", O)).toBe("network");
-    expect(route("GET", "navigate", O + "/g/requests/abc", O)).toBe("navigate"); // a tapped push opens the request fresh
+  it("a tapped push opens the request fresh, never from a cache", () => {
+    expect(route("GET", "navigate", O + "/g/requests/abc", O)).toBe("navigate");
+  });
+  it("hosts OneSignal's push handling itself, so a tapped push can steer the app's own window", () => {
+    // A worker can only navigate windows it controls; this one controls every page (scope "/").
+    const src = readFileSync(new URL("../../public/sw.js", import.meta.url), "utf8");
+    expect(src).toContain('importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js")');
   });
   it("navigations are network-first (offline page only on failure), including money pages", () => {
     expect(route("GET", "navigate", O + "/g", O)).toBe("navigate");

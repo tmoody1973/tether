@@ -54,16 +54,16 @@ test("Amara's Home offers notifications; OneSignal loads only on her page, only 
   expect(sdk).toEqual(["https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"]);
   const os = await page.evaluate(() => (window as unknown as { __os: Record<string, unknown> }).__os);
   expect(os.init).toMatchObject({
-    appId: "e2e-fake-onesignal-app", serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js", serviceWorkerParam: { scope: "/push/onesignal/" },
+    appId: "e2e-fake-onesignal-app", serviceWorkerPath: "sw.js", serviceWorkerParam: { scope: "/" },
+    notificationClickHandlerMatch: "origin", notificationClickHandlerAction: "navigate",
     notifyButton: { enable: false }, promptOptions: { slidedown: { prompts: [{ type: "push", autoPrompt: false }] } },
   });
   expect(os.login).toMatch(/^[0-9a-f]{64}$/); // the family's opaque alias, not its id
   expect(os.optedIn).toBe(true);
 });
 
-test("OneSignal's worker is served from its own folder, beside Tether's offline worker", async ({ request }) => {
-  const res = await request.get("/push/onesignal/OneSignalSDKWorker.js");
+test("Tether's root worker hosts OneSignal, so a tapped push can navigate the open app", async ({ request }) => {
+  const res = await request.get("/sw.js");
   expect(res.ok()).toBe(true);
-  expect((await res.text()).trim()).toBe('importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");');
-  expect((await request.get("/sw.js")).ok()).toBe(true);
+  expect(await res.text()).toContain('importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");');
 });
