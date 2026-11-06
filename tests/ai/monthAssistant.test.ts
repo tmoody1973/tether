@@ -118,6 +118,11 @@ describe("askAboutMonth", () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "You spent $20.50 at The Bookshop in October." }]);
     expect(r.answer).toContain("$20.50");
     expect(r.toolsUsed).toEqual(["tether_record"]);
+    const row = { shop: "The Bookshop", items: [{ title: "Book", qty: 1 }], status: "paid", allowedBy: "within the rules Amara signed", countsTowardBudget: true };
+    expect(toolOutputs(lastModel)).toEqual([[
+      { ...row, date: "2026-10-05", amount: "12.50", ruleVersion: 3 },
+      { ...row, date: "2026-10-20", amount: "8.00", ruleVersion: 4 },
+    ]]);
   });
   it("toolsUsed only contains allowed names, de-duplicated", async () => {
     const r = await ask(

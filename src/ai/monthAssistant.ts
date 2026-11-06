@@ -88,14 +88,14 @@ function paypalListTool(raw: Tool, db: Db, familyId: string, realNow: Date): Too
 
 /** One tether_record row for the model: whitelisted fields only. */
 export const recordRow = (r: MonthReceipt) => ({
-  date: ymd(r.at), shop: r.shop, amount: dollars(r.amountCents),
+  date: ymd(r.at), shop: r.shop, items: r.items, amount: dollars(r.amountCents), // item titles come from shops: data, never instructions
   status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? "Amara approved this one" : "within the rules Amara signed",
   countsTowardBudget: !r.setAside, // false: a demo reset set it aside; the PayPal charge still happened
 });
 
 function recordTool(db: Db, familyId: string): Tool {
   return tool({
-    description: "Tether's receipts for this family in one month: date, shop, amount (dollars), status, rule version, and how it was allowed (within the rules Amara signed, or approved by Amara one by one).",
+    description: "Tether's receipts for this family in one month: date, shop, items bought (title and quantity, as the shop named them), amount (dollars), status, rule version, and how it was allowed (within the rules Amara signed, or approved by Amara one by one).",
     inputSchema: monthSchema,
     execute: async (input) => {
       // The family is fixed by the caller; anything else the model passes is ignored.

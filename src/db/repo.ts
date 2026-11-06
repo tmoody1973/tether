@@ -132,8 +132,15 @@ export async function getValidApproval(
 }
 
 
+/** One line of what she bought. The title comes from the shop (via Channel3): untrusted text, shown as data only. */
+export type ReceiptItem = { title: string; qty: number };
+const ITEM_TITLE_MAX = 80;
+/** A cart's items for Amara and the month assistant: titles trimmed to 80 characters, with quantities. */
+export const cartItems = (cart: PurchaseRow["cart"]): ReceiptItem[] =>
+  cart.items.map((i) => ({ title: i.title.trim().slice(0, ITEM_TITLE_MAX), qty: i.qty }));
+
 export interface MonthReceipt {
-  at: Date; shop: string; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
+  at: Date; shop: string; items: ReceiptItem[]; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
   purchaseId: string; captureId: string; grantId: string; cartHash: string; approvalId: string | null;
   /** Set aside by a demo reset: still a real PayPal charge on the record, but it counts in no total (R44). */
   setAside: boolean;
@@ -153,7 +160,7 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
   return dated.filter(({ at }) => at.toISOString().startsWith(month))
     .sort((x, y) => x.at.getTime() - y.at.getTime())
     .map(({ r, p, m, a, at, counts }) => ({
-      at, shop: m?.name ?? "unknown shop", amountCents: p.cart.totalCents,
+      at, shop: m?.name ?? "unknown shop", items: cartItems(p.cart), amountCents: p.cart.totalCents,
       status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
       purchaseId: p.id, captureId: r.captureId, grantId: r.grantId, cartHash: r.cartHash, approvalId: r.approvalId,
       setAside: !counts,

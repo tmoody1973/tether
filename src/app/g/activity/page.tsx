@@ -19,7 +19,7 @@ import { Seam } from "@/ui/Seam";
 import { confirmReleaseAction } from "../actions";
 import { paymentDeps } from "../flowDeps";
 import { AskBox } from "../AskBox";
-import { PaymentRow } from "../PaymentRow";
+import { ItemsLine, PaymentRow } from "../PaymentRow";
 
 // What Zoe bought, how her month is going, and the proof behind every payment (Record + Review, merged). Guardian-only.
 export default function ActivityPage({ searchParams }: PageProps<"/g/activity">) {
@@ -121,6 +121,7 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
               <div className="g-row">
                 <span className="g-row__date">{formatDay(u.at)}</span>
                 <span><span className="g-row__shop">{u.shop}</span>
+                  <ItemsLine items={u.items} />
                   <span className="g-row__how">{u.needsCheck
                     ? "Checking with PayPal. PayPal hasn't shown this payment yet; nothing will be charged twice."
                     : "Paying… no receipt yet. Tether is checking with PayPal."}</span></span>

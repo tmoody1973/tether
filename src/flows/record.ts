@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
-import { receiptsForMonth, type MonthReceipt } from "@/db/repo";
+import { cartItems, receiptsForMonth, type MonthReceipt, type ReceiptItem } from "@/db/repo";
 import { weekRecords } from "@/ledger/ledger";
 import { TOKEN_TTL_MS } from "@/engine/token";
 import type { Level, WeekRecord } from "@/engine/ladder";
@@ -26,7 +26,7 @@ export interface RecordView {
   /** Up to the last 4 closed weeks (guardian-only weekly spend). */
   weeks: WeekRecord[];
   /** Money left the budget this month but PayPal hasn't answered yet (no receipt). */
-  unreceipted: { purchaseId: string; at: Date; shop: string; amountCents: number; needsCheck: boolean }[];
+  unreceipted: { purchaseId: string; at: Date; shop: string; items: ReceiptItem[]; amountCents: number; needsCheck: boolean }[];
 }
 
 const payees = (g: Grant): string[] =>
@@ -56,7 +56,7 @@ export async function guardianRecord(db: Db, familyId: string, month: string, no
   const receipted = new Set(receipts.map((r) => r.purchaseId));
   const unreceipted = paying
     .filter(({ p, at }) => at.toISOString().startsWith(month) && !receipted.has(p.id))
-    .map(({ p, at }) => ({ purchaseId: p.id, at, shop: name.get(p.cart.merchantId) ?? "a shop", amountCents: p.cart.totalCents,
+    .map(({ p, at }) => ({ purchaseId: p.id, at, shop: name.get(p.cart.merchantId) ?? "a shop", items: cartItems(p.cart), amountCents: p.cart.totalCents,
       needsCheck: p.chargeError?.startsWith("NEEDS_CHECK") ?? false }));
   return {
     home, month, grants, investments, weeks: weeks.slice(-4), unreceipted,
