@@ -3,7 +3,7 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { getFamily } from "@/db/repo";
+import { guardianHome } from "@/flows/home";
 import { requestView, type RequestView } from "@/flows/request";
 import { formatCents, formatDay } from "@/ui/grantWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
@@ -26,10 +26,13 @@ async function Request({ params }: { params: Promise<{ id: string }> }) {
   if (!familyId) return <SignedOut />;
   const { id } = await params;
   const db = await getDb();
-  const [v, fam] = await Promise.all([requestView(db, familyId, id, await clockNow(db, familyId)), getFamily(db, familyId)]);
-  const zoe = fam?.teenName ?? "";
+  const now = await clockNow(db, familyId);
+  // In order, not in parallel: guardianHome expires stale asks first (as on Home), then this request is read.
+  const h = await guardianHome(db, familyId, now);
+  const v = await requestView(db, familyId, id, now);
+  const zoe = h.teenName;
   return (
-    <GuardianShell active="home" teenName={zoe}>
+    <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
       <Link className="g-back" href="/g">‹ Home</Link>
       {v ? <Open v={v} /> : <Closed />}
     </GuardianShell>

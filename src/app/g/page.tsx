@@ -3,11 +3,11 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { getLatestGrant, receiptsForMonth } from "@/db/repo";
+import { getLatestGrant, recentReceipts } from "@/db/repo";
 import { commitmentFloorCents } from "@/engine/ladder";
 import { guardianHome, type NeedsYou } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
-import { shownReceipts, weekEnd } from "@/ui/activityWords";
+import { weekEnd } from "@/ui/activityWords";
 import { teenMessage } from "@/flows/approvals";
 import { APPROVE_CODES, approvedPurchase, type ApproveCode } from "@/flows/approve";
 import { approveWords } from "@/ui/approveWords";
@@ -62,16 +62,13 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   if (!familyId) return <SignedOut />;
   const db = await getDb();
   const now = await clockNow(db, familyId);
-  const [h, latest, shops, receipts] = await Promise.all([
-    guardianHome(db, familyId, now), getLatestGrant(db, familyId), guardianShops(db, familyId, now),
-    receiptsForMonth(db, familyId, now.toISOString().slice(0, 7)),
+  const [h, latest, shops, recent] = await Promise.all([
+    guardianHome(db, familyId, now), getLatestGrant(db, familyId), guardianShops(db, familyId, now), recentReceipts(db, familyId, 3),
   ]);
   const sp = await searchParams;
   const paid = sp.decided === "paid" && typeof sp.req === "string" ? await approvedPurchase(db, familyId, sp.req) : null;
   const note = flash(sp, { teen: h.teenName, guardian: h.guardianName }, paid);
   const zoe = h.teenName;
-  // ponytail: "Recent" is this (demo-clock) month only; early in a month it can be empty. Activity pages back.
-  const recent = shownReceipts(receipts).shown.slice(-3).reverse();
   const leftCents = Math.max(0, h.weeklyCents - h.spentThisWeekCents);
 
   return (
@@ -88,15 +85,15 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
       )}
       <NotifyCard />
 
-      <div className="g-two">
+      <div className="g-two g-home">
         <div className="g-stack">
           {h.needsYou.length === 0 ? (
-            <div className="g-quiet" role="status">
+            <div className="g-quiet g-home__needs" role="status">
               <div className="g-quiet__big">Nothing needs you today.</div>
               <p>You&apos;ll hear from Tether when something needs a decision — not every time {zoe} buys something.</p>
             </div>
           ) : (
-            <section className="g-card" aria-labelledby="needs-h">
+            <section className="g-card g-home__needs" aria-labelledby="needs-h">
               <h2 className="g-label" id="needs-h">Needs you</h2>
               <ul className="g-needs">
                 {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} item={n} zoe={zoe} guardian={h.guardianName} hadRules={h.grantVersion !== null} />)}
@@ -106,7 +103,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
 
           <section className="g-card" aria-labelledby="recent-h">
             <h2 className="g-label" id="recent-h">Recent</h2>
-            {recent.length === 0 ? <p className="g-muted">No payments yet this month.</p>
+            {recent.length === 0 ? <p className="g-muted">No payments yet.</p>
               : <ul className="g-rows">{recent.map((p) => <PaymentRow key={p.captureId} p={p} />)}</ul>}
             <p className="g-more"><Link className="g-textlink" href="/g/activity">See all activity</Link></p>
           </section>
@@ -118,7 +115,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
         </div>
 
         <div className="g-stack">
-          <section className="g-card" aria-labelledby="week-h">
+          <section className="g-card g-home__week" aria-labelledby="week-h">
             <h2 className="g-label" id="week-h">This week</h2>
             <div className="g-figure"><Money cents={leftCents} /> left <small>of <Money cents={h.weeklyCents} /></small></div>
             <Bar value={h.spentThisWeekCents} max={h.weeklyCents}

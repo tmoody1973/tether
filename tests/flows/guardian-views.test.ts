@@ -29,9 +29,9 @@ async function family() {
   const now = await deps().now(fam.id);
   const cart = (cents: number) => ({ merchantId: mid, items: [{ sku: "s", title: "Sneakers", qty: 1, unitCents: cents }], totalCents: cents });
   /** A paid purchase with its receipt, as settlePurchase leaves it. */
-  const paid = async (cents: number, captureId: string) => {
+  const paid = async (cents: number, captureId: string, at: Date = now) => {
     const p = await repo.insertPurchase(db, { familyId: fam.id, cart: cart(cents), cartHash: `h-${captureId}`, status: "paid", decision });
-    await repo.appendJournal(db, { familyId: fam.id, kind: "spend", amountCents: cents, at: now, ref: p.id, note: null });
+    await repo.appendJournal(db, { familyId: fam.id, kind: "spend", amountCents: cents, at, ref: p.id, note: null });
     await repo.insertReceipt(db, { purchaseId: p.id, captureId, grantId: grant.id, grantVersion: grant.version, cartHash: `h-${captureId}`, decision, approvalId: null });
   };
   /** A purchase waiting for Amara, with its open approval. */
@@ -59,6 +59,19 @@ describe("requestView", () => {
     await decideApproval(deps(), id, "approved", a.familyId);
     expect(await requestView(db, a.familyId, id, a.now)).toBeNull();
     expect(await requestView(db, a.familyId, "no-such-id", a.now)).toBeNull();
+  });
+});
+
+describe("recentReceipts (Home's Recent)", () => {
+  it("returns the latest payments across months, newest first", async () => {
+    const f = await family();
+    const day = (iso: string) => new Date(`${iso}T12:00:00Z`);
+    await f.paid(100, "rr-sep", day("2026-09-30"));
+    await f.paid(200, "rr-oct1", day("2026-10-02"));
+    await f.paid(300, "rr-oct2", day("2026-10-20"));
+    await f.paid(400, "rr-nov", day("2026-11-03"));
+    const r = await repo.recentReceipts(db, f.familyId, 3);
+    expect(r.map((x) => x.captureId)).toEqual(["rr-nov", "rr-oct2", "rr-oct1"]);
   });
 });
 

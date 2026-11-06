@@ -160,6 +160,12 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
     }));
 }
 
+/** One family's latest `n` receipts from any month, newest first, leaving out demo-reset rows (Home's "Recent"). */
+export async function recentReceipts(db: Db, familyId: string, n: number): Promise<MonthReceipt[]> {
+  // ponytail: reads every receipt of the family ("" matches every month); fine at family scale, LIMIT in SQL if not.
+  return (await receiptsForMonth(db, familyId, "")).filter((r) => !r.setAside).slice(-n).reverse();
+}
+
 /** Capture ids of every receipt belonging to this family (used to filter PayPal's shared merchant account). */
 export async function captureIdsForFamily(db: Db, familyId: string): Promise<Set<string>> {
   const rows = await db.select({ id: t.receipts.captureId }).from(t.receipts)
