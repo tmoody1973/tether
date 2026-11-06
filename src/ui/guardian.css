@@ -22,10 +22,7 @@
   padding: 20px 14px; display: flex; flex-direction: column; gap: 3px;
 }
 .g-brand { display: flex; align-items: center; gap: 9px; padding: 0 8px 16px; font-weight: 750; font-size: 15px; }
-.g-brand__mark {
-  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
-  color: #fff; font-weight: 800; font-size: 14px; background: linear-gradient(140deg, #0B6B5B, #22A08A);
-}
+.g-brand__logo { display: block; height: 32px; width: auto; margin-left: -6px; }
 .g-nav { display: flex; flex-direction: column; gap: 3px; list-style: none; }
 .g-nav a {
   display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 11px; border-radius: var(--r-md);

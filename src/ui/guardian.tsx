@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatCents } from "@/ui/grantWords";
@@ -30,7 +31,7 @@ export function GuardianShell({ active, teenName, side, children }: {
   return (
     <div className="g-app">
       <nav className="g-side" aria-label="Tether">
-        <div className="g-brand"><span className="g-brand__mark" aria-hidden>T</span>Tether</div>
+        <div className="g-brand"><Image className="g-brand__logo" src="/brand/tether-horizontal-color.svg" alt="Tether" width={106} height={32} priority /></div>
         <ul className="g-nav">
           {NAV.map((n) => (
             <li key={n.key}>
@@ -51,7 +52,7 @@ export function SignedOut() {
     <div className="g-app">
       <main className="g-gate">
         <div className="g-card">
-          <div className="g-brand" style={{ justifyContent: "center" }}><span className="g-brand__mark" aria-hidden>T</span>Tether</div>
+          <div className="g-brand" style={{ justifyContent: "center" }}><Image className="g-brand__logo" src="/brand/tether-horizontal-color.svg" alt="Tether" width={106} height={32} priority /></div>
           <p>Open your Tether link to continue.</p>
         </div>
       </main>
