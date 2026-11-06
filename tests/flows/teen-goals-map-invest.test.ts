@@ -111,10 +111,10 @@ describe("shop map", () => {
     expect(await suggestShop(deps(), s.familyId, "not a shop", "why")).toEqual({ ok: false, error: "domain" });
     expect(await suggestShop(deps(), s.familyId, "etsy.com", "  ")).toEqual({ ok: false, error: "reason" });
     expect(await suggestShop(deps(), s.familyId, `https://www.${s.m.tgt}.com/x`, "hi")).toEqual({ ok: false, error: "have" });
-    expect(await suggestShop(deps(), s.familyId, `${s.m.nike}.com`, "hi")).toEqual({ ok: false, error: "level", level: 3 });
+    expect(await suggestShop(deps(), s.familyId, `${s.m.nike}.com`, "hi")).toEqual({ ok: true, domain: `${s.m.nike}.com` }); // above her level: Amara decides
     expect(await suggestShop(deps(), s.familyId, "HTTPS://www.Etsy.com/shop", "art supplies")).toEqual({ ok: true, domain: "etsy.com" });
     expect(await suggestShop(deps(), s.familyId, "etsy.com", "again")).toEqual({ ok: false, error: "asked" });
-    expect((await shopMap(db, s.familyId, NOW)).suggested).toEqual(["etsy.com"]);
+    expect((await shopMap(db, s.familyId, NOW)).suggested.sort()).toEqual(["etsy.com", `${s.m.nike}.com`].sort());
     const home = await guardianHome(db, s.familyId, NOW);
     expect(home.needsYou).toContainEqual(expect.objectContaining({ kind: "approval", subject: "shop", shop: "etsy.com", note: "art supplies" }));
   });

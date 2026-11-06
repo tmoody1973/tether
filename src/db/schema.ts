@@ -209,7 +209,18 @@ export const investments = pgTable("investments", {
 /** Real-time daily usage counters for the public demo key (R45): one row per family, kind and UTC day. */
 export const usage = pgTable("usage", {
   familyId: text("family_id").notNull().references(() => families.id),
-  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask", "fund_words"] }).notNull(),
+  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask", "fund_words", "shop_sites"] }).notNull(),
   day: text("day").notNull(), // YYYY-MM-DD, real UTC date (never the demo clock)
   count: integer("count").notNull().default(0),
 }, (u) => [primaryKey({ columns: [u.familyId, u.kind, u.day] })]);
+
+/**
+ * Amara's own say over Zoe's shops, kept per family so it outlives any one set of rules: every grant built from a level
+ * is that level's default shops plus the ones she added, minus the ones she removed. One row per shop: the latest choice.
+ */
+export const shopChoices = pgTable("shop_choices", {
+  familyId: text("family_id").notNull().references(() => families.id),
+  merchantId: text("merchant_id").notNull().references(() => merchants.id),
+  choice: text("choice", { enum: ["added", "removed"] }).notNull(),
+  updatedAt: ts("updated_at").notNull(),
+}, (s) => [primaryKey({ columns: [s.familyId, s.merchantId] })]);

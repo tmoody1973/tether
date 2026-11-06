@@ -3,10 +3,11 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getPurchase } from "@/db/repo";
 import { now as demoNow } from "@/clock/clock";
-import type { Cart, Constraint } from "@/engine/types";
+import type { Cart } from "@/engine/types";
 import { budgetOverage } from "@/engine/decide";
 import type { StoredDecision } from "@/flows/purchase";
 import type { Deps } from "@/flows/purchase";
+import { chooseShop, merchantForDomain } from "@/flows/grant";
 
 const DAY_MS = 86_400_000;
 type Subject = (typeof t.approvals.$inferSelect)["subject"];
@@ -172,30 +173,15 @@ export async function proposeShop(deps: Deps, familyId: string, domain: string, 
   return requestApproval(deps, familyId, "shop", normaliseDomain(domain), null, reason);
 }
 
-const addId = (c: Constraint, merchantId: string): Constraint =>
-  (c.type === "payment.allowed_payees" || c.type === "checkout.allowed_merchants") && Array.isArray(c.merchantIds)
-    ? { ...c, merchantIds: [...new Set([...(c.merchantIds as string[]), merchantId])] } : c;
-
+/**
+ * Amara said yes to Zoe's shop: recorded as her choice ('added', so it sticks) and applied to the rules in force, at
+ * any level (levels are defaults, not gates). Rules without an allowed-payees list can't take a shop: refused, rolled back.
+ */
 async function applyShop(db: Db, familyId: string, domain: string, now: Date) {
   const grant = await getActiveGrant(db, familyId);
-  if (!grant) throw new ApprovalError("no active grant");
-  const hasPayees = grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds));
-  if (!hasPayees) throw new ApprovalError("active grant has no allowed_payees list to add the shop to");
-  const [found] = await db.select().from(t.merchants).where(eq(t.merchants.channel3WebsiteId, domain));
-  if (found && found.opensAtLevel > grant.level) throw new ApprovalError("that shop opens at a higher level");
-  const merchantId = found?.id ?? crypto.randomUUID();
-  if (!found) {
-    await db.insert(t.merchants).values({
-      id: merchantId, name: domain, domain, class: "general", channel3WebsiteId: domain, opensAtLevel: grant.level,
-      addedByFamilyId: familyId,
-    });
+  if (grant && !grant.body.constraints.some((c) => c.type === "payment.allowed_payees" && Array.isArray(c.merchantIds))) {
+    throw new ApprovalError("active grant has no allowed_payees list to add the shop to");
   }
-  const body = {
-    ...grant.body, id: crypto.randomUUID(), version: grant.version + 1, signedAt: now.toISOString(),
-    constraints: grant.body.constraints.map((c) => addId(c, merchantId)),
-  };
-  await db.update(t.grants).set({ status: "expired" }).where(eq(t.grants.id, grant.id));
-  await db.insert(t.grants).values({
-    id: body.id, familyId, version: body.version, level: grant.level, body, signedAt: now, expiresAt: grant.expiresAt, status: "active",
-  });
+  const m = await merchantForDomain(db, familyId, domain, domain);
+  await chooseShop(db, familyId, m.id, "added", now);
 }

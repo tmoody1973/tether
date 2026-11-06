@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, max } from "drizzle-orm";
+import { and, eq, isNull, max, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getVault } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
 import { grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
-import type { Grant } from "@/engine/types";
+import type { Constraint, Grant } from "@/engine/types";
 import type { Deps } from "@/flows/purchase";
 
 const WEEK_MS = 7 * 86_400_000;
@@ -47,12 +47,73 @@ export async function installGrant(tx: Db, familyId: string, make: (version: num
   return body;
 }
 
-/** A fresh grant at `level`: merchants opened by that level, bookshops from class 'books'. */
+/** A fresh grant at `level`: merchants opened by that level, bookshops from class 'books', then Amara's shop choices. */
 export async function buildForLevel(tx: Db, familyId: string, level: Level, version: number, s: Settings, now: Date): Promise<Grant> {
   const ms = (await tx.select().from(t.merchants)).filter((m) => m.opensAtLevel <= level && (m.addedByFamilyId === null || m.addedByFamilyId === familyId));
   const byClass: Record<string, string[]> = {};
   for (const m of ms) (byClass[m.class] ??= []).push(m.id);
-  return grantForLevel(level, { id: crypto.randomUUID(), familyId, version, ...s }, byClass, byClass.books ?? [], now);
+  const g = grantForLevel(level, { id: crypto.randomUUID(), familyId, version, ...s }, byClass, byClass.books ?? [], now);
+  return { ...g, constraints: await applyChoices(tx, familyId, g.constraints) };
+}
+
+// ---- Amara's shop choices (levels are defaults, not gates) ----------------------------------------------------------
+
+type ShopChoice = (typeof t.shopChoices.$inferSelect)["choice"];
+const OPENS_SHOP = new Set(["payment.allowed_payees", "checkout.allowed_merchants"]);
+const namesShops = (c: Constraint): c is Constraint & { merchantIds: string[] } => Array.isArray((c as { merchantIds?: unknown }).merchantIds);
+
+/** Off EVERY list that names merchants: a removed shop can't be paid, searched or checked. */
+export const withoutShop = (cs: Constraint[], merchantId: string): Constraint[] =>
+  cs.map((c) => (namesShops(c) ? { ...c, merchantIds: c.merchantIds.filter((id) => id !== merchantId) } : c));
+
+/**
+ * On the lists that open a shop. A bookshop also joins the books-only check when the rules carry one.
+ * ponytail: Level 1 rules carry no books-only check, so a bookshop Amara opens early at Level 1 has none.
+ */
+export const withShop = (cs: Constraint[], merchantId: string, bookshop: boolean): Constraint[] =>
+  cs.map((c) => (namesShops(c) && (OPENS_SHOP.has(c.type) || (bookshop && c.type === "checkout.semantic_category"))
+    ? { ...c, merchantIds: [...new Set([...c.merchantIds, merchantId])] } : c));
+
+/** `cs` with Amara's added shops put on and her removed shops taken off. */
+async function applyChoices(db: Db, familyId: string, cs: Constraint[]): Promise<Constraint[]> {
+  const rows = await db.select({ id: t.shopChoices.merchantId, choice: t.shopChoices.choice, cls: t.merchants.class })
+    .from(t.shopChoices).innerJoin(t.merchants, eq(t.merchants.id, t.shopChoices.merchantId)).where(eq(t.shopChoices.familyId, familyId));
+  return rows.reduce((acc, r) => (r.choice === "removed" ? withoutShop(acc, r.id) : withShop(acc, r.id, r.cls === "books")), cs);
+}
+
+/**
+ * A shop outside the shared catalogue opens at no level: it is in her rules only while Amara's 'added' choice says so,
+ * so clearing the choices (demo reset) takes it out again. Never shown as "opens at Level N".
+ */
+export const NO_LEVEL = 99;
+
+/** The merchant row this family sees for `domain` (shared, or its own); a new domain gets a family-only 'general' row. */
+export async function merchantForDomain(tx: Db, familyId: string, domain: string, name: string) {
+  const [found] = await tx.select().from(t.merchants).where(and(eq(t.merchants.channel3WebsiteId, domain),
+    or(isNull(t.merchants.addedByFamilyId), eq(t.merchants.addedByFamilyId, familyId))));
+  if (found) return found;
+  const [made] = await tx.insert(t.merchants).values({
+    id: crypto.randomUUID(), name, domain, class: "general", channel3WebsiteId: domain, opensAtLevel: NO_LEVEL, addedByFamilyId: familyId,
+  }).returning();
+  return made;
+}
+
+/**
+ * Records Amara's choice for one shop (it sticks through re-signing and level-ups) and, when rules are in force, applies
+ * it now as the next version with the same end date: a shop change never extends the week. With no rules in force it is
+ * only recorded, and the next signing picks it up. Returns the new version, or null. Caller holds the family lock.
+ */
+export async function chooseShop(tx: Db, familyId: string, merchantId: string, choice: ShopChoice, now: Date): Promise<number | null> {
+  await tx.insert(t.shopChoices).values({ familyId, merchantId, choice, updatedAt: now })
+    .onConflictDoUpdate({ target: [t.shopChoices.familyId, t.shopChoices.merchantId], set: { choice, updatedAt: now } });
+  const cur = await getActiveGrant(tx, familyId);
+  if (!cur) return null;
+  const constraints = await applyChoices(tx, familyId, cur.body.constraints);
+  if (JSON.stringify(constraints) === JSON.stringify(cur.body.constraints)) return cur.version; // already so: no new version
+  const body = await installGrant(tx, familyId, (version) => ({
+    ...cur.body, id: crypto.randomUUID(), version, signedAt: now.toISOString(), constraints,
+  }), now);
+  return body.version;
 }
 
 /** Shop names a grant at `level` would allow, chosen exactly as signing would choose them. Read-only. */
