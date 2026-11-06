@@ -52,7 +52,7 @@ export function GrantEditor(p: GrantEditorProps) {
 
         <div style={{ marginTop: 8 }}>
           <Def k="Weekly amount" v={<span className="money">{formatCents(def.weeklyCents)}</span>} sub="set by the level" />
-          <Def k="Where" v={p.shops[level].length ? listWords(p.shops[level]) : "no shops yet"} sub="online shops, set by the level" />
+          <Def k="Where" v={p.shops[level].length ? listWords(p.shops[level]) : "no shops yet"} sub="the level's shops, with your changes below" />
           <Def k="Needs your OK" v={approvalShort(level)} />
           <Def k="Investing" v={def.investing ? "she proposes, you approve each one" : "opens at Level 3"} />
           <div className="g-def">
