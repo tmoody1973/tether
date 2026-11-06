@@ -26,9 +26,9 @@ export async function POST(req: Request): Promise<Response> {
   }
   try {
     const db = await getDb();
-    if (!(await takeDaily(db, familyId, "month_ask"))) return Response.json({ answer: DAILY_CAP_MESSAGE });
     const { ANTHROPIC_API_KEY: apiKey, PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: clientSecret } = process.env;
     if (!apiKey || !clientId || !clientSecret) throw new Error("assistant not configured");
+    if (!(await takeDaily(db, familyId, "month_ask"))) return Response.json({ answer: DAILY_CAP_MESSAGE }); // only now: validated, configured, about to pay for the model
     const result = await askAboutMonth({
       model: createAnthropic({ apiKey })("claude-haiku-5-5"),
       paypalTools: readOnlyPaypalTools({ clientId, clientSecret, sandbox: true }),

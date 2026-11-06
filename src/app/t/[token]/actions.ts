@@ -36,7 +36,6 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
   if (mode !== "agent" && mode !== "link" && mode !== "search") return { cards: [] };
   const throttled = await shopThrottle(db, fam.id, mode);
   if (throttled) return { cards: [], error: throttled };
-  if (!(await takeDaily(db, fam.id, mode === "agent" ? "shop_agent" : "shop_lookup"))) return { cards: [], error: DAILY_CAP_MESSAGE };
   try {
     let items: { cart: NonNullable<ReturnType<typeof cartFor>>; reason?: string }[];
     if (mode === "agent") {
@@ -44,6 +43,7 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
       if (!request || request.length > MAX_REQUEST) return { cards: [], error: `Say what you're after in up to ${MAX_REQUEST} characters.` };
       const model = await agentModel(request);
       if (!model) return { cards: [], error: "The shopping helper isn't switched on here. Search or paste a link instead." };
+      if (!(await takeDaily(db, fam.id, "shop_agent"))) return { cards: [], error: DAILY_CAP_MESSAGE }; // only now: validated, configured, about to pay for the model
       const grant = (await getActiveGrant(db, fam.id))!.body;
       const { proposals } = await runAgent({ model, channel3: deps.channel3 }, {
         request, allowedDomains: shops.domains, merchantIdByDomain: shops.merchantIdByDomain, grant, ledger: await ledgerView(db, fam.id, now), now,
@@ -52,6 +52,7 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
     } else if (mode === "link") {
       const url = text(form.get("url"), 500);
       if (!/^https?:\/\/\S+$/i.test(url)) return { cards: [], error: "Paste a whole product link, starting with https://" };
+      if (!(await takeDaily(db, fam.id, "shop_lookup"))) return { cards: [], error: DAILY_CAP_MESSAGE };
       const r = await deps.channel3.lookup(url, shops.domains);
       if (r.kind === "shop_not_allowed") return { cards: [], error: "That shop isn't on your list." };
       if (r.kind === "not_a_product") return { cards: [], error: "That link doesn't look like a product page." };
@@ -61,6 +62,7 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
     } else {
       const query = text(form.get("query"), 100);
       if (!query) return { cards: [], error: "Type what you're looking for." };
+      if (!(await takeDaily(db, fam.id, "shop_lookup"))) return { cards: [], error: DAILY_CAP_MESSAGE };
       const found = await deps.channel3.search(query, shops.domains, 6);
       items = found.flatMap((p) => { const cart = cartFor(p, shops.merchantIdByDomain); return cart ? [{ cart }] : []; });
     }

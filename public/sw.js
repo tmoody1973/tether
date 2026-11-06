@@ -1,6 +1,7 @@
 // Tether service worker: an offline shell and nothing else.
 // Money screens must never show stale numbers, so the ONLY things ever cached are the static files in PRECACHE.
 // No HTML page, no /api/*, no /g/*, no /t/*, no server action (POST), nothing else is ever stored.
+// Bump VERSION whenever a PRECACHE file changes, or installed clients keep the old copy.
 const VERSION = "tether-shell-v1";
 const PRECACHE = ["/offline.html", "/brand/icon-192.png", "/brand/icon-512.png", "/brand/icon-maskable-512.png", "/brand/tether-horizontal-color.svg"];
 
