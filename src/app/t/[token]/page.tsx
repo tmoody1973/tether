@@ -11,6 +11,7 @@ import { buyFlash, daysToReset, levelLine, reflection, resetsWords, setsBack, wh
 import { levelSeenAction, nudgeAction } from "./actions";
 import { RefusalSheet } from "./RefusalSheet";
 import { NotShopping } from "./NotShopping";
+import { Seam } from "@/ui/Seam";
 
 // Mock 1 — Your week: one number, one bar. Also hosts mock 5 (level up), mock 6 (week ended) and mock 2 (?sheet=).
 export default function TeenWeekPage({ params, searchParams }: PageProps<"/t/[token]">) {
@@ -100,7 +101,7 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
       )}
 
       <Link className="t-btn t-btn--primary" href={`/t/${token}/shop`}>Find something</Link>
-      <p className="t-seam">Sandbox: no real money moves. Purchases are charged to {g}&apos;s PayPal only when they pass your rules.</p>
+      <Seam center kinds={["sandbox", "merchant"]}>Purchases are charged to {g}&apos;s PayPal only when they pass your rules.</Seam>
       {sheet && <RefusalSheet token={token} familyId={fam.id} purchaseId={sheet.slice(0, 100)} w={w} />}
     </TeenShell>
   );

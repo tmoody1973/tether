@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import type { WeekRecord } from "@/engine/ladder";
@@ -14,11 +14,18 @@ export function weekKey(d: Date): string {
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
+/**
+ * Journal rows that count. A demo reset (Task 19) voids the rows written (real time) between the seed and the reset:
+ * they stay on the record, append-only, but no longer count toward a week, the budget or savings.
+ */
+export const counted = sql`not exists (select 1 from families f where f.id = ${t.journal.familyId}
+  and ${t.journal.createdAt} > f.ledger_void_from and ${t.journal.createdAt} <= f.ledger_void_to)`;
+
 type Entry = { at: Date; kind: (typeof t.journalKinds)[number]; amountCents: number };
 
 const entries = (db: Db, familyId: string): Promise<Entry[]> =>
   db.select({ at: t.journal.at, kind: t.journal.kind, amountCents: t.journal.amountCents })
-    .from(t.journal).where(eq(t.journal.familyId, familyId)).orderBy(asc(t.journal.at));
+    .from(t.journal).where(and(eq(t.journal.familyId, familyId), counted)).orderBy(asc(t.journal.at));
 
 const SPEND_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { spend: 1, spend_reversal: -1 };
 const SAVINGS_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { week_close: 1, release: -1, invest: -1, invest_reversal: 1 };

@@ -17,3 +17,8 @@ export async function advance(db: Db, familyId: string, ms: number): Promise<voi
 
 /** Deps.now for app code: reads the family's offset on `conn` (the transaction, when inside one), else on `db`. */
 export const clockFor = (db: Db) => (familyId: string, conn: Db = db): Promise<Date> => now(conn, familyId);
+
+/** Puts this family's demo clock at `at` (offset from real time). Used by the demo seed and reset. */
+export async function setNow(db: Db, familyId: string, at: Date, realNow: number = Date.now()): Promise<void> {
+  await db.update(families).set({ clockOffsetMs: at.getTime() - realNow }).where(eq(families.id, familyId));
+}

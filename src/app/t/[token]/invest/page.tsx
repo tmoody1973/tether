@@ -13,6 +13,7 @@ import { LinkGone, Money, TeenLoading, TeenShell } from "@/ui/teen";
 import { investStatusWords } from "@/ui/teenWords";
 import { teenDeps } from "../../teenDeps";
 import { investGate, UNAVAILABLE } from "./Gate";
+import { Seam } from "@/ui/Seam";
 
 // F17 / D13: the whole market, ordered by match to what she typed (never popularity). No movers, no daily moves.
 // Each result's only action is "Look closer"; proposing happens on the fund page, with her own answers.
@@ -110,7 +111,7 @@ async function Investments({ db, familyId, guardian }: { db: Db; familyId: strin
           ))}
         </ul>
       )}
-      {!custodial && <p className="t-seam" style={{ marginTop: 10 }}>{STAND_IN_LABEL}</p>}
+      {!custodial && <div style={{ marginTop: 10 }}><Seam center>{STAND_IN_LABEL}</Seam></div>}
     </section>
   );
 }

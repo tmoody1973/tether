@@ -12,6 +12,7 @@ import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guar
 import { resumePayingPurchases } from "@/flows/purchase";
 import { paymentDeps } from "../flowDeps";
 import { AskBox } from "./AskBox";
+import { Seam } from "@/ui/Seam";
 
 // Mocks 11 + 14: dashboard on top, audit trail below, the proof behind every payment. Guardian-only.
 export default function RecordPage({ searchParams }: PageProps<"/g/record">) {
@@ -50,6 +51,7 @@ async function Record({ searchParams }: { searchParams: Promise<Record<string, s
       <div>
         <h1 className="g-title">The record</h1>
         <p className="g-muted" style={{ marginTop: 4 }}>Everything you&apos;ve authorised, and the proof behind each payment.</p>
+        <div style={{ marginTop: 8 }}><Seam kinds={["sandbox", "merchant", "family", "gate2", "hmac"]} /></div>
       </div>
 
       <div className="g-grid4">

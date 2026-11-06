@@ -10,8 +10,10 @@ import { approveWords } from "@/ui/approveWords";
 import { formatCents, formatDay } from "@/ui/grantWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { PendingButton } from "@/ui/PendingButton";
+import { Seam } from "@/ui/Seam";
 import { advanceClockAction } from "./actions";
 import { appBaseUrl } from "./connect-paypal/setup";
+import { ResetDemo } from "./ResetDemo";
 import { ResetLink } from "./ResetLink";
 import { TeenLink } from "./TeenLink";
 
@@ -27,6 +29,9 @@ type Search = Record<string, string | string[] | undefined>;
 
 type Flash = { text: string; warn?: boolean; connectPaypal?: boolean };
 
+const paypalRemoved = (guardian: string) =>
+  `Revoke removed ${guardian}'s saved PayPal. Save it again with the sandbox login in the README — it takes a minute.`;
+
 function flash(sp: Search, names: { teen: string; guardian: string }, paid: Parameters<typeof approveWords>[2]): Flash | null {
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
   const signed = one("signed");
@@ -36,6 +41,11 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "failed") return { text: "PayPal didn't finish saving, so nothing was saved. Try again.", warn: true };
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
   if (one("link") === "reset") return { text: "The old link has stopped working. Send the new one." };
+  const demo = one("demo");
+  if (demo === "reset" || demo === "reset-paypal") {
+    const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
+    return demo === "reset" ? { text: kept } : { text: `${kept} ${paypalRemoved(names.guardian)}`, warn: true, connectPaypal: true };
+  }
   const adv = one("advanced");
   const moved: Record<string, string> = { day: "1 day", week: "1 week", endOfWeek: "to the end of the week", endOfMonth: "to the end of the month" };
   if (adv && moved[adv]) return { text: `Demo clock moved forward ${moved[adv]}.` };
@@ -106,7 +116,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <section className="g-card" aria-labelledby="needs-h">
               <h2 className="g-label" id="needs-h">Needs you</h2>
               <ul className="g-needs">
-                {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} item={n} zoe={zoe} hadRules={h.grantVersion !== null} />)}
+                {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} item={n} zoe={zoe} guardian={h.guardianName} hadRules={h.grantVersion !== null} />)}
               </ul>
             </section>
           )}
@@ -121,9 +131,9 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
 
           <section className="g-card g-demo" aria-labelledby="demo-h">
             <h2 className="g-label" id="demo-h">Demo controls</h2>
-            <p className="g-note" style={{ margin: "4px 0 10px" }}>
-              Demo only: time is fast-forwarded for the demo. Demo date: <b>{formatDay(h.now)}</b>.
-            </p>
+            <div style={{ margin: "4px 0 10px" }}>
+              <Seam kinds={["clock"]}>Demo date: <b>{formatDay(h.now)}</b>.</Seam>
+            </div>
             <form action={advanceClockAction} className="g-btnrow">
               {([["day", "Advance 1 day"], ["week", "Advance 1 week"], ["endOfWeek", "Advance to end of week"], ["endOfMonth", "Advance to end of month"]] as const)
                 .map(([to, label]) => <PendingButton key={to} name="to" value={to} label={label} pendingLabel="Moving the clock…" className="g-btn g-btn--ghost" />)}
@@ -131,6 +141,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <p className="g-note" style={{ marginTop: 8 }}>
               Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly review.
             </p>
+            {h.isDemo && <ResetDemo />}
           </section>
         </div>
       </div>
@@ -138,7 +149,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   );
 }
 
-function NeedsYouRow({ item, zoe, hadRules }: { item: NeedsYou; zoe: string; hadRules: boolean }) {
+function NeedsYouRow({ item, zoe, guardian, hadRules }: { item: NeedsYou; zoe: string; guardian: string; hadRules: boolean }) {
   if (item.kind === "rules") {
     return (
       <li><Link href="/g/grant">
@@ -155,7 +166,8 @@ function NeedsYouRow({ item, zoe, hadRules }: { item: NeedsYou; zoe: string; had
     return (
       // A plain <a>: this starts a PayPal redirect and must never be prefetched.
       <li><a href="/g/connect-paypal">
-        <span>Save your PayPal<small>Tether charges it only for purchases that pass {zoe}&apos;s rules. Sandbox: no real money.</small></span>
+        <span>Save your PayPal<small>{item.removedByRevoke ? paypalRemoved(guardian)
+          : <>Tether charges it only for purchases that pass {zoe}&apos;s rules. Sandbox: no real money.</>}</small></span>
       </a></li>
     );
   }

@@ -100,7 +100,6 @@
 .t-tab[aria-current="page"] { color: var(--t-accent); }
 .t-tab[aria-current="page"] i { border-radius: 50%; }
 
-.t-seam { font-size: 13px; color: var(--ink-3-text); text-align: center; }
 
 /* goals (mock 3): one gold goal bar, the promise stepper */
 .t-bar--gold > span { background: var(--t-gold); }

@@ -9,6 +9,7 @@ import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian"
 import { PendingButton } from "@/ui/PendingButton";
 import { confirmReleaseAction } from "../actions";
 import { LevelOverride, StopRules } from "./ReviewControls";
+import { Seam } from "@/ui/Seam";
 
 // Mock 12: promotion arrives with its evidence, and stays overrulable. PRD v0.6: Amara sends the release herself.
 export default function ReviewPage({ searchParams }: PageProps<"/g/review">) {
@@ -80,6 +81,7 @@ async function Review({ searchParams }: { searchParams: Promise<Record<string, s
                 Send it to {zoe} yourself — Venmo, PayPal or cash. Tether doesn&apos;t move this money. When you&apos;ve sent it, tap below;
                 the record will say you confirmed it, because Tether can&apos;t see it move.
               </p>
+              <div style={{ marginTop: 8 }}><Seam kinds={["release"]} /></div>
               <form action={confirmReleaseAction} style={{ marginTop: 12 }}>
                 <input type="hidden" name="releaseId" value={v.release.id} />
                 <PendingButton label="I've sent it" pendingLabel="Recording…" className="g-btn g-btn--block" />

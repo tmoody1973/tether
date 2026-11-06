@@ -4,7 +4,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getPurchase, type PurchaseRow } from "@/db/repo";
-import { ledgerView, weekKey, weekRecords } from "@/ledger/ledger";
+import { counted, ledgerView, weekKey, weekRecords } from "@/ledger/ledger";
 import { commitmentFloorCents, streak, type Level, type WeekRecord } from "@/engine/ladder";
 import type { Cart, Decision, Grant } from "@/engine/types";
 import type { Product } from "@/adapters/channel3/client";
@@ -82,7 +82,7 @@ const titleOf = (c: Cart) => c.items.map((i) => i.title).join(" + ");
 /** Paid or still-confirming purchases whose spend landed in this ISO week. */
 async function thisWeeksPurchases(db: Db, familyId: string, now: Date): Promise<TeenWeek["purchases"]> {
   const spends = await db.select({ ref: t.journal.ref, at: t.journal.at }).from(t.journal)
-    .where(and(eq(t.journal.familyId, familyId), eq(t.journal.kind, "spend"), isNotNull(t.journal.ref)));
+    .where(and(eq(t.journal.familyId, familyId), eq(t.journal.kind, "spend"), isNotNull(t.journal.ref), counted));
   const key = weekKey(now);
   const ids = spends.filter((s) => weekKey(s.at) === key).map((s) => s.ref as string);
   if (ids.length === 0) return [];

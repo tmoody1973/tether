@@ -78,7 +78,7 @@ function demoIdentities(f: typeof t.families.$inferSelect): { guardian: Guardian
 }
 
 /** One account per family, created once. Losing the compare-and-set race just means one orphan sandbox account. */
-async function ensureAccount(deps: InvestDeps, familyId: string): Promise<string> {
+export async function ensureAccount(deps: Pick<InvestDeps, "db" | "alpaca">, familyId: string): Promise<string> {
   const { db } = deps;
   const [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
   if (!f) throw new Error(`unknown family ${familyId}`);
