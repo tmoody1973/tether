@@ -82,13 +82,13 @@ describe("pushRequest", () => {
   });
 
   it(`stops at ${DAILY_CAPS.push} pushes per family per day`, async () => {
-    expect(DAILY_CAPS.push).toBe(50);
+    expect(DAILY_CAPS.push).toBe(200);
     const s = await familyWithShopAsk();
     const f = ok();
     const day = Date.parse("2026-11-06T10:00:00Z");
-    for (let i = 0; i < 50; i++) expect(await pushRequest({ db, now: s.now }, s.familyId, s.approvalId, opts(f as unknown as typeof fetch, day))).toBe("sent");
+    for (let i = 0; i < DAILY_CAPS.push; i++) expect(await pushRequest({ db, now: s.now }, s.familyId, s.approvalId, opts(f as unknown as typeof fetch, day))).toBe("sent");
     expect(await pushRequest({ db, now: s.now }, s.familyId, s.approvalId, opts(f as unknown as typeof fetch, day))).toBe("capped");
-    expect(f).toHaveBeenCalledTimes(50);
+    expect(f).toHaveBeenCalledTimes(DAILY_CAPS.push);
   });
 
   it("a OneSignal that throws resolves as failed: the push never throws", async () => {

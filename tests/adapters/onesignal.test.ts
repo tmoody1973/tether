@@ -12,6 +12,17 @@ function fakeFetch(res: { status?: number; body?: unknown } = {}) {
 }
 
 describe("sendPush (OneSignal create notification)", () => {
+  it("logs OneSignal's error kinds but never the alias it echoes back", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fakeFetch({ body: { errors: { invalid_aliases: { external_id: [push.externalId] } } } });
+    expect(await sendPush(cfg, push, f as unknown as typeof fetch)).toBe("failed");
+    const logged = spy.mock.calls.flat().map(String).join(" ");
+    expect(logged).toContain("invalid_aliases");
+    expect(logged).not.toContain(push.externalId);
+    expect(logged).not.toContain(cfg.restKey);
+    spy.mockRestore();
+  });
+
   it("POSTs one push to the family's external id with a title, a body and the request's url", async () => {
     const f = fakeFetch();
     expect(await sendPush(cfg, push, f as unknown as typeof fetch)).toBe("sent");

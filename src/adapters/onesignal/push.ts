@@ -36,7 +36,9 @@ export async function sendPush(cfg: PushConfig | null, p: Push, fetchImpl: typeo
     const data = (await res.json().catch(() => ({}))) as { id?: string; errors?: unknown };
     // OneSignal can answer 200 with `errors` (e.g. nobody subscribed under that alias yet): not sent.
     if (!res.ok || data.errors) {
-      console.error("onesignal push not sent", res.status, JSON.stringify(data.errors ?? null));
+      // Error kinds only: OneSignal's invalid_aliases echoes the external ids, and an alias is a capability.
+      const kinds = data.errors && typeof data.errors === "object" ? Object.keys(data.errors as object) : [];
+      console.error("onesignal push not sent", res.status, kinds.join(",") || "no error detail");
       return "failed";
     }
     return "sent";
