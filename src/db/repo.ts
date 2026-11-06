@@ -135,9 +135,11 @@ export async function getValidApproval(
 /** One line of what she bought. The title comes from the shop (via Channel3): untrusted text, shown as data only. */
 export type ReceiptItem = { title: string; qty: number };
 const ITEM_TITLE_MAX = 80;
-/** A cart's items for Amara and the month assistant: titles trimmed to 80 characters, with quantities. */
+/** Newlines, tabs and other control characters (Unicode Cc): one run of them becomes a single space. */
+const BREAKS = /[\s\p{Cc}]+/gu;
+/** A cart's items for Amara and the month assistant: titles on one line, trimmed to 80 characters, with quantities. */
 export const cartItems = (cart: PurchaseRow["cart"]): ReceiptItem[] =>
-  cart.items.map((i) => ({ title: i.title.trim().slice(0, ITEM_TITLE_MAX), qty: i.qty }));
+  cart.items.map((i) => ({ title: i.title.replace(BREAKS, " ").trim().slice(0, ITEM_TITLE_MAX), qty: i.qty }));
 
 export interface MonthReceipt {
   at: Date; shop: string; items: ReceiptItem[]; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
