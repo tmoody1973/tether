@@ -15,6 +15,10 @@ function route(method, mode, url, origin) {
 }
 
 if (typeof self !== "undefined" && typeof self.addEventListener === "function") {
+  // OneSignal's push handling lives in THIS worker (decision 017; OneSignal's "combining service workers" guide). A
+  // worker can only navigate windows it controls, and this one controls every page, so tapping a push can take the
+  // open app straight to the request. OneSignal's script adds push and click handlers only: no fetch, no caching.
+  importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
   self.addEventListener("install", (event) => {
     event.waitUntil(
       caches.open(VERSION).then((cache) => cache.addAll(PRECACHE.map((p) => new Request(p, { credentials: "omit" })))).then(() => self.skipWaiting()),

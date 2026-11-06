@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { NOTIFY_WORDS, notifyState, type NotifyEnv } from "@/ui/notifyState";
 
-// OneSignal web SDK v16. Its worker lives under /push/onesignal/ because Tether's own offline worker owns "/".
+// OneSignal web SDK v16. Its push handling runs inside Tether's root worker (public/sw.js), which controls every page.
 const SDK_URL = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
 const LOAD_TIMEOUT_MS = 10_000;
 
@@ -21,13 +21,22 @@ let ready: Promise<OneSignalApi> | null = null;
 /** Loads and initialises the SDK once per page. It never prompts on its own: no bell, no slidedown, autoPrompt off. */
 function loadOneSignal(appId: string): Promise<OneSignalApi> {
   ready ??= new Promise<OneSignalApi>((resolve, reject) => {
+    // The first version registered OneSignal at /push/onesignal/: drop that registration (and its push subscription),
+    // or a device opted in back then would get every push twice, the old copy unable to open the request.
+    navigator.serviceWorker?.getRegistrations?.()
+      .then((rs) => Promise.all(rs.filter((r) => r.scope.endsWith("/push/onesignal/")).map((r) => r.unregister())))
+      .catch(() => {});
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     window.OneSignalDeferred.push(async (os) => {
       try {
         await os.init({
           appId,
-          serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js",
-          serviceWorkerParam: { scope: "/push/onesignal/" },
+          // Tether's own root worker hosts OneSignal (see public/sw.js), so a tapped push can navigate the open app.
+          serviceWorkerPath: "sw.js",
+          serviceWorkerParam: { scope: "/" },
+          // Take whatever Tether window is open (an installed app has just one) and move it to the request.
+          notificationClickHandlerMatch: "origin",
+          notificationClickHandlerAction: "navigate",
           notifyButton: { enable: false },
           promptOptions: { slidedown: { prompts: [{ type: "push", autoPrompt: false }] } },
         });
