@@ -102,7 +102,7 @@ async function main() {
   const other = await family(db, E2E.otherGuardianKey, "e2e-teen-other", { guardianName: "Sam", teenName: "Kai" });
   await asking(db, other, E2E.otherApprovalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");
   await bought(db, other, 999, E2E.tokens.other, E2E.otherFamilyCapture);
-  // Seeded history isn't "just now": the shop throttle counts purchase rows by real creation time (AGENT_GAP_MS).
+  // Seeded history isn't "just now": the shop throttle counts purchase rows by real creation time (hourly limit).
   await db.update(t.purchases).set({ createdAt: new Date(Date.now() - 2 * 3_600_000) });
   await closeDb(db);
 }

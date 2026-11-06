@@ -240,18 +240,17 @@ export async function openAsk(db: Db, familyId: string, purchaseId: string): Pro
 
 const HOUR_MS = 3_600_000;
 export const SHOP_HOURLY_LIMIT = 60;
-export const AGENT_GAP_MS = 5_000;
 export const THROTTLED = "That's a lot of looking. Try again in a bit.";
 
 /**
  * Every search, link and agent run costs real Channel3 (and model) calls and stores purchase rows, so: at most
- * SHOP_HOURLY_LIMIT proposals an hour, and no agent run within AGENT_GAP_MS of the last one. Real time, not demo time.
+ * SHOP_HOURLY_LIMIT proposals an hour (real time, not demo time). Cost is bounded by the daily caps in takeDaily.
+ * ponytail: no per-run gap — it keyed on the newest purchase row, which a demo reset/freshen creates, so it refused
+ * the first agent run of a judge who had just arrived.
  */
-export async function shopThrottle(db: Db, familyId: string, mode: "agent" | "link" | "search", realNow: number = Date.now()): Promise<string | null> {
+export async function shopThrottle(db: Db, familyId: string, _mode: "agent" | "link" | "search", realNow: number = Date.now()): Promise<string | null> {
   const rows = await db.select({ at: t.purchases.createdAt }).from(t.purchases)
-    .where(and(eq(t.purchases.familyId, familyId), gt(t.purchases.createdAt, new Date(realNow - HOUR_MS))))
-    .orderBy(desc(t.purchases.createdAt));
+    .where(and(eq(t.purchases.familyId, familyId), gt(t.purchases.createdAt, new Date(realNow - HOUR_MS))));
   if (rows.length >= SHOP_HOURLY_LIMIT) return THROTTLED;
-  if (mode === "agent" && rows[0] && realNow - rows[0].at.getTime() < AGENT_GAP_MS) return THROTTLED;
   return null;
 }

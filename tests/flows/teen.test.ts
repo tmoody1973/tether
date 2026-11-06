@@ -171,16 +171,14 @@ describe("nudge", () => {
 });
 
 describe("shopThrottle (real time)", () => {
-  it("refuses past 60 proposals an hour, and an agent run within 5s of the last one", async () => {
+  it("refuses past 60 proposals an hour; an agent run right after a new purchase row (e.g. a demo reset) is fine", async () => {
     const s = await seed();
-    const real = Date.now();
-    expect(await shopThrottle(db, s.familyId, "agent", real)).toBeNull();
+    expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBeNull();
     await proposeCarts(deps(), s.familyId, [{ cart: cart(s.tgt, 500) }]);
-    expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBe(THROTTLED);
-    expect(await shopThrottle(db, s.familyId, "search", Date.now())).toBeNull();
-    expect(await shopThrottle(db, s.familyId, "agent", Date.now() + 6_000)).toBeNull();
+    expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBeNull(); // no 5 s gap any more
     await proposeCarts(deps(), s.familyId, Array.from({ length: 59 }, (_, i) => ({ cart: cart(s.tgt, 100 + i) })));
-    expect(await shopThrottle(db, s.familyId, "search", Date.now() + 6_000)).toBe(THROTTLED);
+    expect(await shopThrottle(db, s.familyId, "search", Date.now())).toBe(THROTTLED);
+    expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBe(THROTTLED);
     expect(await shopThrottle(db, s.familyId, "search", Date.now() + 3_700_000)).toBeNull(); // an hour later
   });
 });
