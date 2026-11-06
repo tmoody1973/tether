@@ -2,8 +2,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: () => testDb }));
 let testDb: import("@/db/client").Db;
-vi.mock("@ai-sdk/anthropic", () => ({ createAnthropic: () => () => routeModel }));
+vi.mock("@ai-sdk/anthropic", () => ({ createAnthropic: () => (id: string) => { routeModelIds.push(id); return routeModel; } }));
 let routeModel: unknown;
+const routeModelIds: string[] = [];
 import { MockLanguageModelV4 } from "ai/test";
 import { jsonSchema, tool } from "ai";
 import { createDb, migrateDb, type Db } from "@/db/client";
@@ -318,6 +319,7 @@ describe("POST /api/g/ask", () => {
     const res = await post({ question: "October?" }, signGuardianCookie(famA, new Date()));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ answer: "Total $20.50.", toolsUsed: ["tether_record"] });
+    expect(routeModelIds.at(-1)).toBe("claude-sonnet-5-5"); // the month assistant runs on Sonnet (Tarik's call); Haiku stays elsewhere
     expect(JSON.stringify(model.doGenerateCalls[0].prompt)).toContain("2026-12-20");
     routeModel = new MockLanguageModelV4({ doGenerate: async () => { throw new Error("upstream down"); } });
     const bad = await post({ question: "x" }, signGuardianCookie(famA, new Date()));

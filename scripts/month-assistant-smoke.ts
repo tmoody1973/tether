@@ -20,7 +20,7 @@ async function main() {
     await repo.insertReceipt(db, { purchaseId: p.id, captureId: `cap${n}`, grantId: `g${n}`, grantVersion: Number(n), cartHash: `h${n}`, decision: p.decision, approvalId: null });
   }
   const { answer, toolsUsed } = await askAboutMonth({
-    model: createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })("claude-haiku-5-5"),
+    model: createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })("claude-sonnet-5-5"), // same model as /api/g/ask
     paypalTools: readOnlyPaypalTools({ clientId: process.env.PAYPAL_CLIENT_ID!, clientSecret: process.env.PAYPAL_CLIENT_SECRET!, sandbox: true }),
     db,
     now: new Date(), // a fresh family: its demo clock is real time
