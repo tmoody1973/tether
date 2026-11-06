@@ -13,4 +13,5 @@ export const INVEST_STATUS: Record<Status, string> = {
   rejected: "Not this time",
   cash_held: CASH_HELD_LABEL,
   needs_review: NEEDS_REVIEW_LABEL,
+  expired: "Asked too long ago — she can ask again.",
 };

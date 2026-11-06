@@ -1,10 +1,11 @@
 import { and, eq, gt, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import * as t from "@/db/schema";
-import { getFamily } from "@/db/repo";
+import type { DemoSnapshot } from "@/db/schema";
+import { getFamily, getMerchant } from "@/db/repo";
 import { cartHash } from "@/engine/hash";
 import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { installGrant, withFamilyLock } from "@/flows/grant";
-import { proposePurchase, type Deps } from "@/flows/purchase";
+import { proposePurchase, reprice, type Deps } from "@/flows/purchase";
 import type { DemoKeys } from "@/flows/seed";
 
 const WEEK_MS = 7 * 86_400_000;
@@ -26,7 +27,7 @@ export type ResetResult = { needsPaypal: boolean };
  *   releases and fund proposals created after the seed are deleted.
  * - The seeded rules are re-installed as a new version, the clock goes back to the seeded "now", Zoe's link goes
  *   back to the demo token, her goal and promise to the seeded ones; then the seeded ask and shop suggestion reopen.
- * - A vault Revoke deleted at PayPal can't be re-saved here (that needs Amara's approval at PayPal): `needsPaypal`.
+ * - A vault deleted at PayPal (C1: Revoke no longer deletes the demo's) can't be re-saved here (that needs Amara's approval at PayPal): `needsPaypal`.
  *
  * Refuses for any family that isn't the demo family. With `ifStaleMs` it does nothing (null) unless the last
  * seed/reset is at least that old in real time (R44).
@@ -40,8 +41,11 @@ export async function resetDemo(
   }
   const s = fam.demo;
   const seeded = new Date(s.now);
+  let claimedFrom: Date | null = null; // the claim's previous timestamp, put back if reopening fails (M8)
   const ran = await withFamilyLock(deps, familyId, async (tx) => {
     if (opts.ifStaleMs !== undefined) {
+      const [prev] = await tx.select({ to: t.families.ledgerVoidTo }).from(t.families).where(eq(t.families.id, familyId));
+      claimedFrom = prev?.to ?? null;
       // R44 atomic claim: only when the last seed/reset is older than ifStaleMs in REAL (DB) time. Under the family
       // lock, a second judge entering at the same moment sees the fresh time and skips: one reset, never two.
       const claimed = await tx.update(t.families).set({ ledgerVoidTo: sql`now()` }).where(and(
@@ -79,17 +83,39 @@ export async function resetDemo(
   });
   if (!ran) return null;
 
-  // Reopen what was waiting on Amara. A fresh purchase row: the seeded one may have been approved and paid since.
-  if (s.ask) {
-    const { purchaseId, decision } = await proposePurchase(deps, familyId, s.ask.cart);
-    if (decision.outcome === "REFUSE" && liftableOverage(decision) !== null) {
-      await requestApproval(deps, familyId, "purchase", purchaseId, cartHash(s.ask.cart), s.ask.note);
+  try {
+    await reopen(deps, familyId, s);
+  } catch (err) {
+    if (opts.ifStaleMs !== undefined) {
+      // M8: undo the claim so the very next entry runs the whole reset again instead of waiting six hours.
+      // ponytail: until then rows set aside by the last reset count again; the next entry sets them aside again.
+      console.error("demo reset: reopening the seeded asks failed; the next entry retries", err instanceof Error ? err.message : err);
+      await deps.db.update(t.families).set({ ledgerVoidTo: claimedFrom }).where(eq(t.families.id, familyId));
     }
+    throw err;
   }
-  await requestApproval(deps, familyId, "shop", s.shop.domain, null, s.shop.reason);
 
   const [vault] = await deps.db.select().from(t.vault).where(eq(t.vault.familyId, familyId));
   return { needsPaypal: !vault || vault.deletedAt !== null };
+}
+
+/**
+ * Reopen what was waiting on Amara. A fresh purchase row: the seeded one may have been approved and paid since.
+ * M7: the ask is re-priced at Channel3 first, so approving it on camera doesn't land on "the price changed";
+ * if Channel3 is unavailable the stored cart is used.
+ */
+async function reopen(deps: Deps, familyId: string, s: DemoSnapshot): Promise<void> {
+  if (s.ask) {
+    const merchant = await getMerchant(deps.db, s.ask.cart.merchantId);
+    const fresh = merchant?.channel3WebsiteId
+      ? await reprice(deps.channel3, s.ask.cart, merchant.channel3WebsiteId).catch(() => null) : null;
+    const cart = fresh ?? s.ask.cart;
+    const { purchaseId, decision } = await proposePurchase(deps, familyId, cart);
+    if (decision.outcome === "REFUSE" && liftableOverage(decision) !== null) {
+      await requestApproval(deps, familyId, "purchase", purchaseId, cartHash(cart), s.ask.note);
+    }
+  }
+  await requestApproval(deps, familyId, "shop", s.shop.domain, null, s.shop.reason);
 }
 
 /**

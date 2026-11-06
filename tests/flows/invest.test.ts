@@ -7,6 +7,7 @@ import { alpacaBroker } from "@/adapters/alpaca/broker";
 import type { Grant } from "@/engine/types";
 import { savingsCents } from "@/ledger/ledger";
 import { decideApproval } from "@/flows/approvals";
+import { confirmRelease } from "@/flows/month";
 import { proposeFund, proposeInvestment, resumeInvestment, retryInvestment, settleInvestment, type InvestDeps } from "@/flows/invest";
 
 let db: Db;
@@ -76,6 +77,29 @@ describe("proposeInvestment / settleInvestment", () => {
     expect(r.decision.outcome).toBe("REFUSE");
     expect(r.approvalId).toBeUndefined();
     expect((await row(r.investmentId)).status).toBe("rejected");
+  });
+
+  it("approved before a promotion, settled after: the open release leaves nothing to invest; nothing moves (I1)", async () => {
+    const fam = await seed();
+    const { d, f } = mk();
+    const id = await approvedInvestment(d, fam);
+    await db.insert(t.releases).values({ id: `rel-${fam}`, familyId: fam, savedCents: 10_000, matchCents: 5_000 });
+    expect(await settleInvestment(d, id)).toMatchObject({ status: "rejected", reason: "invest.savings" });
+    expect(f.mock.calls.some(([u]) => String(u).endsWith("/transfers"))).toBe(false);
+    await confirmRelease(d, `rel-${fam}`, fam);
+    expect(await savingsCents(db, fam)).toBe(0);
+  });
+
+  it("confirmRelease never takes savings below 0 and records what it took (I1)", async () => {
+    const fam = await seed();
+    await db.insert(t.releases).values({ id: `rel2-${fam}`, familyId: fam, savedCents: 10_000, matchCents: 5_000 });
+    await repo.appendJournal(db, { familyId: fam, kind: "invest", amountCents: 2_500, at: NOW, ref: "x", note: "older invest" });
+    await confirmRelease(mk().d, `rel2-${fam}`, fam);
+    expect(await savingsCents(db, fam)).toBe(0);
+    const [rel] = await db.select().from(t.releases).where(eq(t.releases.id, `rel2-${fam}`));
+    expect(rel.savedCents).toBe(7_500);
+    const j = (await db.select().from(t.journal).where(eq(t.journal.familyId, fam))).find((x) => x.kind === "release");
+    expect(j?.amountCents).toBe(7_500);
   });
 
   it("order accepted (market closed) -> status queued", async () => {

@@ -122,13 +122,14 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   if ("status" in debited) return debited;
 
   const keepOrderId = (orderId: string) => db.update(t.purchases).set({ paypalOrderId: orderId }).where(eq(t.purchases.id, p.id)).then(() => undefined);
-  const charge = await chargeVaulted(token, fresh, deps.secret, now, deps.paypal, args, keepOrderId)
+  // M1: the slip is checked against the clock read under the debit's lock, not the pre-mint `now`, so its 120 s bite.
+  const charge = await chargeVaulted(token, fresh, deps.secret, debited.at, deps.paypal, args, keepOrderId)
     .catch((e: unknown): ChargeResult => ({ ok: false, outcome: "unknown", error: e instanceof Error ? e.message : "CHARGE_THREW" }));
   return settleCharge(db, p.id, debited.intent, charge, now);
 }
 
 /** Fresh unit prices from Channel3 for every item; null if any item is no longer sold by the shop. */
-async function reprice(c3: Channel3Adapter, cart: Cart, domain: string): Promise<Cart | null> {
+export async function reprice(c3: Channel3Adapter, cart: Cart, domain: string): Promise<Cart | null> {
   const products = await Promise.all(cart.items.map((i) => c3.retrieve(i.sku, [domain])));
   if (products.some((x) => x === null)) return null;
   const items = cart.items.map((i, k) => ({ ...i, unitCents: products[k]!.priceCents }));
@@ -158,12 +159,18 @@ async function gates(db: Db, ctx: Ctx, grant: Grant, cart: Cart): Promise<Stored
  */
 async function debit(
   ctx: Ctx, grant: Grant, cart: Cart, token: AuthToken, args: ChargeArgs,
-): Promise<SettleResult | { intent: ChargeIntent }> {
+): Promise<SettleResult | { intent: ChargeIntent; at: Date }> {
   const { deps, p, now, approval } = ctx;
   return deps.db.transaction(async (tx) => {
     await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, p.familyId)).for("update");
+    const at = await deps.now(p.familyId, tx); // R34: a fresh clock, read on the locked connection
     const cur = await getPurchase(tx, p.id);
     if (cur?.status !== p.status) return { status: cur?.status ?? "refused" }; // another settle got here first
+    if (!verifyToken(token, cart, at, deps.secret, () => false).ok) { // M1: the slip ran out: nothing debited, nothing sent
+      await updatePurchaseStatus(tx, p.id, "refused");
+      await markSettleRefused(tx, p.id, p.decision as StoredDecision, "SLIP_EXPIRED");
+      return { status: "refused" as const, reason: "SLIP_EXPIRED" };
+    }
     const live = await getActiveGrant(tx, p.familyId);
     if (live?.id !== grant.id || live.version !== grant.version) {
       await updatePurchaseStatus(tx, p.id, "refused");
@@ -181,7 +188,7 @@ async function debit(
     const sentAt = new Date(realNow(deps)); // real time: the start of PayPal's request-id window
     await tx.update(t.purchases).set({ status: "paying", charge: intent, chargeError: null, chargeSentAt: sentAt, chargeAttemptedAt: sentAt })
       .where(eq(t.purchases.id, p.id));
-    return { intent };
+    return { intent, at };
   });
 }
 

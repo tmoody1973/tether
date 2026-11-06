@@ -22,7 +22,7 @@ export type MonthResult = Review & { release?: { releaseId: string; savedCents: 
 export async function runMonthReview(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<MonthResult> {
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getActiveGrant(tx, familyId);
-    if (!cur) throw new GrantError("no active grant to review");
+    if (!cur || cur.expiresAt <= now) throw new GrantError("no rules in force to review"); // I2: ended rules never promote
     const weeks = await reviewWeeks(tx, familyId);
     const review = reviewMonth(weeks, cur.level as Level);
     if (review.action !== "PROMOTE") return review;
@@ -52,12 +52,17 @@ export async function confirmRelease(deps: Pick<Deps, "db" | "now">, releaseId: 
     const [won] = await tx.update(t.releases).set({ confirmedAt: now })
       .where(and(eq(t.releases.id, releaseId), isNull(t.releases.confirmedAt))).returning();
     if (!won) return; // already confirmed
-    await appendJournal(tx, { familyId: r.familyId, kind: "release", amountCents: r.savedCents, ref: releaseId, at: now });
+    // I1 belt and braces: never journal more than is saved now, so savings can't go below 0; the release shows that amount.
+    const amountCents = Math.min(r.savedCents, Math.max(0, await savingsCents(tx, r.familyId)));
+    if (amountCents !== r.savedCents) await tx.update(t.releases).set({ savedCents: amountCents }).where(eq(t.releases.id, releaseId));
+    await appendJournal(tx, { familyId: r.familyId, kind: "release", amountCents, ref: releaseId, at: now });
   });
 }
 
 export interface ReviewView {
   teenName: string; level: Level | null; stopped: boolean;
+  /** The shared demo family: Stop keeps its saved PayPal (C1). */
+  demo: boolean;
   /** The latest level change, if any: an engine promotion shows as "moved up, on evidence". */
   latestChange: { fromLevel: number; toLevel: number; by: "engine" | "guardian"; reason: string; at: Date } | null;
   /** The weeks behind the latest promotion, or, otherwise, the weeks counting toward the next review (last 4). */
@@ -85,7 +90,7 @@ export async function monthReviewView(db: Db, familyId: string): Promise<ReviewV
     weeks = (await reviewWeeks(db, familyId)).slice(-4);
   }
   return {
-    teenName: fam.teenName, level, stopped: latest?.status === "revoked",
+    teenName: fam.teenName, level, stopped: latest?.status === "revoked", demo: fam.demo !== null,
     latestChange: change ? { fromLevel: change.fromLevel, toLevel: change.toLevel, by: change.by, reason: change.reason, at: change.at } : null,
     evidence: {
       weeks: weeks.length, kept: weeks.filter(commitmentKept).length,

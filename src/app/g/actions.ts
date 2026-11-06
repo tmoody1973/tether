@@ -143,6 +143,7 @@ export async function revokeAction(): Promise<void> {
   if (!g) redirect("/g");
   const r = await revoke({ ...g.deps, paypal: paypalOrUnavailable() }, g.familyId);
   if (r.error) console.error("revoke: PayPal delete failed", r.error);
-  const how = r.paypalTokenDeleted ? "wallet-removed" : r.reason === "no_vault" ? "no-wallet" : "wallet-kept";
+  const how = r.paypalTokenDeleted ? "wallet-removed"
+    : r.reason === "no_vault" ? "no-wallet" : r.reason === "demo_kept" ? "demo-kept" : "wallet-kept";
   redirect(`/g/review?stopped=${how}`);
 }

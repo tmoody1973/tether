@@ -141,6 +141,7 @@ export function investStatusWords(s: InvestStatus, guardian: string, declined = 
 
     cash_held: `Held as cash in your investing account. ${guardian} can try the order again.`,
     needs_review: NEEDS_REVIEW_LABEL,
+    expired: "Asked too long ago — you can ask again.",
   };
   return words[s];
 }

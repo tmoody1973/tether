@@ -8,7 +8,8 @@ import type { Cart } from "@/engine/types";
 import { signGrant } from "@/flows/grant";
 import { closeWeek } from "@/flows/week";
 import { guardianHome } from "@/flows/home";
-import { decideApproval } from "@/flows/approvals";
+import { decideApproval, expireStale } from "@/flows/approvals";
+import { INVEST_STATUS } from "@/ui/investWords";
 import type { Deps } from "@/flows/purchase";
 import { setGoal, setTeenCommitment, teenGoals } from "@/flows/teenGoals";
 import { shopMap, suggestShop } from "@/flows/teenMap";
@@ -188,6 +189,32 @@ describe("investing from Zoe's side", () => {
     const [a] = await db.select().from(t.approvals).where(eq(t.approvals.familyId, s.familyId));
     await decideApproval(deps(), a.id, "declined", s.familyId);
     expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "rejected", declined: true })]);
+  });
+
+  it("an ask Amara never answered closes honestly when its approval runs out; Zoe can ask again (M3)", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    const [a] = await db.select().from(t.approvals).where(eq(t.approvals.familyId, s.familyId));
+    clock = new Date(a.expiresAt.getTime() + 60_000);
+    await expireStale(deps(), s.familyId);
+    expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "expired" })]);
+    expect(INVEST_STATUS.expired).toBe("Asked too long ago — she can ask again.");
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+  });
+
+  it("an ask a demo reset expired early also closes, even before its own expiry time (M3 after reset)", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    await db.update(t.approvals).set({ expiredAt: clock }).where(eq(t.approvals.familyId, s.familyId)); // what resetDemo does
+    await expireStale(deps(), s.familyId);
+    expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "expired" })]);
+  });
+
+  it("an open release takes its savings off what she can invest (I1)", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    await db.insert(t.releases).values({ id: crypto.randomUUID(), familyId: s.familyId, savedCents: 1000, matchCents: 1000 }); // a promotion's release
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: false, error: "savings", savingsCents: 0 });
+    expect((await proposeInvestment(deps(), s.familyId, { symbol: "VTI", amountCents: 500 }, {})).decision.outcome).toBe("REFUSE");
   });
 
   it("canPropose: Level 3 with rules in force, checked before anything else", async () => {

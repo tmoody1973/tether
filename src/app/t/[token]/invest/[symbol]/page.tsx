@@ -6,6 +6,7 @@ import { now as clockNow } from "@/clock/clock";
 import * as t from "@/db/schema";
 import { compareHeading, compareSentence, marketFromEnv, NotEnoughHistoryError, oneYearLine, type AssetHit, type FiveYear } from "@/adapters/alpaca/data";
 import { fundWords } from "@/ai/fundWords";
+import { takeDaily } from "@/flows/usage";
 import { teenWeek } from "@/flows/teen";
 import { fundStatus, isSymbol } from "@/flows/teenInvest";
 import { FiveYearLine } from "@/ui/FiveYearLine";
@@ -57,7 +58,8 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
     market.changeOver(symbol, 1, asOf).then((c) => oneYearLine(c), () => null),
     // "young": under a year of trading, so there's no longer comparison to draw (R42).
     market.fiveYear(symbol, asOf).catch((e): FiveYear | "young" | null => (e instanceof NotEnoughHistoryError ? "young" : null)),
-    fundWords(explainLlm(), { name: hit.name, symbol: hit.symbol, exchange: hit.exchange, fractionable: hit.fractionable }),
+    fundWords(explainLlm(), { name: hit.name, symbol: hit.symbol, exchange: hit.exchange, fractionable: hit.fractionable },
+      () => takeDaily(db, fam.id, "fund_words")),
     fundStatus(db, fam.id, symbol, now),
   ]);
   const sp = await searchParams;

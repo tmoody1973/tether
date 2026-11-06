@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getPurchase } from "@/db/repo";
@@ -124,12 +124,19 @@ async function decideFund(db: Db, familyId: string, proposalId: string, result: 
   if (result === "approved") await db.insert(t.fundAllowlist).values({ familyId, symbol: prop.symbol }).onConflictDoNothing();
 }
 
-/** Past-expiry approvals keep result=null; their unsettled purchases become `expired`. */
+/** Past-expiry approvals keep result=null; their unsettled purchases and unanswered investments become `expired`. */
 export async function expireStale(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<void> {
   const { db } = deps;
   const now = await deps.now(familyId);
   await db.update(t.approvals).set({ expiredAt: now }).where(and(
     eq(t.approvals.familyId, familyId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), lte(t.approvals.expiresAt, now)));
+  const unanswered = await db.select({ subjectId: t.approvals.subjectId }).from(t.approvals).where(and(
+    eq(t.approvals.familyId, familyId), eq(t.approvals.subject, "investment"), isNull(t.approvals.result),
+    or(lte(t.approvals.expiresAt, now), isNotNull(t.approvals.expiredAt)))); // a reset expires asks early
+  if (unanswered.length > 0) { // M3: never left reading "Waiting for you"
+    await db.update(t.investments).set({ status: "expired" }).where(and(eq(t.investments.familyId, familyId),
+      inArray(t.investments.id, unanswered.map((s) => s.subjectId)), eq(t.investments.status, "proposed")));
+  }
   const stale = await db.select({ subjectId: t.approvals.subjectId }).from(t.approvals).where(and(
     eq(t.approvals.familyId, familyId), eq(t.approvals.subject, "purchase"), lte(t.approvals.expiresAt, now),
     or(isNull(t.approvals.result), eq(t.approvals.result, "approved"))));

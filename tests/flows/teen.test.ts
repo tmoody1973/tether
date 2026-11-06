@@ -8,7 +8,8 @@ import type { Cart } from "@/engine/types";
 import { revoke, signGrant } from "@/flows/grant";
 import { guardianHome } from "@/flows/home";
 import { pendingApprovals } from "@/flows/approvals";
-import { askAmara, buy, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, THROTTLED } from "@/flows/teen";
+import { askAmara, buy, markLevelSeen, nudge, proposeCarts, refusalSentence, shopThrottle, teenWeek, TeenError, THROTTLED } from "@/flows/teen";
+import type { Llm } from "@/ai/llm";
 import type { Deps } from "@/flows/purchase";
 
 let db: Db;
@@ -170,13 +171,36 @@ describe("nudge", () => {
   });
 });
 
+describe("refusal sentence (I4)", () => {
+  it("is written once and stored on the decision; re-rendering asks no model", async () => {
+    const s = await seed();
+    const c = cart(s.tgt, 500);
+    const decision = { outcome: "REFUSE" as const, semanticRules: [], reasons: [{ constraint: "payment.allowed_payees", detail: "not on the list" }] };
+    const p = await repo.insertPurchase(db, { familyId: s.familyId, cart: c, cartHash: cartHash(c), status: "refused", decision });
+    let calls = 0;
+    const llm: Llm = { json: (async () => { calls++; return { sentence: "That shop isn't on your list yet." }; }) as Llm["json"] };
+    const ctx = { teenName: "Zoe", guardianName: "Amara" };
+    const first = await refusalSentence(db, s.familyId, p, llm, ctx);
+    const stored = (await repo.getPurchase(db, p.id))!;
+    expect(stored.decision.explained).toBe(first.sentence);
+    const again = await refusalSentence(db, s.familyId, stored, llm, ctx);
+    expect(calls).toBe(1);
+    expect(again).toMatchObject({ sentence: first.sentence, routes: first.routes });
+  });
+});
+
 describe("shopThrottle (real time)", () => {
-  it("refuses past 60 proposals an hour; an agent run right after a new purchase row (e.g. a demo reset) is fine", async () => {
+  it("refuses past 300 purchase rows an hour (I3); an agent run right after a new purchase row (e.g. a demo reset) is fine", async () => {
     const s = await seed();
     expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBeNull();
     await proposeCarts(deps(), s.familyId, [{ cart: cart(s.tgt, 500) }]);
     expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBeNull(); // no 5 s gap any more
-    await proposeCarts(deps(), s.familyId, Array.from({ length: 59 }, (_, i) => ({ cart: cart(s.tgt, 100 + i) })));
+    const c = cart(s.tgt, 100);
+    const row = { familyId: s.familyId, cart: c, cartHash: cartHash(c), status: "refused" as const, decision: { outcome: "REFUSE" as const, reasons: [], semanticRules: [] } };
+    await db.insert(t.purchases).values(Array.from({ length: 298 }, () => ({ ...row, id: crypto.randomUUID() })));
+    expect(await shopThrottle(db, s.familyId, "search", Date.now())).toBeNull(); // 299: ~50 searches still fit
+    await db.insert(t.purchases).values({ ...row, id: crypto.randomUUID() });
+    expect(THROTTLED).toBe("Lots of looking this hour — try again in a few minutes.");
     expect(await shopThrottle(db, s.familyId, "search", Date.now())).toBe(THROTTLED);
     expect(await shopThrottle(db, s.familyId, "agent", Date.now())).toBe(THROTTLED);
     expect(await shopThrottle(db, s.familyId, "search", Date.now() + 3_700_000)).toBeNull(); // an hour later

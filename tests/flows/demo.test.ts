@@ -4,7 +4,8 @@ import * as repo from "@/db/repo";
 import * as t from "@/db/schema";
 import { now as clockNow } from "@/clock/clock";
 import { advanceDemoClock, advanceTarget } from "@/flows/demo";
-import { signGrant } from "@/flows/grant";
+import { renewGrant, signGrant } from "@/flows/grant";
+import type { Deps } from "@/flows/purchase";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -35,6 +36,23 @@ describe("demo clock (D10)", () => {
 
     const r = await advanceDemoClock(deps(), fam.id, "endOfMonth");
     expect(r.weekKeys).toEqual(["2026-W46", "2026-W47", "2026-W48"]);
+    // I2: the rules ended on 11 Nov, so the skipped weeks save nothing and there is no review on ended rules.
+    expect(r.review).toBeUndefined();
+    expect((await repo.getActiveGrant(db, fam.id))?.level).toBe(1);
+  });
+
+  it("with her rules renewed every week, end of month reviews the month and promotes", async () => {
+    n++;
+    const fam = await repo.insertFamily(db, { name: "F", teenToken: `demo-${n}`, guardianName: "Amara", teenName: "Zoe" });
+    await db.insert(t.merchants).values({ id: `dm${n}`, name: "Gen", domain: `dm${n}.example`, class: "general", opensAtLevel: 1 });
+    await signGrant(deps(), fam.id, { level: 1 });
+    const renew = () => renewGrant(deps() as unknown as Deps, fam.id);
+    for (let i = 0; i < 3; i++) { await advanceDemoClock(deps(), fam.id, "endOfWeek"); await renew(); }
+    await advanceDemoClock(deps(), fam.id, "day");
+    await advanceDemoClock(deps(), fam.id, "day");
+    await renew(); // Wed 25 Nov: in force through month end
+    const r = await advanceDemoClock(deps(), fam.id, "endOfMonth");
+    expect(r.weekKeys).toEqual(["2026-W48"]);
     // Four unspent weeks ≥ the signed floor: kept four running, so she moves up (and a release is opened).
     expect(r.review).toMatchObject({ action: "PROMOTE", streak: 4, release: { savedCents: 8000, matchCents: 8000 } });
     expect((await repo.getActiveGrant(db, fam.id))?.level).toBe(2);

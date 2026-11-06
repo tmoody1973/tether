@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, max } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
-import { getActiveGrant, getLatestGrant, getVault } from "@/db/repo";
+import { getActiveGrant, getFamily, getLatestGrant, getVault } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
 import { grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
 import type { Grant } from "@/engine/types";
@@ -139,14 +139,19 @@ export async function setCommitment(deps: Deps, familyId: string, cents: number)
   });
 }
 
-export type RevokeResult = { revoked: true; paypalTokenDeleted: boolean; error?: string; reason?: "no_vault" };
+export type RevokeResult = { revoked: true; paypalTokenDeleted: boolean; error?: string; reason?: "no_vault" | "demo_kept" };
 
-/** Fail closed: the local revoke is committed first and stands even if PayPal's delete fails. */
+/**
+ * Fail closed: the local revoke is committed first and stands even if PayPal's delete fails.
+ * The shared demo family keeps its saved PayPal (owner decision, final review C1): deleting it would break the demo
+ * for every judge after this one, and re-saving needs Amara's approval at PayPal. Real families delete as always.
+ */
 export async function revoke(deps: Pick<Deps, "db" | "now" | "paypal">, familyId: string): Promise<RevokeResult> {
   await withFamilyLock(deps, familyId, (tx) =>
     tx.update(t.grants).set({ status: "revoked" }).where(and(eq(t.grants.familyId, familyId), eq(t.grants.status, "active"))));
   const vault = await getVault(deps.db, familyId);
   if (!vault) return { revoked: true, paypalTokenDeleted: false, reason: "no_vault" };
+  if ((await getFamily(deps.db, familyId))?.demo) return { revoked: true, paypalTokenDeleted: false, reason: "demo_kept" };
   try {
     await deletePaymentToken(deps.paypal, vault.paymentTokenId);
   } catch (e) {

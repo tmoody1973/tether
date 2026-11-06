@@ -181,6 +181,30 @@ describe("week close and commitment", () => {
     expect((await closeWeek(deps(), familyId)).closed).toBe(false);
   });
 
+  it("weeks after the rules ended save nothing, keep nothing and promote nothing (I2)", async () => {
+    const { familyId } = await seed("2026-11-04T12:00:00Z"); // rules signed W45, end Mon 9 Nov
+    nowMs = new Date("2026-11-10T09:00:00Z").getTime();
+    await closeWeek(deps(), familyId); // W45: in force, $20 saved
+    expect(await savingsCents(db, familyId)).toBe(2000);
+    nowMs = new Date("2026-11-30T09:00:00Z").getTime(); // three weeks past the end
+    expect((await closeWeek(deps(), familyId)).weekKeys).toEqual(["2026-W46", "2026-W47", "2026-W48"]);
+    expect(await savingsCents(db, familyId)).toBe(2000);
+    const ws = await weekRecords(db, familyId);
+    expect(ws.slice(1).map((w) => w.allowanceCents)).toEqual([0, 0, 0]);
+    expect(ws.slice(1).some(commitmentKept)).toBe(false); // streak 0
+    await expect(runMonthReview(deps(), familyId)).rejects.toBeInstanceOf(GrantError);
+    expect(await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId))).toHaveLength(0);
+  });
+
+  it("a week under stopped rules saves nothing (I2)", async () => {
+    const { familyId } = await seed("2026-11-04T12:00:00Z");
+    await revoke(deps(), familyId);
+    nowMs = new Date("2026-11-10T09:00:00Z").getTime();
+    await closeWeek(deps(), familyId);
+    expect(await savingsCents(db, familyId)).toBe(0);
+    expect((await weekRecords(db, familyId))[0]).toMatchObject({ allowanceCents: 0 });
+  });
+
   it("closeWeek is idempotent", async () => {
     const { familyId } = await seed("2026-11-10T09:00:00Z"); // Tue of W46 -> closes W45
     await repo.appendJournal(db, { familyId, kind: "spend", amountCents: 500, at: new Date("2026-11-05T10:00:00Z") });
@@ -324,6 +348,19 @@ describe("grant management", () => {
     await signGrant(deps(), familyId, { level: 1, reason: "rough month" });
     const lc = await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId));
     expect(lc.map((c) => [c.fromLevel, c.toLevel])).toEqual(expect.arrayContaining([[1, 2], [2, 1]]));
+  });
+
+  it("demo revoke keeps the shared vault and makes no PayPal delete call; a real family still deletes (C1)", async () => {
+    const demo = await seed();
+    await db.update(t.families).set({ demo: {} as t.DemoSnapshot }).where(eq(t.families.id, demo.familyId));
+    deleted = [];
+    expect(await revoke(deps(), demo.familyId)).toEqual({ revoked: true, paypalTokenDeleted: false, reason: "demo_kept" });
+    expect(deleted).toEqual([]);
+    expect((await repo.getVault(db, demo.familyId))?.deletedAt).toBeNull();
+    expect(await repo.getActiveGrant(db, demo.familyId)).toBeNull(); // the rules still stop
+    const real = await seed();
+    expect(await revoke(deps(), real.familyId)).toEqual({ revoked: true, paypalTokenDeleted: true });
+    expect(deleted).toHaveLength(1);
   });
 
   it("revoke keeps local revoke when PayPal delete fails", async () => {

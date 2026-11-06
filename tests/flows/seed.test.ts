@@ -21,7 +21,7 @@ import { confirmRelease } from "@/flows/month";
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
 
-// Fake Channel3: cheap things at Target / Best Buy, a few over-budget ones, and a goal. Prices never change.
+// Fake Channel3: cheap things at Target / Best Buy, a few over-budget ones, and a goal. Prices change only via `bump`.
 const catalog: Product[] = [
   ...["Spiral notebook", "Gel pens", "Sticky notes", "Charger cable", "Hair ties", "Highlighters"].map((title, i) =>
     ({ id: `small-${i}`, title, priceCents: 350 + i * 100, domain: i % 2 ? "bestbuy.com" : "target.com", available: true })),
@@ -31,11 +31,16 @@ const catalog: Product[] = [
 const channel3: Channel3Adapter = {
   search: async (q) => catalog.filter((p) =>
     q === "wireless headphones" ? p.id.startsWith("goal") : q === "bluetooth speaker" ? p.id.startsWith("over") : p.id.startsWith("small")),
-  retrieve: async (id) => catalog.find((p) => p.id === id) ?? null,
+  retrieve: async (id) => {
+    const p = catalog.find((x) => x.id === id);
+    if (p && id.startsWith("over") && bump === "down") throw new Error("Channel3 down");
+    return p && id.startsWith("over") && typeof bump === "number" ? { ...p, priceCents: p.priceCents + bump } : p ?? null;
+  },
   lookup: async () => { throw new Error("unused"); },
   websites: async () => [],
 };
 
+let bump: number | "down" | null = null; // M7: the over-budget product's price moves, or Channel3 is down for it
 let cap = 0;
 const paypal: PaypalHttp = {
   async request<T>(method: string) {
@@ -154,9 +159,39 @@ describe("resetDemo (Task 19, R43)", () => {
     expect((await advanceDemoClock(d(), fam, "endOfMonth")).review?.action).toBe("PROMOTE");
   });
 
-  it("reset with a deleted vault shows the save-again message", async () => {
+  it("Stop on the demo keeps its saved PayPal, so a reset needs no re-save (C1)", async () => {
     const { r, keys } = await seeded();
-    expect((await revoke(d(), r.familyId)).paypalTokenDeleted).toBe(true);
+    expect(await revoke(d(), r.familyId)).toEqual({ revoked: true, paypalTokenDeleted: false, reason: "demo_kept" });
+    expect(await resetDemo(d(), r.familyId, keys)).toEqual({ needsPaypal: false });
+  });
+
+  it("reset re-prices the seeded ask, so approving it pays instead of hitting a price change (M7)", async () => {
+    const { r, keys } = await seeded();
+    bump = 37;
+    try {
+      await resetDemo(d(), r.familyId, keys);
+      const ask = (await openApprovals(r.familyId)).find((a) => a.subject === "purchase")!;
+      const [p] = await db.select().from(t.purchases).where(eq(t.purchases.id, ask.subjectId));
+      expect(p.cart.totalCents).toBe(catalog.find((x) => x.id === p.cart.items[0].sku)!.priceCents + 37);
+      expect(await approveAndSettle(d(), r.familyId, ask.id)).toBe("paid");
+    } finally { bump = null; }
+  });
+
+  it("reset keeps the stored cart when Channel3 is down (M7)", async () => {
+    const { r, keys } = await seeded();
+    const stored = (await getFamily(db, r.familyId))!.demo!.ask!.cart;
+    bump = "down";
+    try {
+      await resetDemo(d(), r.familyId, keys);
+    } finally { bump = null; }
+    const ask = (await openApprovals(r.familyId)).find((a) => a.subject === "purchase")!;
+    const [p] = await db.select().from(t.purchases).where(eq(t.purchases.id, ask.subjectId));
+    expect(p.cart).toEqual(stored);
+  });
+
+  it("reset with a genuinely deleted vault shows the save-again message", async () => {
+    const { r, keys } = await seeded();
+    await db.update(t.vault).set({ deletedAt: new Date() }).where(eq(t.vault.familyId, r.familyId)); // e.g. removed in PayPal
     expect(await resetDemo(d(), r.familyId, keys)).toEqual({ needsPaypal: true });
     const h = await guardianHome(db, r.familyId, await clockNow(db, r.familyId));
     expect(h.level).toBe(2);
@@ -227,6 +262,18 @@ describe("freshenDemoIfStale (R44)", () => {
     const results = await Promise.all([freshenDemoIfStale(d(), keys), freshenDemoIfStale(d(), keys)]);
     expect(results.filter(Boolean)).toHaveLength(1);
     expect(await version(r.familyId)).toBe(v + 1);
+  });
+
+  it("a freshen that fails while reopening the asks undoes its claim, so the next entry retries (M8)", async () => {
+    const { r, keys } = await seeded();
+    await lastResetAgo(r.familyId, keys, DEMO_STALE_MS + 60_000);
+    const before = (await getFamily(db, r.familyId))!.ledgerVoidTo;
+    // The clock read outside the lock (proposePurchase, requestApproval) fails: the claim and state reset already ran.
+    const broken: ApproveDeps = { ...d(), now: async (f, conn) => { if (!conn) throw new Error("clock down"); return clockFor(db)(f, conn); } };
+    await expect(freshenDemoIfStale(broken, keys)).rejects.toThrow("clock down");
+    expect((await getFamily(db, r.familyId))!.ledgerVoidTo).toEqual(before);
+    expect(await freshenDemoIfStale(d(), keys)).toBe(true);
+    expect((await openApprovals(r.familyId)).map((a) => a.subject).sort()).toEqual(["purchase", "shop"]);
   });
 
   it("only the demo keys can freshen", async () => {

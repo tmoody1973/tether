@@ -93,7 +93,7 @@ function Consequence({ v }: { v: RequestView }) {
     return (
       <section className="g-card" aria-label="What this does to her savings">
         <p style={{ color: "var(--ink-2)" }}>
-          She has <b><Money cents={v.investment.savingsCents} /></b> saved. This moves <b><Money cents={v.investment.amountCents} /></b> into
+          She has <b><Money cents={v.investment.savingsCents} /></b> available to invest. This moves <b><Money cents={v.investment.amountCents} /></b> into
           her investing account. Once it&apos;s there it belongs to her and can&apos;t be taken back.
         </p>
         <FundFactsLine symbol={v.investment.symbol} />

@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { explainRefusal } from "@/ai/explain";
 import { getDb } from "@/db/client";
-import { teenPurchase, type TeenWeek } from "@/flows/teen";
+import { refusalSentence, teenPurchase, type TeenWeek } from "@/flows/teen";
 import { formatCents } from "@/ui/grantWords";
 import { Chip } from "@/ui/teen";
 import { daysToReset, levelProgress, sheetNumbers, waitWords } from "@/ui/teenWords";
@@ -12,11 +11,12 @@ import { explainLlm } from "../teenDeps";
  * then exactly two ways forward. Sequential, not a grid. Only for a refused cart of this family.
  */
 export async function RefusalSheet({ token, familyId, purchaseId, w }: { token: string; familyId: string; purchaseId: string; w: TeenWeek }) {
-  const p = await teenPurchase(await getDb(), familyId, purchaseId);
+  const db = await getDb();
+  const p = await teenPurchase(db, familyId, purchaseId);
   if (!p || p.decision.outcome !== "REFUSE") return null;
   const g = w.guardianName;
   const budget = p.decision.reasons.some((r) => r.constraint === "payment.budget");
-  const { sentence, routes } = await explainRefusal(explainLlm(), p.decision, { teenName: w.teenName, guardianName: g, goalTitle: w.goal?.title });
+  const { sentence, routes } = await refusalSentence(db, familyId, p, explainLlm(), { teenName: w.teenName, guardianName: g, goalTitle: w.goal?.title });
   const wait = budget ? waitWords(daysToReset(w.now, w.endsAt)) : routes[1];
   return (
     <div className="t-scrim">

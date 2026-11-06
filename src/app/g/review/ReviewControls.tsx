@@ -28,7 +28,7 @@ export function LevelOverride({ teenName, level }: { teenName: string; level: Le
 }
 
 /** Stop Zoe's rules, with the same plain confirm step as signing. */
-export function StopRules({ teenName }: { teenName: string }) {
+export function StopRules({ teenName, demo }: { teenName: string; demo: boolean }) {
   const [confirming, setConfirming] = useState(false);
   if (!confirming) {
     return (
@@ -40,7 +40,9 @@ export function StopRules({ teenName }: { teenName: string }) {
   return (
     <form action={revokeAction} role="group" aria-label="Confirm stop">
       <p style={{ marginBottom: 10, fontWeight: 600 }}>
-        Stop {teenName}&apos;s rules now? She can&apos;t spend anything until you sign new ones, and Tether asks PayPal to remove your saved wallet.
+        Stop {teenName}&apos;s rules now? She can&apos;t spend anything until you sign new ones{demo
+          ? ". Demo: your saved PayPal is kept so the next person can try it."
+          : ", and Tether asks PayPal to remove your saved wallet."}
       </p>
       <div className="g-btnrow">
         <button type="submit" className="g-btn" autoFocus>Yes, stop them</button>

@@ -30,7 +30,7 @@ type Search = Record<string, string | string[] | undefined>;
 type Flash = { text: string; warn?: boolean; connectPaypal?: boolean };
 
 const paypalRemoved = (guardian: string) =>
-  `Revoke removed ${guardian}'s saved PayPal. Save it again with the sandbox login in the README — it takes a minute.`;
+  `${guardian}'s saved PayPal was removed at PayPal. Save it again with the sandbox login in the README — it takes a minute.`;
 
 function flash(sp: Search, names: { teen: string; guardian: string }, paid: Parameters<typeof approveWords>[2]): Flash | null {
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);

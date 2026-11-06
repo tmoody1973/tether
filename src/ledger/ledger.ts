@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import type { WeekRecord } from "@/engine/ladder";
@@ -44,6 +44,18 @@ const spentInWeek = (rows: Entry[], key: string): Cents =>
 
 export async function savingsCents(db: Db, familyId: string): Promise<Cents> {
   return sum(await entries(db, familyId), SAVINGS_SIGN);
+}
+
+/**
+ * What an investment may use (final review I1): savings minus what an open (unconfirmed) release already promises
+ * Amara will send, never below 0. Without it Zoe could invest money that is about to leave as the release.
+ */
+export async function availableSavingsCents(db: Db, familyId: string): Promise<Cents> {
+  const [saved, open] = await Promise.all([
+    savingsCents(db, familyId),
+    db.select({ c: t.releases.savedCents }).from(t.releases).where(and(eq(t.releases.familyId, familyId), isNull(t.releases.confirmedAt))),
+  ]);
+  return Math.max(0, saved - open.reduce((s, r) => s + r.c, 0));
 }
 
 /** Shops she has bought from: paid purchases whose spend counts (a demo reset brings "first time here" back). */

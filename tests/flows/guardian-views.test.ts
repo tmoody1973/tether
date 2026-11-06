@@ -5,7 +5,8 @@ import * as t from "@/db/schema";
 import { now as clockNow } from "@/clock/clock";
 import { decideApproval, requestApproval } from "@/flows/approvals";
 import { advanceDemoClock } from "@/flows/demo";
-import { revoke, signGrant } from "@/flows/grant";
+import { renewGrant, revoke, signGrant } from "@/flows/grant";
+import type { Deps } from "@/flows/purchase";
 import { monthReviewView } from "@/flows/month";
 import { guardianRecord } from "@/flows/record";
 import { requestView } from "@/flows/request";
@@ -79,6 +80,12 @@ describe("guardianRecord", () => {
 describe("monthReviewView", () => {
   it("shows the evidence behind a promotion and the open release; a stop shows as stopped", async () => {
     const a = await family();
+    // I2: a month only reviews on rules in force, so Amara renews them each week, as a real family would.
+    const renew = () => renewGrant(deps() as unknown as Deps, a.familyId);
+    for (let i = 0; i < 3; i++) { await advanceDemoClock(deps(), a.familyId, "endOfWeek"); await renew(); }
+    await advanceDemoClock(deps(), a.familyId, "day");
+    await advanceDemoClock(deps(), a.familyId, "day");
+    await renew();
     await advanceDemoClock(deps(), a.familyId, "endOfMonth");
     const v = await monthReviewView(db, a.familyId);
     expect(v).toMatchObject({

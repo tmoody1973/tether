@@ -127,6 +127,18 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 // ---- tests ----------------------------------------------------------------
 
 describe("purchase flow", () => {
+  it("a slip that runs out before the charge is refused: nothing debited, nothing sent (M1)", async () => {
+    await seed(base);
+    const { d } = deps();
+    // The clock read under the debit's lock is 3 minutes on from the one the slip was minted with (TTL 120 s).
+    const late: Deps = { ...d, now: async (_f, conn) => new Date(NOW.getTime() + (conn ? 180_000 : 0)) };
+    const { purchaseId } = await proposePurchase(d, familyId, cartOf("a", 600));
+    expect(await settlePurchase(late, purchaseId)).toEqual({ status: "refused", reason: "SLIP_EXPIRED" });
+    expect(pp.orders).toHaveLength(0);
+    expect(await journalKinds()).toEqual([]);
+    expect(await statusOf(purchaseId)).toBe("refused");
+  });
+
   it("allowed cart is charged once and receipted with grant version and cart hash", async () => {
     await seed(base);
     const { d } = deps();
@@ -321,7 +333,7 @@ describe("purchase flow", () => {
     vi.stubEnv("PAYPAL_CLIENT_ID", "cid");
     vi.stubEnv("PAYPAL_CLIENT_SECRET", "csecret");
     vi.stubEnv("PAYPAL_WEBHOOK_ID", "WH1");
-    vi.stubEnv("PAYPAL_BASE_URL", "https://api.sandbox.paypal.test");
+    vi.stubEnv("PAYPAL_BASE_URL", "https://api-m.sandbox.paypal.com"); // fetch is stubbed: nothing leaves the machine
     const f = vi.fn(async (url: string | URL | Request) => {
       const body = String(url).endsWith("/v1/oauth2/token")
         ? { access_token: "AT", expires_in: 3600 } : { verification_status: "FAILURE" };
@@ -335,5 +347,17 @@ describe("purchase flow", () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     expect(f.mock.calls.some(([u]) => String(u).endsWith("/v1/notifications/verify-webhook-signature"))).toBe(true);
+  });
+
+  it("webhook route refuses a non-sandbox PayPal URL before any call (M2)", async () => {
+    vi.stubEnv("PAYPAL_CLIENT_ID", "cid");
+    vi.stubEnv("PAYPAL_CLIENT_SECRET", "csecret");
+    vi.stubEnv("PAYPAL_WEBHOOK_ID", "WH1");
+    vi.stubEnv("PAYPAL_BASE_URL", "https://api-m.paypal.com");
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    const res = await POST(new Request("http://localhost/api/paypal/webhook", { method: "POST", body: "{}" }));
+    expect(res.status).toBe(500);
+    expect(f).not.toHaveBeenCalled();
   });
 });

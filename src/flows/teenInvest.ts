@@ -3,7 +3,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant } from "@/db/repo";
-import { savingsCents } from "@/ledger/ledger";
+import { availableSavingsCents } from "@/ledger/ledger";
 import { MIN_INVEST_CENTS } from "@/engine/invest";
 import { proposeFund, proposeInvestment } from "@/flows/invest";
 import type { Deps } from "@/flows/purchase";
@@ -91,7 +91,7 @@ export async function proposeFromTeen(
   const words = Object.fromEntries((Object.keys(QUESTIONS) as (keyof Answers)[]).map((k) => [QUESTIONS[k], (answers[k] ?? "").trim()]));
   if (Object.values(words).some((a) => a.length < ANSWER_MIN || a.length > ANSWER_MAX)) return { ok: false, error: "answers" };
   if (!Number.isInteger(amountCents) || amountCents < MIN_INVEST_CENTS) return { ok: false, error: "amount" };
-  const saved = await savingsCents(deps.db, familyId);
+  const saved = await availableSavingsCents(deps.db, familyId);
   if (amountCents > saved) return { ok: false, error: "savings", savingsCents: saved };
 
   const status = await fundStatus(deps.db, familyId, symbol, now);

@@ -2,7 +2,7 @@ import { and, eq, gt, inArray, isNull, isNotNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { appendJournal, consumeToken, getActiveGrant } from "@/db/repo";
-import { savingsCents } from "@/ledger/ledger";
+import { availableSavingsCents } from "@/ledger/ledger";
 import { decideInvestment, investReceiptNote, type InvestProposal } from "@/engine/invest";
 import { cartHash } from "@/engine/hash";
 import { mintToken } from "@/engine/token";
@@ -44,7 +44,7 @@ export async function proposeInvestment(
   const symbol = normSymbol(p.symbol);
   const grant = await getActiveGrant(db, familyId);
   const decision = grant
-    ? decideInvestment(await withAllowlist(db, grant.body), { symbol, amountCents: p.amountCents }, await savingsCents(db, familyId))
+    ? decideInvestment(await withAllowlist(db, grant.body), { symbol, amountCents: p.amountCents }, await availableSavingsCents(db, familyId))
     : NO_GRANT;
   const investmentId = crypto.randomUUID();
   await db.insert(t.investments).values({
@@ -148,7 +148,7 @@ async function debit(deps: InvestDeps, inv: Inv, accountId: string, now: Date): 
     if (cur?.status !== "approved") return { status: cur?.status ?? "rejected" };
     const grant = await getActiveGrant(tx, inv.familyId);
     const d = grant
-      ? decideInvestment(await withAllowlist(tx, grant.body), { symbol: inv.symbol, amountCents: inv.amountCents }, await savingsCents(tx, inv.familyId))
+      ? decideInvestment(await withAllowlist(tx, grant.body), { symbol: inv.symbol, amountCents: inv.amountCents }, await availableSavingsCents(tx, inv.familyId))
       : NO_GRANT;
     if (!grant || d.outcome === "REFUSE") {
       await patch(tx, inv.id, { status: "rejected", error: d.reasons[0]?.constraint ?? "REFUSED" });
@@ -284,7 +284,8 @@ export async function retryInvestment(deps: InvestDeps, investmentId: string): P
       const prior = inv.retryCount > 0 ? await d.alpaca.findOrderByClientId(acct, `${inv.id}:retry:${inv.retryCount}`) : null;
       if (prior && prior.orderId !== inv.orderId) return await applyOrder(d, inv, prior.orderId, prior.status);
       const n = inv.retryCount + 1;
-      await patch(tx, inv.id, { retryCount: n }); // persisted BEFORE the POST so a lost response is findable
+      await patch(tx, inv.id, { retryCount: n }); // commits with the transaction, i.e. after the POST, not before it.
+      // A lost response is caught below, so the count still commits and the next retry adopts the order under this id.
       const o = await d.alpaca.placeNotionalOrder(acct, inv.symbol, inv.amountCents, `${inv.id}:retry:${n}`);
       return await applyOrder(d, inv, o.orderId, o.status);
     } catch (e) {
