@@ -9,11 +9,17 @@ test.skip(!process.env.LIVE_BASE_URL, "LIVE_BASE_URL is not set; live specs run 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
 
+/** Demo controls fold on Home and keep their open state across a reset; clicking the summary blindly can close them. */
+async function openDemoControls(page: Page) {
+  const details = page.locator("details", { has: page.getByText("Demo controls") });
+  if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) await page.getByText("Demo controls").click();
+}
+
 async function resetDemo(page: Page) {
   await page.goto("/");
   await page.getByRole("link", { name: "Open Amara's view" }).click();
   await expect(page).toHaveURL(/\/g$/);
-  await page.getByText("Demo controls").click(); // folded on Home
+  await openDemoControls(page);
   await page.getByRole("button", { name: "Reset demo" }).click();
   await page.getByRole("button", { name: "Yes, reset the demo" }).click();
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
@@ -55,7 +61,7 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
 
   // End of month, then Zoe is at Level 3 with rules in force (the demo family is seeded at Level 2). The month end may
   // promote her itself and may leave her rules ended, so this asserts the end state, not which buttons got her there.
-  await page.getByText("Demo controls").click();
+  await openDemoControls(page);
   await page.getByRole("button", { name: "Advance to end of month" }).click();
   // The action's visible result: Home's "clock moved" flash, or Activity's "check-in ran" after a promotion.
   await expect(page.getByRole("status").first())
@@ -82,6 +88,13 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
   // End state: Level 3, rules in force.
   await expect(page.locator(".g-section__head .g-chip", { hasText: /^Level \d$/ })).toHaveText("Level 3");
   await expect(page.getByText(/^In force until /)).toBeVisible();
+
+  // The promotion released her savings to her (decision 007), so nothing is left to invest yet. Close her first Level 3
+  // week: what she didn't spend becomes fresh savings, and that is what she invests.
+  await page.goto("/g");
+  await openDemoControls(page);
+  await page.getByRole("button", { name: "Advance to end of week" }).click();
+  await expect(page.getByRole("status").first()).toContainText(/Demo clock moved forward/, { timeout: 60_000 });
 
   // Zoe proposes $5 in VTI (already on Amara's fund list in the seeded grant).
   await page.goto("/");
