@@ -57,9 +57,12 @@ export async function requestApproval(
   return { approvalId: raced.id };
 }
 
-export async function decideApproval(deps: Pick<Deps, "db" | "now">, approvalId: string, result: "approved" | "declined"): Promise<void> {
+/** `familyId`, when given (every guardian surface gives it), must own the approval: another family's id is "unknown". */
+export async function decideApproval(
+  deps: Pick<Deps, "db" | "now">, approvalId: string, result: "approved" | "declined", familyId?: string,
+): Promise<{ subject: Subject; subjectId: string }> {
   const [a] = await deps.db.select().from(t.approvals).where(eq(t.approvals.id, approvalId));
-  if (!a) throw new ApprovalError(`unknown approval ${approvalId}`);
+  if (!a || (familyId !== undefined && a.familyId !== familyId)) throw new ApprovalError(`unknown approval ${approvalId}`);
   // One transaction under the family-row lock (same lock as settlePurchase); any throw rolls everything back.
   await deps.db.transaction(async (tx) => {
     await tx.select({ id: t.families.id }).from(t.families).where(eq(t.families.id, a.familyId)).for("update");
@@ -73,6 +76,7 @@ export async function decideApproval(deps: Pick<Deps, "db" | "now">, approvalId:
     else if (a.subject === "investment") await decideInvestmentRow(tx, a.subjectId, result);
     else if (a.subject === "fund") await decideFund(tx, a.familyId, a.subjectId, result);
   });
+  return { subject: a.subject, subjectId: a.subjectId };
 }
 
 async function decidePurchase(db: Db, purchaseId: string, result: "approved" | "declined") {

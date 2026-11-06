@@ -1,6 +1,8 @@
 export interface PaypalConfig { baseUrl: string; clientId: string; secret: string }
 
 export interface PaypalHttp {
+  /** false only for the stand-in used when PayPal isn't configured: flows refuse before debiting anything. */
+  configured?: boolean;
   request<T = unknown>(
     method: "GET" | "POST" | "DELETE",
     path: string,
@@ -18,8 +20,10 @@ export class PaypalError extends Error {
     readonly paypalName: string,
     message: string,
     readonly debugId?: string,
+    /** PayPal's `details[0].issue`, e.g. INSTRUMENT_DECLINED or ORDER_ALREADY_CAPTURED. */
+    readonly issue?: string,
   ) {
-    super(`PayPal ${status} ${paypalName}: ${message}${debugId ? ` (debug_id ${debugId})` : ""}`);
+    super(`PayPal ${status} ${paypalName}${issue ? `/${issue}` : ""}: ${message}${debugId ? ` (debug_id ${debugId})` : ""}`);
     this.name = "PaypalError";
   }
 }
@@ -38,8 +42,11 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
         try { data = JSON.parse(text); } catch { data = undefined; }
       }
       if (!res.ok) {
-        const e = (data ?? {}) as { name?: string; message?: string; debug_id?: string; error?: string; error_description?: string };
-        throw new PaypalError(res.status, e.name ?? e.error ?? "HTTP_ERROR", e.message ?? e.error_description ?? res.statusText ?? "request failed", e.debug_id);
+        const e = (data ?? {}) as {
+          name?: string; message?: string; debug_id?: string; error?: string; error_description?: string; details?: { issue?: unknown }[];
+        };
+        const issue = typeof e.details?.[0]?.issue === "string" ? e.details[0].issue : undefined;
+        throw new PaypalError(res.status, e.name ?? e.error ?? "HTTP_ERROR", e.message ?? e.error_description ?? res.statusText ?? "request failed", e.debug_id, issue);
       }
       return { status: res.status, headers: res.headers, data };
     } catch (err) {
@@ -82,11 +89,21 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
 
 const SANDBOX_HOST = "api-m.sandbox.paypal.com";
 
-/** PayPal client from env. Refuses anything but the sandbox: this build never touches real money. */
-export function paypalFromEnv(): PaypalHttp {
-  const { PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: secret, PAYPAL_BASE_URL } = process.env;
+/** The e2e suite's local fakes: only with TETHER_E2E=1 (set by playwright.config only), only outside production. */
+export function isE2eLocal(url: URL, env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.TETHER_E2E === "1" && env.NODE_ENV !== "production" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+}
+
+/**
+ * PayPal client from env. Refuses anything but the sandbox over https: this build never touches real money.
+ * The one exception is the e2e suite's local fake PayPal (see isE2eLocal), which can't move money either.
+ */
+export function paypalFromEnv(env: NodeJS.ProcessEnv = process.env): PaypalHttp {
+  const { PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: secret, PAYPAL_BASE_URL } = env;
   if (!clientId || !secret) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set");
   const baseUrl = PAYPAL_BASE_URL || `https://${SANDBOX_HOST}`;
-  if (new URL(baseUrl).hostname !== SANDBOX_HOST) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
+  const url = new URL(baseUrl);
+  const sandbox = url.protocol === "https:" && url.hostname === SANDBOX_HOST;
+  if (!sandbox && !isE2eLocal(url, env)) throw new Error("PAYPAL_BASE_URL must be the PayPal sandbox");
   return paypalHttp({ baseUrl, clientId, secret });
 }

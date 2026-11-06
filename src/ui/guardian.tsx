@@ -19,11 +19,13 @@ const NAV = [
   { key: "home", href: "/g", label: "Zoe" },
   { key: "grant", href: "/g/grant", label: "Grant" },
   { key: "record", href: "/g/record", label: "Record" },
+  { key: "review", href: "/g/review", label: "Review" },
+  { key: "invest", href: "/g/invest", label: "Investing" },
 ] as const;
 
 /** Sidebar + content at 1280; a top bar at 390. Rendered only for a signed-in guardian. */
 export function GuardianShell({ active, teenName, side, children }: {
-  active: (typeof NAV)[number]["key"]; teenName: string; side?: ReactNode; children: ReactNode;
+  active: (typeof NAV)[number]["key"] | null; teenName: string; side?: ReactNode; children: ReactNode;
 }) {
   return (
     <div className="g-app">

@@ -312,6 +312,20 @@ describe("grant management", () => {
     expect(decision.outcome).toBe("REFUSE");
   });
 
+  it("after a revoke, signing again keeps her level and settings; a level change still needs a reason", async () => {
+    const { familyId } = await seed();
+    await signGrant(deps(), familyId, { level: 2, reason: "ready", commitmentFloorPct: 25, matchPct: 50 });
+    await revoke(deps(), familyId);
+    expect(await repo.getActiveGrant(db, familyId)).toBeNull();
+    expect((await repo.getLatestGrant(db, familyId))?.level).toBe(2);
+    await expect(signGrant(deps(), familyId, { level: 1 })).rejects.toBeInstanceOf(GrantError); // not a silent drop to L1
+    await signGrant(deps(), familyId, { level: 2 });
+    expect((await active(familyId)).body).toMatchObject({ level: 2, commitmentFloorPct: 25, matchPct: 50 });
+    await signGrant(deps(), familyId, { level: 1, reason: "rough month" });
+    const lc = await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId));
+    expect(lc.map((c) => [c.fromLevel, c.toLevel])).toEqual(expect.arrayContaining([[1, 2], [2, 1]]));
+  });
+
   it("revoke keeps local revoke when PayPal delete fails", async () => {
     const { familyId } = await seed();
     failDelete = true;

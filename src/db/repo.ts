@@ -44,6 +44,11 @@ export async function getActiveGrant(db: Db, familyId: string): Promise<GrantRow
   );
 }
 
+/** The newest grant whatever its status: after a revoke there is no active grant, but her level is still this one's. */
+export async function getLatestGrant(db: Db, familyId: string): Promise<GrantRow | null> {
+  return one(await db.select().from(t.grants).where(eq(t.grants.familyId, familyId)).orderBy(desc(t.grants.version)).limit(1));
+}
+
 export async function insertGrant(db: Db, v: Omit<typeof t.grants.$inferInsert, "id"> & { id?: string }): Promise<GrantRow> {
   const [row] = await db.insert(t.grants).values({ ...v, id: v.id ?? id() }).returning();
   return plain(row);
@@ -58,9 +63,9 @@ export async function updatePurchaseStatus(db: Db, purchaseId: string, status: P
   return one(await db.update(t.purchases).set({ status }).where(eq(t.purchases.id, purchaseId)).returning());
 }
 
-/** Atomic: true if this call recorded the token, false if it was already consumed. */
-export async function consumeToken(db: Db, tokenId: string): Promise<boolean> {
-  const rows = await db.insert(t.consumedTokens).values({ tokenId }).onConflictDoNothing().returning();
+/** Atomic: true if this call recorded the token, false if it was already consumed. `purchaseId` ties it to a family (R35). */
+export async function consumeToken(db: Db, tokenId: string, purchaseId: string | null = null): Promise<boolean> {
+  const rows = await db.insert(t.consumedTokens).values({ tokenId, purchaseId }).onConflictDoNothing().returning();
   return rows.length > 0;
 }
 
@@ -75,6 +80,11 @@ export async function appendJournal(
 export async function insertReceipt(db: Db, v: Omit<typeof t.receipts.$inferInsert, "id" | "createdAt">): Promise<ReceiptRow> {
   const [row] = await db.insert(t.receipts).values({ ...v, id: id() }).returning();
   return plain(row);
+}
+
+/** Idempotent on capture id (unique index): the webhook and a resume can never write two receipts for one capture. */
+export async function insertReceiptOnce(db: Db, v: Omit<typeof t.receipts.$inferInsert, "id" | "createdAt">): Promise<void> {
+  await db.insert(t.receipts).values({ ...v, id: id() }).onConflictDoNothing({ target: t.receipts.captureId });
 }
 
 export async function getReceiptByCaptureId(db: Db, captureId: string): Promise<ReceiptRow | null> {
@@ -121,9 +131,10 @@ export async function getValidApproval(
 
 export interface MonthReceipt {
   at: Date; shop: string; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
+  purchaseId: string; captureId: string; grantId: string; cartHash: string; approvalId: string | null;
 }
 
-/** One family's receipts whose capture time falls in `month` ('YYYY-MM', UTC). Family always comes from the caller. */
+/** One family's receipts whose capture time falls in `month` ('YYYY-MM', UTC), oldest first. Family always comes from the caller. */
 export async function receiptsForMonth(db: Db, familyId: string, month: string): Promise<MonthReceipt[]> {
   const rows = await db.select({ r: t.receipts, p: t.purchases, m: t.merchants, a: t.approvals, j: t.journal })
     .from(t.receipts)
@@ -134,10 +145,13 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
     .where(eq(t.purchases.familyId, familyId));
   // The spend journal row carries the demo-clock time; receipts.createdAt is wall-clock.
   const dated = rows.map((row) => ({ ...row, at: row.j?.at ?? row.r.createdAt }));
-  return dated.filter(({ at }) => at.toISOString().startsWith(month)).map(({ r, p, m, a, at }) => ({
-    at, shop: m?.name ?? "unknown shop", amountCents: p.cart.totalCents,
-    status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
-  }));
+  return dated.filter(({ at }) => at.toISOString().startsWith(month))
+    .sort((x, y) => x.at.getTime() - y.at.getTime())
+    .map(({ r, p, m, a, at }) => ({
+      at, shop: m?.name ?? "unknown shop", amountCents: p.cart.totalCents,
+      status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
+      purchaseId: p.id, captureId: r.captureId, grantId: r.grantId, cartHash: r.cartHash, approvalId: r.approvalId,
+    }));
 }
 
 /** Capture ids of every receipt belonging to this family (used to filter PayPal's shared merchant account). */
@@ -146,4 +160,14 @@ export async function captureIdsForFamily(db: Db, familyId: string): Promise<Set
     .innerJoin(t.purchases, eq(t.purchases.id, t.receipts.purchaseId))
     .where(eq(t.purchases.familyId, familyId));
   return new Set(rows.map((r) => r.id));
+}
+
+/** This family's permission-slip tokens (the token id is what PayPal echoes back as custom_field), with when each was used. */
+export async function purchaseTokensForFamily(
+  db: Db, familyId: string,
+): Promise<{ tokenId: string; purchaseId: string; consumedAt: Date }[]> {
+  return db.select({ tokenId: t.consumedTokens.tokenId, purchaseId: t.purchases.id, consumedAt: t.consumedTokens.consumedAt })
+    .from(t.consumedTokens)
+    .innerJoin(t.purchases, eq(t.purchases.id, t.consumedTokens.purchaseId))
+    .where(eq(t.purchases.familyId, familyId));
 }

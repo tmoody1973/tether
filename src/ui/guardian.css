@@ -153,6 +153,52 @@
 .g-gate { flex: 1; display: grid; place-items: center; padding: 24px; }
 .g-gate .g-card { max-width: 420px; text-align: center; padding: 28px; }
 
+/* ---------- record / request / review (mocks 10, 11, 12, 14) ---------- */
+.g-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.g-stat { background: var(--g-surface); border: 1px solid var(--g-line); border-radius: var(--r-lg); padding: 14px 16px; }
+.g-stat__k { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3-text); font-weight: 700; }
+.g-stat__n { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 6px; letter-spacing: -0.02em; }
+.g-stat__sub { font-size: 12px; color: var(--ink-3-text); margin-top: 2px; }
+.g-record { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+
+.g-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.g-table th {
+  text-align: left; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3-text);
+  padding: 8px 10px; border-bottom: 1px solid var(--g-line); font-weight: 700;
+}
+.g-table td { padding: 11px 10px; border-bottom: 1px solid var(--g-line); color: var(--ink-2); vertical-align: top; }
+.g-table td b { color: var(--g-ink); font-weight: 650; display: block; }
+.g-table tr:last-child td { border-bottom: none; }
+.g-table code, .g-code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: #EDEFF1; padding: 1.5px 5px; border-radius: 4px; word-break: break-all; }
+.g-table tr.g-row--main td { border-bottom: none; padding-bottom: 2px; }
+.g-table td.g-proof code { white-space: nowrap; word-break: normal; }
+.g-slip { margin-top: 2px; }
+.g-slip summary { cursor: pointer; color: var(--g-accent); font-weight: 650; font-size: 12.5px; min-height: 24px; }
+.g-slip__body { background: #F7F8F9; border-radius: 11px; padding: 12px 13px; margin-top: 8px; font-size: 12.5px; line-height: 1.6; }
+.g-slip__body .g-clause { font-size: 13.5px; padding: 12px 14px; margin-bottom: 8px; }
+
+.g-chip--ok { background: #E7F8EF; color: #067647; }
+.g-flags { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.g-flags li { border: 1px solid var(--g-line); border-radius: var(--r-md); padding: 10px 12px; }
+.g-weekbars { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.g-weekbars li { display: grid; grid-template-columns: 70px 1fr 110px; gap: 10px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.g-weekbars .g-bar { margin: 0; }
+.g-weekbars span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+.g-ask { display: flex; flex-direction: column; gap: 10px; }
+.g-ask__examples { display: flex; flex-wrap: wrap; gap: 8px; }
+.g-ask__examples button { min-height: 36px; border: 1.5px solid var(--g-line); background: #fff; border-radius: var(--r-pill); padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--g-ink); }
+.g-ask__row { display: flex; gap: 8px; }
+.g-ask__row .g-input { flex: 1 1 auto; min-width: 0; }
+.g-ask__answer { background: #F7F8F9; border-radius: var(--r-md); padding: 12px 13px; white-space: pre-wrap; }
+
+.g-request { max-width: 560px; display: flex; flex-direction: column; gap: 14px; }
+.g-request__title { font-size: 21px; font-weight: 750; letter-spacing: -0.01em; margin-top: 6px; }
+.g-barlabels { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3-text); }
+.g-barlabels .g-over { color: var(--t-warn-deep); }
+.g-reason { font-style: italic; color: var(--ink-2); margin-top: 5px; font-size: 14px; }
+.g-clause--gold { border-left-color: var(--g-goal); }
+
 /* ---------- 390: everything stacks, sidebar becomes a top bar ---------- */
 @media (max-width: 900px) {
   .g-app { flex-direction: column; }
@@ -162,6 +208,12 @@
   .g-nav a::before { display: none; }
   .g-side__head, .g-side__note { display: none; }
   .g-main { padding: 18px 18px 40px; gap: 14px; }
-  .g-two { grid-template-columns: 1fr; }
+  .g-two, .g-record { grid-template-columns: 1fr; }
+  .g-grid4 { grid-template-columns: repeat(2, 1fr); }
+  /* the record becomes a list of cards (UX plan): table rows stack */
+  .g-table--cards thead { display: none; }
+  .g-table--cards tr { display: block; border-bottom: 1px solid var(--g-line); padding: 10px 0; }
+  .g-table--cards tr:last-child { border-bottom: none; }
+  .g-table--cards td { display: block; border: none; padding: 2px 0; }
   .g-title { font-size: 23px; }
 }

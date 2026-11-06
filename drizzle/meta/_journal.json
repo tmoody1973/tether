@@ -64,6 +64,27 @@
       "when": 1793915112110,
       "tag": "0008_guardian_token",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793918364655,
+      "tag": "0009_purchase_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793920446366,
+      "tag": "0010_charge_intent",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793921904045,
+      "tag": "0011_charge_times",
+      "breakpoints": true
     }
   ]
 }

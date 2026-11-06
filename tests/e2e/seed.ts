@@ -1,12 +1,15 @@
-// Minimal e2e seed (Task 19 builds the full demo seed): one family, the demo shops, a signed Level 1 grant.
+// Minimal e2e seed (Task 19 builds the full demo seed): the demo shops and one family per state-changing test
+// (see fixtures.ts), so the tests don't depend on each other's order.
 // Runs before the e2e dev server starts, because one PGlite directory can only be open in one process.
 import { rmSync } from "node:fs";
 import path from "node:path";
-import { closeDb, openDb } from "@/db/client";
-import { insertFamily, saveVault } from "@/db/repo";
+import { closeDb, openDb, type Db } from "@/db/client";
+import { appendJournal, consumeToken, insertFamily, insertPurchase, insertReceipt, saveVault } from "@/db/repo";
 import * as t from "@/db/schema";
 import { clockFor } from "@/clock/clock";
+import { cartHash } from "@/engine/hash";
 import { signGrant } from "@/flows/grant";
+import type { Cart } from "@/engine/types";
 import { E2E } from "./fixtures";
 
 export const DEMO_MERCHANTS = [
@@ -17,15 +20,61 @@ export const DEMO_MERCHANTS = [
   { id: "m_uniqlo", name: "Uniqlo", domain: "uniqlo.com", class: "apparel", opensAtLevel: 3 },
 ].map((m) => ({ ...m, channel3WebsiteId: m.domain }));
 
+const ALLOW = { outcome: "ALLOW" as const, reasons: [], semanticRules: [] };
+const ASK = { outcome: "NEEDS_APPROVAL" as const, reasons: [{ constraint: "approval.over_amount", detail: "over" }], semanticRules: [], gate2: [] };
+// The fake Channel3 prices `sku-<cents>` at <cents>, so these carts re-price to themselves at settle time.
+const cart = (merchantId: string, cents: number, title: string): Cart =>
+  ({ merchantId, items: [{ sku: `sku-${cents}`, title, qty: 1, unitCents: cents }], totalCents: cents });
+const DAY_MS = 86_400_000;
+
+type Fam = { id: string; grant: { id: string; version: number } };
+
+async function family(db: Db, guardianToken: string, teenToken: string, names = { guardianName: "Amara", teenName: "Zoe" }): Promise<Fam> {
+  const fam = await insertFamily(db, { name: `${names.guardianName} & ${names.teenName}`, ...names, teenToken, guardianToken });
+  await saveVault(db, fam.id, `e2e-placeholder-${teenToken}`); // only ever sent to the local fake PayPal
+  const grant = await signGrant({ db, now: clockFor(db) }, fam.id, { level: 1 });
+  return { id: fam.id, grant };
+}
+
+/** A request waiting for the guardian, with a fixed approval id. */
+async function asking(db: Db, f: Fam, approvalId: string, c: Cart, note: string) {
+  const p = await insertPurchase(db, { familyId: f.id, cart: c, cartHash: cartHash(c), status: "needs_approval", decision: ASK });
+  await db.insert(t.approvals).values({
+    id: approvalId, familyId: f.id, subject: "purchase", subjectId: p.id, cartHash: p.cartHash,
+    expiresAt: new Date(Date.now() + DAY_MS), note,
+  });
+}
+
+/** A purchase as settlePurchase leaves it: money out of the budget, slip used, and (if PayPal answered) a receipt. */
+async function bought(db: Db, f: Fam, cents: number, tokenId: string, captureId: string | null) {
+  const c = cart("m_target", cents, "Notebook");
+  const p = await insertPurchase(db, { familyId: f.id, cart: c, cartHash: cartHash(c), status: captureId ? "paid" : "paying", decision: ALLOW });
+  await appendJournal(db, { familyId: f.id, kind: "spend", amountCents: cents, at: new Date(), ref: p.id, note: null });
+  await consumeToken(db, tokenId, p.id);
+  if (captureId) {
+    await insertReceipt(db, { purchaseId: p.id, captureId, grantId: f.grant.id, grantVersion: f.grant.version, cartHash: p.cartHash, decision: ALLOW, approvalId: null });
+  }
+}
+
 async function main() {
   rmSync(path.resolve(process.cwd(), E2E.dir), { recursive: true, force: true });
   const db = await openDb(E2E.dbUrl);
   await db.insert(t.merchants).values(DEMO_MERCHANTS);
-  const fam = await insertFamily(db, {
-    name: "Amara & Zoe", guardianName: "Amara", teenName: "Zoe", teenToken: E2E.teenToken, guardianToken: E2E.guardianKey,
-  });
-  await saveVault(db, fam.id, "e2e-placeholder-token"); // never charged: e2e makes no PayPal calls
-  await signGrant({ db, now: clockFor(db) }, fam.id, { level: 1 });
+
+  const zoe = await family(db, E2E.guardianKey, E2E.teenToken);
+  await bought(db, zoe, 600, E2E.tokens.receipt, E2E.receiptCapture);
+  await bought(db, zoe, 450, E2E.tokens.missing, null); // PayPal has it; Tether crashed before the receipt
+  await asking(db, zoe, E2E.approvalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");
+
+  await family(db, E2E.grantKey, "e2e-teen-grant");
+  // $8 at a shop she hasn't used: needs Amara at Level 1, and fits the $20 week, so approving pays it.
+  await asking(db, await family(db, E2E.approveKey, "e2e-teen-approve"), E2E.approveApprovalId, cart("m_bestbuy", 800, "Earbuds"), "mine broke");
+  await family(db, E2E.levelKey, "e2e-teen-level");
+  await family(db, E2E.revokeKey, "e2e-teen-revoke");
+
+  const other = await family(db, E2E.otherGuardianKey, "e2e-teen-other", { guardianName: "Sam", teenName: "Kai" });
+  await asking(db, other, E2E.otherApprovalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");
+  await bought(db, other, 999, E2E.tokens.other, E2E.otherFamilyCapture);
   await closeDb(db);
 }
 

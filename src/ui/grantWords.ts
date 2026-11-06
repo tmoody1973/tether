@@ -58,3 +58,11 @@ export function grantClause(i: ClauseInput): Seg[] {
 }
 
 export const clauseText = (segs: Seg[]): string => segs.map((s) => (typeof s === "string" ? s : s.b)).join("");
+
+const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+/** "8 Oct 12:40" (UTC, demo clock), for the record's payment rows. */
+export const formatWhen = (d: Date): string => when.format(d).replace(",", "");
+
+const monthName = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+/** "2026-11" → "November 2026". */
+export const formatMonth = (month: string): string => monthName.format(new Date(`${month}-01T00:00:00Z`));

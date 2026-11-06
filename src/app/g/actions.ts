@@ -2,13 +2,16 @@
 
 import { redirect } from "next/navigation";
 import { guardianFamilyId } from "@/auth/guardianSession";
-import { advance, clockFor } from "@/clock/clock";
+import { clockFor } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { GrantError, ReasonRequiredError, resetTeenLink, signGrant } from "@/flows/grant";
-import { closeWeek } from "@/flows/week";
+import { ApprovalError, decideApproval } from "@/flows/approvals";
+import { approveAndSettle } from "@/flows/approve";
+import { ADVANCES, advanceDemoClock, type Advance } from "@/flows/demo";
+import { GrantError, ReasonRequiredError, RulesStoppedError, guardianSetLevel, resetTeenLink, revoke, signGrant } from "@/flows/grant";
+import { confirmRelease } from "@/flows/month";
 import type { Level } from "@/engine/ladder";
+import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
 
-const DAY_MS = 86_400_000;
 const SIGNED_OUT = "Open your Tether link to continue.";
 
 async function guardianDeps() {
@@ -52,17 +55,77 @@ export async function resetTeenLinkAction(): Promise<void> {
   redirect("/g?link=reset");
 }
 
-/** Demo clock: moves this family's "today" forward, then closes any week that ended (unspent allowance → savings). */
+/** Demo clock (D10): moves this family's "today" forward, closes ended weeks and, at a month end, runs the review. */
 export async function advanceClockAction(form: FormData): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");
-  const days = int(form.get("days"));
-  if (days !== 1 && days !== 7) redirect("/g");
-  await advance(g.deps.db, g.familyId, days * DAY_MS);
+  const to = String(form.get("to") ?? "");
+  if (!(ADVANCES as readonly string[]).includes(to)) redirect("/g");
+  const { review } = await advanceDemoClock(g.deps, g.familyId, to as Advance);
+  redirect(review?.action === "PROMOTE" ? "/g/review?promoted=1" : `/g?advanced=${to}`);
+}
+
+/**
+ * One tap on a request (R36): approving also charges the purchase or places the investment. A closed,
+ * decided or foreign request lands on the same calm "closed" page.
+ */
+export async function decideRequestAction(form: FormData): Promise<void> {
+  const g = await guardianDeps();
+  if (!g) redirect("/g");
+  const id = String(form.get("approvalId") ?? "").slice(0, 100);
+  const result = form.get("result");
+  if (result !== "approved" && result !== "declined") redirect(`/g/requests/${encodeURIComponent(id)}`);
+  let code: string;
   try {
-    await closeWeek(g.deps, g.familyId);
+    code = result === "approved"
+      ? await approveAndSettle(paymentDeps(g.deps.db), g.familyId, id)
+      : (await decideApproval(g.deps, id, "declined", g.familyId), "declined");
   } catch (err) {
-    if (!(err instanceof GrantError)) throw err; // no grant yet: nothing to close
+    if (!(err instanceof ApprovalError)) throw err;
+    redirect(`/g/requests/${encodeURIComponent(id)}`);
   }
-  redirect(`/g?advanced=${days}`);
+  redirect(`/g?decided=${code}&req=${encodeURIComponent(id)}`);
+}
+
+/** "I've sent it": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
+export async function confirmReleaseAction(form: FormData): Promise<void> {
+  const g = await guardianDeps();
+  if (!g) redirect("/g");
+  try {
+    await confirmRelease(g.deps, String(form.get("releaseId") ?? "").slice(0, 100), g.familyId);
+  } catch (err) {
+    if (!(err instanceof GrantError)) throw err;
+    redirect("/g/review");
+  }
+  redirect("/g/review?sent=1");
+}
+
+export type LevelState = { error?: string };
+
+/** Amara overrides the level. A reason is required and goes on the record; without one nothing changes. */
+export async function setLevelAction(_prev: LevelState, form: FormData): Promise<LevelState> {
+  const g = await guardianDeps();
+  if (!g) return { error: SIGNED_OUT };
+  const level = int(form.get("level"));
+  const reason = String(form.get("reason") ?? "").trim().slice(0, 500);
+  if (![1, 2, 3].includes(level)) return { error: "Choose a level." };
+  if (!reason) return { error: "Say why — it goes on the record. Nothing changed." };
+  try {
+    await guardianSetLevel(g.deps, g.familyId, level as Level, reason);
+  } catch (err) {
+    if (err instanceof RulesStoppedError) return { error: "Her rules are stopped. Sign new rules to change her level." };
+    console.error("guardianSetLevel failed", err);
+    return { error: "The level couldn't be changed. Nothing changed." };
+  }
+  redirect(`/g/review?level=${level}`);
+}
+
+/** Stop Zoe's rules (after the page's confirm step). The rules stop even if PayPal won't remove the saved wallet. */
+export async function revokeAction(): Promise<void> {
+  const g = await guardianDeps();
+  if (!g) redirect("/g");
+  const r = await revoke({ ...g.deps, paypal: paypalOrUnavailable() }, g.familyId);
+  if (r.error) console.error("revoke: PayPal delete failed", r.error);
+  const how = r.paypalTokenDeleted ? "wallet-removed" : r.reason === "no_vault" ? "no-wallet" : "wallet-kept";
+  redirect(`/g/review?stopped=${how}`);
 }

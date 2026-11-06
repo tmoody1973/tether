@@ -2,6 +2,11 @@ import { pgTable, text, integer, bigint, jsonb, timestamp, primaryKey, uniqueInd
 import { sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type { Cart, Decision, Grant } from "@/engine/types";
+import type { AuthToken } from "@/engine/token";
+import type { ChargeArgs } from "@/adapters/paypal/orders";
+
+/** The permission slip and order details a charge was sent with, plus the decision and approval it was debited under. */
+export interface ChargeIntent { token: AuthToken; args: ChargeArgs; decision: Decision; approvalId: string | null }
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const createdAt = (name = "created_at") => ts(name).notNull().defaultNow();
@@ -59,6 +64,14 @@ export const purchases = pgTable("purchases", {
     enum: ["proposed", "needs_approval", "approved", "refused", "paying", "paid", "failed", "expired"],
   }).notNull(),
   createdAt: createdAt(),
+  // R37: what was sent to PayPal, kept so an unknown outcome can be re-sent with the same PayPal-Request-Id.
+  charge: jsonb("charge").$type<ChargeIntent>(),
+  chargeError: text("charge_error"), // last unknown-outcome error while the purchase stays `paying`
+  // R38: REAL (wall-clock, never demo-clock) times. PayPal forgets a PayPal-Request-Id after 6 hours, after which
+  // a re-send would charge again; the first send time bounds every re-send, the last attempt throttles resumes.
+  chargeSentAt: ts("charge_sent_at"),
+  chargeAttemptedAt: ts("charge_attempted_at"),
+  paypalOrderId: text("paypal_order_id"), // stored as soon as create-order returns one: resume reads it back
 });
 
 export const approvals = pgTable("approvals", {
@@ -78,6 +91,8 @@ export const approvals = pgTable("approvals", {
 export const consumedTokens = pgTable("consumed_tokens", {
   tokenId: text("token_id").primaryKey(),
   consumedAt: createdAt("consumed_at"),
+  // R35: PayPal's custom_field carries the token id, so this is how a PayPal row is tied back to one family's purchase.
+  purchaseId: text("purchase_id").references(() => purchases.id),
 });
 
 export const receipts = pgTable("receipts", {
@@ -90,7 +105,7 @@ export const receipts = pgTable("receipts", {
   decision: jsonb("decision").$type<Decision>().notNull(),
   approvalId: text("approval_id").references(() => approvals.id),
   createdAt: createdAt(),
-});
+}, (r) => [uniqueIndex("receipts_capture_uq").on(r.captureId)]); // webhook + resume can never write two
 
 export const journalKinds = ["spend", "spend_reversal", "week_close", "release", "invest", "invest_reversal"] as const;
 export const journal = pgTable("journal", {
