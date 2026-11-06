@@ -16,11 +16,47 @@ const SYMBOL = /^[A-Z][A-Z.]{0,5}$/;
 export const isSymbol = (s: string) => SYMBOL.test(s);
 
 type Status = (typeof t.investments.$inferSelect)["status"];
-export interface TeenInvestment { id: string; symbol: string; amountCents: number; status: Status; receiptNote: string | null }
+/** declined: Amara said no. A rejected row is otherwise one that didn't go through after her yes (nothing moved). */
+export interface TeenInvestment { id: string; symbol: string; amountCents: number; status: Status; receiptNote: string | null; declined: boolean }
 
+/**
+ * Her investments. A row the engine refused when she proposed it never reached Amara (she was told why on the spot),
+ * so it isn't listed: it must never read as Amara's "not this time".
+ */
 export async function teenInvestments(db: Db, familyId: string): Promise<TeenInvestment[]> {
-  const rows = await db.select().from(t.investments).where(eq(t.investments.familyId, familyId));
-  return rows.map((r) => ({ id: r.id, symbol: r.symbol, amountCents: r.amountCents, status: r.status, receiptNote: r.receiptNote }));
+  const rows = await db.select({ i: t.investments, result: t.approvals.result }).from(t.investments)
+    .leftJoin(t.approvals, and(eq(t.approvals.subject, "investment"), eq(t.approvals.subjectId, t.investments.id)))
+    .where(eq(t.investments.familyId, familyId));
+  const decided = new Map<string, Set<string>>(); // investment id -> Amara's answers on it
+  for (const { i, result } of rows) {
+    const set = decided.get(i.id) ?? new Set<string>();
+    if (result) set.add(result);
+    decided.set(i.id, set);
+  }
+  const seen = new Set<string>();
+  return rows.flatMap(({ i }) => {
+    const answers = decided.get(i.id)!;
+    if (seen.has(i.id) || (i.status === "rejected" && answers.size === 0)) return [];
+    seen.add(i.id);
+    return [{ id: i.id, symbol: i.symbol, amountCents: i.amountCents, status: i.status, receiptNote: i.receiptNote, declined: answers.has("declined") }];
+  });
+}
+
+/** Rules in force at Level 3: checked before anything else (and before any market call). */
+export async function canPropose(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<"level" | "rules" | null> {
+  const now = await deps.now(familyId);
+  const grant = await getActiveGrant(deps.db, familyId);
+  if (!grant || grant.expiresAt <= now) return "rules";
+  return grant.level < 3 ? "level" : null;
+}
+
+/** She already has an investment in this symbol waiting for Amara. */
+async function investmentWaiting(db: Db, familyId: string, symbol: string, now: Date): Promise<boolean> {
+  const rows = await db.select({ id: t.investments.id }).from(t.investments)
+    .innerJoin(t.approvals, and(eq(t.approvals.subject, "investment"), eq(t.approvals.subjectId, t.investments.id)))
+    .where(and(eq(t.investments.familyId, familyId), eq(t.investments.symbol, symbol), eq(t.investments.status, "proposed"),
+      isNull(t.approvals.result), isNull(t.approvals.expiredAt), gt(t.approvals.expiresAt, now))).limit(1);
+  return rows.length > 0;
 }
 
 /** allowed: on Amara's fund list. asked: she has a fund proposal waiting. new: neither. */
@@ -48,10 +84,9 @@ export type ProposeResult =
 export async function proposeFromTeen(
   deps: Pick<Deps, "db" | "now">, familyId: string, symbol: string, amountCents: number, answers: Answers,
 ): Promise<ProposeResult> {
+  const blocked = await canPropose(deps, familyId);
+  if (blocked) return { ok: false, error: blocked };
   const now = await deps.now(familyId);
-  const grant = await getActiveGrant(deps.db, familyId);
-  if (!grant || grant.expiresAt <= now) return { ok: false, error: "rules" };
-  if (grant.level < 3) return { ok: false, error: "level" };
   if (!isSymbol(symbol)) return { ok: false, error: "symbol" };
   const words = Object.fromEntries((Object.keys(QUESTIONS) as (keyof Answers)[]).map((k) => [QUESTIONS[k], (answers[k] ?? "").trim()]));
   if (Object.values(words).some((a) => a.length < ANSWER_MIN || a.length > ANSWER_MAX)) return { ok: false, error: "answers" };
@@ -65,6 +100,7 @@ export async function proposeFromTeen(
     await proposeFund(deps, familyId, symbol, { ...words, "How much she has in mind": formatCents(amountCents) });
     return { ok: true, sent: "fund" };
   }
+  if (await investmentWaiting(deps.db, familyId, symbol, now)) return { ok: false, error: "asked" };
   const { decision } = await proposeInvestment(deps, familyId, { symbol, amountCents }, words);
   if (decision.outcome !== "REFUSE") return { ok: true, sent: "investment" };
   const c = decision.reasons[0]?.constraint;

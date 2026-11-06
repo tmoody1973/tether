@@ -3,7 +3,7 @@ import Link from "next/link";
 import { teenSession } from "@/auth/teen";
 import { now as clockNow } from "@/clock/clock";
 import type { Db } from "@/db/client";
-import { alpacaFromEnv, STAND_IN_LABEL } from "@/adapters/alpaca/broker";
+import { brokerFromEnv, STAND_IN_LABEL } from "@/adapters/alpaca/broker";
 import { marketFromEnv, oneYearLine, type AssetHit } from "@/adapters/alpaca/data";
 import { resumeInvestments } from "@/flows/invest";
 import { teenWeek } from "@/flows/teen";
@@ -89,7 +89,7 @@ async function Investments({ db, familyId, guardian }: { db: Db; familyId: strin
   // Best effort: a queued order may have filled since. A broker outage must not block the page.
   try {
     const d = teenDeps(db);
-    await resumeInvestments({ db, now: d.now, secret: d.secret, alpaca: alpacaFromEnv() }, familyId);
+    await resumeInvestments({ db, now: d.now, secret: d.secret, alpaca: brokerFromEnv() }, familyId);
   } catch (err) {
     console.error("resumeInvestments skipped", err instanceof Error ? err.message : err);
   }
@@ -104,7 +104,7 @@ async function Investments({ db, familyId, guardian }: { db: Db; familyId: strin
         <ul className="t-card t-card--tight" style={{ listStyle: "none" }}>
           {rows.map((r) => (
             <li key={r.id} className="t-row">
-              <span className="t-row__who">{r.symbol}<small>{investStatusWords(r.status, guardian)}{r.receiptNote ? ` · ${r.receiptNote}` : ""}</small></span>
+              <span className="t-row__who">{r.symbol}<small>{investStatusWords(r.status, guardian, r.declined)}{r.receiptNote ? ` · ${r.receiptNote}` : ""}</small></span>
               <span className="t-row__amt"><Money cents={r.amountCents} /></span>
             </li>
           ))}

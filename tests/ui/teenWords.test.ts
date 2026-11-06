@@ -87,6 +87,8 @@ describe("goals, invest and map words (18b)", () => {
     expect(investStatusWords("queued", "Amara")).toBe("Queued for market open");
     expect(investStatusWords("proposed", "Amara")).toBe("Waiting for Amara");
     expect(investStatusWords("cash_held", "Amara")).toMatch(/your investing account/);
+    expect(investStatusWords("rejected", "Amara")).toBe("Didn't go through. Nothing was moved.");
+    expect(investStatusWords("rejected", "Amara", true)).toBe("Amara said not this time.");
   });
   it("map tiles: open / ask first / locked, never a price", () => {
     const tile = (kind: "open" | "ask" | "locked", opensAt: number | null = null, booksOnly = false) => ({ id: "x", name: "X", kind, opensAt, booksOnly });

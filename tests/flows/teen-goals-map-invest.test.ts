@@ -12,7 +12,8 @@ import { decideApproval } from "@/flows/approvals";
 import type { Deps } from "@/flows/purchase";
 import { setGoal, setTeenCommitment, teenGoals } from "@/flows/teenGoals";
 import { shopMap, suggestShop } from "@/flows/teenMap";
-import { fundStatus, proposeFromTeen, teenInvestments, type Answers } from "@/flows/teenInvest";
+import { canPropose, fundStatus, proposeFromTeen, teenInvestments, type Answers } from "@/flows/teenInvest";
+import { proposeInvestment } from "@/flows/invest";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -171,5 +172,29 @@ describe("investing from Zoe's side", () => {
     await proposeFromTeen(deps(), a.familyId, "VTI", 500, ANSWERS);
     const b = await seed(3);
     expect(await teenInvestments(db, b.familyId)).toEqual([]);
+  });
+
+  it("a second proposal for a symbol already waiting for Amara is refused", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 300, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 200, ANSWERS)).toEqual({ ok: false, error: "asked" });
+  });
+
+  it("an engine-refused row never reads as Amara's answer; her decline does", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    await proposeInvestment(deps(), s.familyId, { symbol: "VTI", amountCents: 5000 }, {}); // over savings: the engine refuses
+    expect(await teenInvestments(db, s.familyId)).toEqual([]);
+    await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS);
+    const [a] = await db.select().from(t.approvals).where(eq(t.approvals.familyId, s.familyId));
+    await decideApproval(deps(), a.id, "declined", s.familyId);
+    expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "rejected", declined: true })]);
+  });
+
+  it("canPropose: Level 3 with rules in force, checked before anything else", async () => {
+    expect(await canPropose(deps(), (await seed(1)).familyId)).toBe("level");
+    const s = await seed(3);
+    expect(await canPropose(deps(), s.familyId)).toBeNull();
+    clock = new Date(NOW.getTime() + 8 * 86_400_000);
+    expect(await canPropose(deps(), s.familyId)).toBe("rules");
   });
 });

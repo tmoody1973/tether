@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { teenSession } from "@/auth/teen";
 import { now as clockNow } from "@/clock/clock";
 import * as t from "@/db/schema";
-import { compareSentence, marketFromEnv, oneYearLine, type AssetHit } from "@/adapters/alpaca/data";
+import { compareHeading, compareSentence, marketFromEnv, NotEnoughHistoryError, oneYearLine, type AssetHit, type FiveYear } from "@/adapters/alpaca/data";
 import { fundWords } from "@/ai/fundWords";
 import { teenWeek } from "@/flows/teen";
 import { fundStatus, isSymbol } from "@/flows/teenInvest";
@@ -34,7 +34,7 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
   const gate = investGate(token, w);
   if (gate) return gate;
   const g = w.guardianName;
-  const symbol = decodeURIComponent(raw).toUpperCase();
+  const symbol = decoded(raw).toUpperCase();
   const back = <Link className="t-btn t-btn--ghost" href={`/t/${token}/invest`}>Back to search</Link>;
   const calm = (text: string) => (
     <TeenShell token={token} active="invest" level={w.level} center><h1 className="t-h2">{text}</h1>{back}</TeenShell>
@@ -55,7 +55,8 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
   const asOf = new Date();
   const [one, five, about, status] = await Promise.all([
     market.changeOver(symbol, 1, asOf).then((c) => oneYearLine(c), () => null),
-    market.fiveYear(symbol, asOf).catch(() => null),
+    // "young": under a year of trading, so there's no longer comparison to draw (R42).
+    market.fiveYear(symbol, asOf).catch((e): FiveYear | "young" | null => (e instanceof NotEnoughHistoryError ? "young" : null)),
     fundWords(explainLlm(), { name: hit.name, symbol: hit.symbol, exchange: hit.exchange, fractionable: hit.fractionable }),
     fundStatus(db, fam.id, symbol, now),
   ]);
@@ -82,8 +83,10 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
       </section>
 
       <section className="t-card" aria-labelledby="five-h">
-        <h2 className="t-card__k" id="five-h" style={{ marginBottom: 8 }}>Five years</h2>
-        {five ? (
+        <h2 className="t-card__k" id="five-h" style={{ marginBottom: 8 }}>{five && five !== "young" ? compareHeading(five.compare) : "Five years"}</h2>
+        {five === "young" ? (
+          <p className="t-small">{symbol} has traded for less than a year, so there&apos;s no longer comparison yet.</p>
+        ) : five ? (
           <>
             <FiveYearLine fund={five.lines.thisFund} market={five.lines.market} label={compareSentence(five.compare)} />
             <div className="t-legend" style={{ marginTop: 8 }}><span><i />{symbol}</span><span><i className="t-legend--market" />The whole market (SPY)</span></div>
@@ -107,4 +110,9 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
       {back}
     </TeenShell>
   );
+}
+
+/** Next has normally decoded the segment already; a stray "%" must never become a 500. */
+function decoded(raw: string): string {
+  try { return decodeURIComponent(raw); } catch { return raw; }
 }

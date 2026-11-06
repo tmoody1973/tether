@@ -248,9 +248,27 @@ test("fund page has no 1D/1W controls and one chart", async ({ page }) => {
   await expect(page.getByRole("main")).not.toContainText(/good fit|could be|recommend|friends|bought stock/i);
   await expect(page.getByLabel("How would you feel if this dropped by a third next year?")).toBeVisible();
   await expect(page.locator("main a[href^='http']")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Five years" })).toBeVisible(); // a full history says so
   // Down years are drawn in the same neutral colours as up years: nothing red on the page.
   const strokes = await page.locator("svg[data-chart] polyline").evaluateAll((els) => els.map((el) => getComputedStyle(el).stroke));
   for (const s of strokes) expect(s).not.toMatch(/rgb\((2[0-5]\d|1[5-9]\d), (\d|[1-9]\d), (\d|[1-9]\d)\)/);
+});
+
+test("R42: a fund listed months ago states its real span and draws no comparison", async ({ page }) => {
+  await open(page, E2E.teenB.look, "/invest?q=newx");
+  const result = page.getByRole("article", { name: "Newly Listed Example Fund (NEWX)" });
+  await expect(result).toContainText(/1 year: \$[\d.]+ today, \$[\d.]+ when it started trading in [A-Z][a-z]+ \d{4}\./, { timeout: 20_000 });
+  await result.getByRole("link", { name: "Look closer" }).click();
+  await expect(page.getByText("NEWX has traded for less than a year, so there's no longer comparison yet.")).toBeVisible();
+  await expect(page.locator("svg[data-chart]:visible")).toHaveCount(0);
+  await expect(page.getByRole("main").getByText(/when it started trading in/)).toBeVisible();
+});
+
+test("a bad % in the fund URL is a calm page, not a 500", async ({ page }) => {
+  expect((await page.goto(`/t/${E2E.teenB.look}/invest/%E0%A4%A`))?.status()).toBeLessThan(500); // Next answers 400 itself
+  const res = await page.goto(`/t/${E2E.teenB.look}/invest/%25`); // reaches the page as a bare "%"
+  expect(res?.status()).toBeLessThan(500);
+  await expect(page.getByRole("heading", { name: "We couldn't find that one." })).toBeVisible();
 });
 
 async function propose(page: Page, token: string, symbol: string, amount: string) {

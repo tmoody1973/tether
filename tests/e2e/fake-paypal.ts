@@ -32,6 +32,7 @@ const ASSETS = [
   { symbol: "VTI", name: "Vanguard Total Stock Market ETF", exchange: "ARCA", tradable: true, fractionable: true },
   { symbol: "VT", name: "Vanguard Total World Stock ETF", exchange: "ARCA", tradable: true, fractionable: true },
   { symbol: "AAPL", name: "Apple Inc. Common Stock", exchange: "NASDAQ", tradable: true, fractionable: true },
+  { symbol: "NEWX", name: "Newly Listed Example Fund", exchange: "ARCA", tradable: true, fractionable: true },
 ];
 // Price today and each past year's change, most recent first, so a 1-year and a 5-year window always agree.
 // One down year each, so the chart shows a fall in its neutral style.
@@ -41,12 +42,16 @@ const PATHS: Record<string, { today: number; years: number[] }> = {
   VTI: { today: 300, years: [0.1, 0.2, -0.2, 0.25, 0.18] },
 };
 const DEFAULT_PATH = { today: 100, years: [0.08, 0.1, -0.1, 0.15, 0.05] };
+/** Listed this many days ago: bars start then (R42: shorter histories must say so). */
+const LISTED_DAYS: Record<string, number> = { NEWX: 120 };
 const DAY = 86_400_000;
 
-/** Weekly closes across the asked window (1 or 5 years), oldest first: exact, whatever today's date is. */
+/** Dated weekly closes across the asked window (1 or 5 years), oldest first: exact, whatever today's date is. */
 function bars(symbol: string, start: string | null, end: string | null) {
   const { today, years } = PATHS[symbol] ?? DEFAULT_PATH;
-  const span = Math.max(1, Math.min(5, Math.round((Date.parse(end ?? "") - Date.parse(start ?? "")) / (365 * DAY)) || 1));
+  const endMs = Date.parse(end ?? "") || Date.now();
+  const span = Math.max(1, Math.min(5, Math.round((endMs - Date.parse(start ?? "")) / (365 * DAY)) || 1));
+  const listedMs = LISTED_DAYS[symbol] ? endMs - LISTED_DAYS[symbol] * DAY : -Infinity;
   const price = (ago: number) => { // ago: years before the last bar
     let p = today;
     for (let k = 0; k < Math.floor(ago); k++) p /= 1 + years[k];
@@ -54,7 +59,10 @@ function bars(symbol: string, start: string | null, end: string | null) {
     return frac > 0 ? p / (1 + years[Math.floor(ago)]) ** frac : p;
   };
   const points = span * 52;
-  return Array.from({ length: points + 1 }, (_, i) => ({ c: Math.round(price(span * (1 - i / points)) * 100) / 100 }));
+  return Array.from({ length: points + 1 }, (_, i) => {
+    const ago = span * (1 - i / points);
+    return { t: new Date(endMs - ago * 365 * DAY).toISOString(), c: Math.round(price(ago) * 100) / 100 };
+  }).filter((b) => Date.parse(b.t) >= listedMs);
 }
 
 createServer((req, res) => {

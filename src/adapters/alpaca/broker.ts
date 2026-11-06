@@ -201,3 +201,11 @@ export function alpacaFromEnv(env: NodeJS.ProcessEnv = process.env, fetchImpl: t
     firmAccountId: env.ALPACA_FIRM_ACCOUNT_ID, custodialEnabled: env.ALPACA_CUSTODIAL_ENABLED === "true",
   }, fetchImpl);
 }
+
+let sharedBroker: AlpacaBroker | null = null;
+
+/** One per server process, so the OAuth token is reused across page views and actions. Throws when not configured. */
+export function brokerFromEnv(): AlpacaBroker {
+  sharedBroker ??= alpacaFromEnv();
+  return sharedBroker;
+}

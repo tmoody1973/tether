@@ -129,14 +129,16 @@ export function parseDollars(input: string): Cents | null {
 type InvestStatus = (typeof schema.investments.$inferSelect)["status"];
 
 /** Her investments, in her words. The hard states use the engine's labels (QUEUED_LABEL is the designed closed-market state). */
-export function investStatusWords(s: InvestStatus, guardian: string): string {
+export function investStatusWords(s: InvestStatus, guardian: string, declined = false): string {
+  if (declined) return `${guardian} said not this time.`;
   const words: Record<InvestStatus, string> = {
     proposed: `Waiting for ${guardian}`,
     approved: `${guardian} said yes. Sending it.`,
     depositing: "Moving your money to your investing account",
     queued: QUEUED_LABEL,
     filled: "Bought",
-    rejected: `${guardian} said not this time.`,
+    rejected: "Didn't go through. Nothing was moved.", // after her yes; her "no" is shown from the approval, not this
+
     cash_held: `Held as cash in your investing account. ${guardian} can try the order again.`,
     needs_review: NEEDS_REVIEW_LABEL,
   };
