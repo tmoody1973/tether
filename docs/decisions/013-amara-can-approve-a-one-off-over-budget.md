@@ -11,7 +11,7 @@
 
 **What we chose and why** — Option 2. Tarik's call. A refusal should always have a next step, and the parent deciding a specific purchase is exactly the kind of judgement Tether is meant to support. Tying the approval to one cart and one amount keeps it from turning into a blank cheque: if Zoe spends more after asking, the approval no longer covers it.
 
-**What we gave up** — Some strictness. The weekly budget is no longer an absolute ceiling, only a ceiling that Amara can lift once, for one thing, up to one week's allowance. And an approved overspend costs Zoe that week's progress toward the next level, which she might find unfair even though it's honest.
+**What we gave up** — Some strictness. The weekly budget is no longer an absolute ceiling, only a ceiling that Amara can lift for one specific purchase at a time, each needing her tap, and never above one week's allowance for a single purchase. And an approved overspend costs Zoe that week's progress toward the next level, which she might find unfair even though it's honest.
 
 **How we'll know if this was right** — In testing, every over-budget refusal offers a route Amara can actually approve; no approval ever lifts a shop, AI, expiry or one-week-maximum refusal; and the record shows each over-budget payment as "Amara approved this one".
 
