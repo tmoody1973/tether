@@ -19,8 +19,12 @@ export function shownReceipts<T extends { setAside: boolean }>(rows: T[]): { sho
   return { shown, hidden: rows.length - shown.length };
 }
 
-export const hiddenNote = (n: number): string | null =>
-  n === 0 ? null : n === 1 ? "1 payment from an earlier demo reset is hidden." : `${n} payments from earlier demo resets are hidden.`;
+/** `flagged`: hidden rows PayPal's check raised a flag on (refunded / not confirmed), so hiding never silences one. */
+export function hiddenNote(n: number, flagged = 0): string | null {
+  if (n === 0) return null;
+  const base = n === 1 ? "1 payment from an earlier demo reset is hidden" : `${n} payments from earlier demo resets are hidden`;
+  return flagged > 0 ? `${base}; PayPal's check flagged ${flagged} of them.` : `${base}.`;
+}
 
 /** Sunday of `now`'s ISO week, UTC (the ledger's weeks). */
 export function weekEnd(now: Date): Date {

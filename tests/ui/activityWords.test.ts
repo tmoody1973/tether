@@ -25,6 +25,8 @@ describe("activity words (Amara's Activity page)", () => {
     expect(hiddenNote(2)).toBe("2 payments from earlier demo resets are hidden.");
     expect(hiddenNote(1)).toBe("1 payment from an earlier demo reset is hidden.");
     expect(hiddenNote(0)).toBeNull();
+    // a PayPal flag on a hidden row isn't silenced: the note says so
+    expect(hiddenNote(2, 1)).toBe("2 payments from earlier demo resets are hidden; PayPal's check flagged 1 of them.");
   });
 
   it("names the end of the ISO week (Sunday, UTC) and the month's last day", () => {

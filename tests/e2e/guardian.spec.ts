@@ -113,6 +113,21 @@ test("changing her saving re-signs her rules, with the plain-words clause", asyn
   await expect(page.locator(".g-clause")).toContainText("She saves at least $4.00 a week");
 });
 
+test("what Amara reads is what the next button signs: an unconfirmed level never rides along with a saving change", async ({ page }) => {
+  await enter(page, E2E.levelKey);
+  await page.goto("/g/rules");
+  const clause = page.locator(".g-clause");
+  await page.getByLabel("Level 2").check(); // picked, not confirmed
+  await expect(clause).toContainText("$30.00 a week");
+  await page.getByLabel("Zoe saves at least").selectOption("20"); // a saving change re-signs at her signed level
+  await expect(page.getByLabel(/Level 1/)).toBeChecked();
+  await expect(clause).toContainText("Zoe can spend up to $20.00 a week");
+  await expect(clause).toContainText("She saves at least $4.00 a week");
+  await page.getByLabel("Level 2").check(); // and picking a level drops the unsigned saving change
+  await expect(page.getByLabel("Zoe saves at least")).toHaveValue("10");
+  await expect(clause).toContainText("She saves at least $3.00 a week");
+});
+
 test("with no rules in force, her rules page signs them (Sign and send, then Yes, sign)", async ({ page }) => {
   await enter(page, E2E.signKey);
   await page.goto("/g/rules");
@@ -136,6 +151,7 @@ test("a request shows the budget consequence first, under Home", async ({ page }
   await expect(page.locator(".g-reason")).toHaveText("“the ones I have are falling apart”");
   await expect(page.getByRole("button", { name: "Approve $15.00" })).toBeEnabled();
   await expect(nav(page).getByRole("link", { name: /^Home/ })).toHaveAttribute("aria-current", "page");
+  await expect(nav(page).locator(".g-badge")).toHaveText("1 waiting"); // the count follows her onto a request
   await expect(page.getByRole("link", { name: "‹ Home" })).toHaveAttribute("href", "/g");
 });
 
@@ -261,6 +277,11 @@ test("at phone width the tabs are a bottom bar", async ({ page }) => {
   await expect(page.locator(".g-side")).toBeHidden();
   expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
   await expect(bar.getByRole("link", { name: /^Home/ })).toContainText("1");
+  // On a phone, how her week is going comes straight after what needs her.
+  const top = async (name: string) => (await page.getByRole("region", { name }).boundingBox())!.y;
+  const needs = await top("Needs you"), week = await top("This week"), recent = await top("Recent");
+  expect(needs).toBeLessThan(week);
+  expect(week).toBeLessThan(recent);
   await bar.getByRole("link", { name: "Rules" }).click();
   await expect(page).toHaveURL(/\/g\/rules$/);
   await expect(bar.getByRole("link", { name: "Rules" })).toHaveAttribute("aria-current", "page");

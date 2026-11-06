@@ -100,7 +100,8 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
   const { shown, hidden } = shownReceipts(r.receipts);
   const total = shown.reduce((s, p) => s + p.amountCents, 0);
   const orphans = typeof rec === "object" ? rec.flags.filter((f) => f.kind === "paypal_only") : [];
-  const hiddenLine = hiddenNote(hidden);
+  const setAside = new Set(r.receipts.filter((x) => x.setAside).map((x) => x.captureId));
+  const hiddenLine = hiddenNote(hidden, typeof rec === "object" ? rec.flags.filter((f) => setAside.has(f.captureId)).length : 0);
   return (
     <section className="g-card" aria-labelledby="pay-h">
       <div className="g-section__head g-section__head--label">
@@ -140,6 +141,9 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
           ))}
         </ul>
       )}
+      {orphans.length > 0 && r.unreceipted.length > 0 && (
+        <p className="g-note" style={{ marginTop: 6 }}>A payment above that is still settling can show here too, until its receipt arrives.</p>
+      )}
       {hiddenLine && <p className="g-note" style={{ marginTop: 8 }}>{hiddenLine}</p>}
       <p className="g-note" style={{ marginTop: 8 }}>
         Each payment keeps its PayPal ID, the single-use permission slip, and the rules version that allowed it. Open &ldquo;Proof&rdquo; on any row.
@@ -153,7 +157,7 @@ function Proof({ p, rec }: { p: RecordReceipt; rec: Reconciliation | "checking" 
   const check = checkWords(rec, p.captureId);
   return (
     <details className="g-proof">
-      <summary>Proof</summary>
+      <summary>Proof<span className="g-sr"> for {p.shop}, {formatDay(p.at)}</span></summary>
       <dl className="g-proofbox">
         <dt>PayPal ID</dt><dd><code>{p.captureId}</code></dd>
         <dt>Allowed by</dt><dd>Rules v{p.ruleVersion}, signed by you{p.amaraApproved && <>, and you approved it{p.approvalId && <> (<code>{p.approvalId}</code>)</>}</>}</dd>

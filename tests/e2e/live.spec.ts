@@ -56,6 +56,7 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
   // End of month, then Amara moves Zoe to Level 3 (the demo family is seeded at Level 2).
   await page.getByText("Demo controls").click();
   await page.getByRole("button", { name: "Advance to end of month" }).click();
+  await expect(page).toHaveURL(/\?(advanced=endOfMonth|promoted=1)$/, { timeout: 60_000 }); // wait for the clock to move
   await page.goto("/g/rules");
   await expect(page.getByRole("heading", { level: 1, name: "Zoe's rules" })).toBeVisible();
   // Rules in force: the level change path (reason, Move, Yes). Ended after the month: the signing path (reason, Sign, Yes).
