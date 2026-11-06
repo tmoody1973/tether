@@ -8,6 +8,16 @@ import type { ChargeArgs } from "@/adapters/paypal/orders";
 /** The permission slip and order details a charge was sent with, plus the decision and approval it was debited under. */
 export interface ChargeIntent { token: AuthToken; args: ChargeArgs; decision: Decision; approvalId: string | null }
 
+/** The shared demo family's seeded end state (Task 19): what resetDemo puts back without charging PayPal again. */
+export interface DemoSnapshot {
+  now: string; // demo-clock time the seed ended at; reset puts the clock back here
+  grant: Grant; // the rules in force at the end of the seed; reset re-installs them as a new version
+  commitmentCents: number;
+  goal: { title: string; targetCents: number; channel3ProductId: string | null };
+  ask: { cart: Cart; note: string } | null; // the over-budget ask waiting on Amara's home (null: none could be found)
+  shop: { domain: string; reason: string }; // the open shop suggestion
+}
+
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const createdAt = (name = "created_at") => ts(name).notNull().defaultNow();
 
@@ -27,6 +37,10 @@ export const families = pgTable("families", {
   teenNudgeAt: ts("teen_nudge_at"),
   teenNudgeNote: text("teen_nudge_note"),
   teenSeenLevelAt: ts("teen_seen_level_at"), // the level change Zoe last tapped "Nice" on; a newer one shows the level-up moment
+  demo: jsonb("demo").$type<DemoSnapshot>(), // set only on the shared demo family
+  // Demo reset: journal rows written (real time) in (from, to] stay on the record but no longer count in any total.
+  ledgerVoidFrom: ts("ledger_void_from"),
+  ledgerVoidTo: ts("ledger_void_to"),
 });
 
 export const merchants = pgTable("merchants", {
@@ -123,6 +137,7 @@ export const journal = pgTable("journal", {
   amountCents: integer("amount_cents").notNull(),
   ref: text("ref"),
   note: text("note"),
+  createdAt: createdAt(), // REAL time the row was written (`at` is the demo clock); a demo reset voids by this
 }, (j) => [uniqueIndex("journal_invest_ref_uq").on(j.kind, j.ref).where(sql`${j.kind} in ('invest', 'invest_reversal')`)]);
 
 export const weeks = pgTable("weeks", {

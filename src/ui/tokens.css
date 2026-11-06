@@ -61,3 +61,8 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 }
+
+/* Seams (design doc §11): what the demo simulates. Information, not a warning — small, muted, never amber. */
+.seam { font-size: 12.5px; line-height: 1.5; color: var(--ink-3-text); }
+.seam::before { content: "i"; display: inline-grid; place-items: center; width: 15px; height: 15px; margin-right: 6px; border: 1px solid currentColor; border-radius: 50%; font-size: 10px; font-weight: 700; font-style: italic; vertical-align: 1px; }
+.seam--center { text-align: center; }

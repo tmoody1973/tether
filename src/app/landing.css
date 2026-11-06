@@ -1,0 +1,42 @@
+/* Landing (marketing): brand palette from doc/brand/brand.json — paper, ink, and the brand blue for the hero band only.
+   White on #4A90E2 is 3.1:1, so button labels sit on a darker blue (#2B67AD, 5.6:1) or on white with ink text. */
+.l-page {
+  --l-blue: #4A90E2;
+  --l-blue-deep: #2B67AD;
+  --l-ink: #2C3E50;
+  --l-paper: #F8F9FA;
+  min-height: 100vh; display: flex; flex-direction: column;
+  background: var(--l-paper); color: var(--l-ink); font-family: var(--font-sans);
+}
+.l-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px clamp(20px, 5vw, 56px); }
+.l-textlink { color: var(--l-ink); font-weight: 600; font-size: 14.5px; text-underline-offset: 3px; }
+.l-textlink:hover { color: var(--l-blue-deep); }
+
+.l-main { flex: 1; }
+.l-hero { max-width: 760px; margin: 0 auto; padding: clamp(28px, 7vw, 72px) 20px 40px; text-align: center; }
+.l-pitch { font-size: clamp(30px, 5.2vw, 52px); line-height: 1.08; letter-spacing: -0.025em; font-weight: 800; text-wrap: balance; }
+.l-copy { margin: 22px auto 0; max-width: 620px; display: grid; gap: 10px; font-size: 17px; line-height: 1.55; color: #46586A; }
+.l-ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 30px 0 18px; }
+.l-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 24px;
+  border-radius: 999px; font-size: 16px; font-weight: 700; text-decoration: none; border: 1.5px solid transparent;
+}
+.l-btn--primary { background: var(--l-blue-deep); color: #fff; }
+.l-btn--primary:hover { background: #22558F; }
+.l-btn--secondary { background: #fff; color: var(--l-ink); border-color: #C9D3DD; }
+.l-btn--secondary:hover { border-color: var(--l-ink); }
+.l-btn:focus-visible, .l-textlink:focus-visible { outline: 3px solid var(--l-blue); outline-offset: 3px; }
+.l-hero .seam { margin-top: 18px; }
+
+.l-band {
+  margin: 8px clamp(12px, 4vw, 48px) 0; padding: clamp(20px, 4vw, 40px);
+  border-radius: 24px; background: linear-gradient(135deg, var(--l-blue), #3D7FCB);
+}
+.l-steps { list-style: none; margin: 0 auto; padding: 0; max-width: 1080px; display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
+.l-step { background: #fff; border-radius: 16px; padding: 18px; font-size: 17px; box-shadow: 0 1px 3px rgba(20, 30, 50, .12); }
+.l-step b { font-weight: 800; }
+.l-step span { display: block; margin-top: 6px; font-size: 14.5px; line-height: 1.5; color: #46586A; }
+@media (max-width: 860px) { .l-steps { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .l-steps { grid-template-columns: 1fr; } }
+
+.l-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 28px clamp(20px, 5vw, 56px); font-size: 14px; color: #46586A; }

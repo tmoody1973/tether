@@ -11,6 +11,7 @@ import { formatCents } from "@/ui/grantWords";
 import { INVEST_STATUS } from "@/ui/investWords";
 import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "./FundFacts";
+import { Seam } from "@/ui/Seam";
 
 // Amara's fund list: Tether recommends nothing; funds arrive only when Zoe proposes and Amara approves.
 export default function InvestPage() {
@@ -37,7 +38,7 @@ async function Invest() {
   return (
     <GuardianShell active="invest" teenName={zoe}>
       <h1 className="g-title">Investing</h1>
-      {!custodial && <p className="g-card g-note" role="note">{STAND_IN_LABEL}</p>}
+      {!custodial && <div className="g-card"><Seam>{STAND_IN_LABEL}</Seam></div>}
 
       <div className="g-two">
         <div className="g-stack">

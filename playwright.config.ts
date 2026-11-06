@@ -27,6 +27,8 @@ export default defineConfig({
         ALPACA_BROKER_BASE_URL: `http://localhost:${E2E.fakePort}`, ALPACA_DATA_BASE_URL: `http://localhost:${E2E.fakePort}`,
         ALPACA_AUTH_URL: `http://localhost:${E2E.fakePort}/v1/oauth2/token`, ALPACA_BROKER_KEY: "e2e-fake", ALPACA_BROKER_SECRET: "e2e-fake",
         ALPACA_FIRM_ACCOUNT_ID: "e2e-firm", ALPACA_CUSTODIAL_ENABLED: "false",
+        // The landing page's demo buttons point at the read-only Amara & Zoe e2e family.
+        DEMO_GUARDIAN_KEY: E2E.guardianKey, DEMO_TEEN_TOKEN: E2E.teenToken,
       },
     },
   ],

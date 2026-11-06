@@ -9,6 +9,7 @@ import { approveAndSettle } from "@/flows/approve";
 import { ADVANCES, advanceDemoClock, type Advance } from "@/flows/demo";
 import { GrantError, ReasonRequiredError, RulesStoppedError, guardianSetLevel, resetTeenLink, revoke, signGrant } from "@/flows/grant";
 import { confirmRelease } from "@/flows/month";
+import { DemoResetError, resetDemo } from "@/flows/reset";
 import type { Level } from "@/engine/ladder";
 import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
 
@@ -63,6 +64,22 @@ export async function advanceClockAction(form: FormData): Promise<void> {
   if (!(ADVANCES as readonly string[]).includes(to)) redirect("/g");
   const { review } = await advanceDemoClock(g.deps, g.familyId, to as Advance);
   redirect(review?.action === "PROMOTE" ? "/g/review?promoted=1" : `/g?advanced=${to}`);
+}
+
+/** Reset demo (D11): only the shared demo family, identified by the configured demo keys; anyone else is refused. */
+export async function resetDemoAction(): Promise<void> {
+  const g = await guardianDeps();
+  if (!g) redirect("/g");
+  let needsPaypal: boolean;
+  try {
+    const r = await resetDemo(paymentDeps(g.deps.db), g.familyId,
+      { guardianKey: process.env.DEMO_GUARDIAN_KEY, teenToken: process.env.DEMO_TEEN_TOKEN });
+    needsPaypal = r?.needsPaypal ?? false; // null only with ifStaleMs, which this button never passes
+  } catch (err) {
+    if (!(err instanceof DemoResetError)) throw err;
+    redirect("/g");
+  }
+  redirect(`/g?demo=${needsPaypal ? "reset-paypal" : "reset"}`);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import type { WeekRecord } from "@/engine/ladder";
@@ -14,11 +14,24 @@ export function weekKey(d: Date): string {
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
+/**
+ * Journal rows that count. A demo reset (Task 19) voids the rows written (real time) between the seed and the reset:
+ * they stay on the record, append-only, but no longer count toward a week, the budget or savings. A reversal is
+ * judged by the row it reverses (same ref), so undoing a set-aside spend can't count on its own (R44).
+ */
+// ponytail: a correlated lookup per journal row; fine at family scale, index journal(family_id, ref) if it ever isn't.
+export const counted = sql`not exists (select 1 from families f, lateral (select coalesce(
+    (select o.created_at from journal o where o.family_id = ${t.journal.familyId} and o.ref = ${t.journal.ref}
+      and o.kind = case ${t.journal.kind} when 'spend_reversal' then 'spend' when 'invest_reversal' then 'invest' end
+      order by o.created_at limit 1),
+    ${t.journal.createdAt}) as written) w
+  where f.id = ${t.journal.familyId} and w.written > f.ledger_void_from and w.written <= f.ledger_void_to)`;
+
 type Entry = { at: Date; kind: (typeof t.journalKinds)[number]; amountCents: number };
 
 const entries = (db: Db, familyId: string): Promise<Entry[]> =>
   db.select({ at: t.journal.at, kind: t.journal.kind, amountCents: t.journal.amountCents })
-    .from(t.journal).where(eq(t.journal.familyId, familyId)).orderBy(asc(t.journal.at));
+    .from(t.journal).where(and(eq(t.journal.familyId, familyId), counted)).orderBy(asc(t.journal.at));
 
 const SPEND_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { spend: 1, spend_reversal: -1 };
 const SAVINGS_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { week_close: 1, release: -1, invest: -1, invest_reversal: 1 };
@@ -33,9 +46,11 @@ export async function savingsCents(db: Db, familyId: string): Promise<Cents> {
   return sum(await entries(db, familyId), SAVINGS_SIGN);
 }
 
+/** Shops she has bought from: paid purchases whose spend counts (a demo reset brings "first time here" back). */
 async function merchantsUsed(db: Db, familyId: string): Promise<Set<string>> {
   const rows = await db.select({ cart: t.purchases.cart }).from(t.purchases)
-    .where(and(eq(t.purchases.familyId, familyId), eq(t.purchases.status, "paid")));
+    .leftJoin(t.journal, and(eq(t.journal.kind, "spend"), eq(t.journal.ref, t.purchases.id)))
+    .where(and(eq(t.purchases.familyId, familyId), eq(t.purchases.status, "paid"), counted)); // no spend row ⇒ counts
   return new Set(rows.map((r) => r.cart.merchantId));
 }
 

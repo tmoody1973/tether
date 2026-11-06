@@ -11,16 +11,9 @@ import { clockFor } from "@/clock/clock";
 import { cartHash } from "@/engine/hash";
 import { signGrant } from "@/flows/grant";
 import { advanceDemoClock } from "@/flows/demo";
+import { DEMO_MERCHANTS } from "@/flows/seed";
 import type { Cart } from "@/engine/types";
 import { E2E } from "./fixtures";
-
-export const DEMO_MERCHANTS = [
-  { id: "m_bestbuy", name: "Best Buy", domain: "bestbuy.com", class: "general", opensAtLevel: 1 },
-  { id: "m_target", name: "Target", domain: "target.com", class: "general", opensAtLevel: 1 },
-  { id: "m_barnesandnoble", name: "Barnes & Noble", domain: "barnesandnoble.com", class: "books", opensAtLevel: 2 },
-  { id: "m_nike", name: "Nike", domain: "nike.com", class: "sneakers", opensAtLevel: 3 },
-  { id: "m_uniqlo", name: "Uniqlo", domain: "uniqlo.com", class: "apparel", opensAtLevel: 3 },
-].map((m) => ({ ...m, channel3WebsiteId: m.domain }));
 
 const ALLOW = { outcome: "ALLOW" as const, reasons: [], semanticRules: [] };
 const ASK = { outcome: "NEEDS_APPROVAL" as const, reasons: [{ constraint: "approval.over_amount", detail: "over" }], semanticRules: [], gate2: [] };

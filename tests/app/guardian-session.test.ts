@@ -28,4 +28,12 @@ describe("guardianFamilyId", () => {
     cookieValue = signGuardianCookie("family-that-was-deleted", new Date());
     expect(await guardianFamilyId()).toBeNull();
   });
+
+  it("a cookie for a demo family a re-seed archived ⇒ signed out", async () => {
+    const fam = await repo.insertFamily(testDb, {
+      name: "Amara & Zoe (archived)", teenToken: "archived-t", guardianToken: `${repo.ARCHIVED_PREFIX}abc`, guardianName: "Amara", teenName: "Zoe",
+    });
+    cookieValue = signGuardianCookie(fam.id, new Date());
+    expect(await guardianFamilyId()).toBeNull();
+  });
 });

@@ -10,6 +10,7 @@ import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guar
 import { FundFactsLine } from "../../invest/FundFacts";
 import { decideRequestAction } from "../../actions";
 import { DecideButtons } from "./DecideButtons";
+import { Seam } from "@/ui/Seam";
 
 // Mock 10: one tap, with the budget consequence shown first. Requests arrive as a deep link, not a place.
 export default function RequestPage({ params }: PageProps<"/g/requests/[id]">) {
@@ -150,6 +151,7 @@ function Open({ v }: { v: RequestView }) {
       <form action={decideRequestAction} style={{ display: "grid", gap: 9 }}>
         <input type="hidden" name="approvalId" value={v.id} />
         <DecideButtons approveLabel={approveLabel(v)} />
+        {v.purchase && <Seam center kinds={["sandbox", "merchant"]} />}
         <p className="g-note" style={{ textAlign: "center" }}>
           Open until {formatDay(v.expiresAt)}.{" "}
           {v.purchase && <Link className="g-textlink" href="/g/grant">or change her limit instead</Link>}

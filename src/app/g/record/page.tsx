@@ -12,6 +12,7 @@ import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guar
 import { resumePayingPurchases } from "@/flows/purchase";
 import { paymentDeps } from "../flowDeps";
 import { AskBox } from "./AskBox";
+import { Seam } from "@/ui/Seam";
 
 // Mocks 11 + 14: dashboard on top, audit trail below, the proof behind every payment. Guardian-only.
 export default function RecordPage({ searchParams }: PageProps<"/g/record">) {
@@ -50,6 +51,7 @@ async function Record({ searchParams }: { searchParams: Promise<Record<string, s
       <div>
         <h1 className="g-title">The record</h1>
         <p className="g-muted" style={{ marginTop: 4 }}>Everything you&apos;ve authorised, and the proof behind each payment.</p>
+        <div style={{ marginTop: 8 }}><Seam kinds={["sandbox", "merchant", "family", "gate2", "hmac"]} /></div>
       </div>
 
       <div className="g-grid4">
@@ -148,7 +150,8 @@ function PaymentRow({ p }: { p: RecordReceipt }) {
     <>
       <tr className="g-row--main">
         <td>{formatWhen(p.at)}</td>
-        <td><b>{p.shop}</b><Money cents={p.amountCents} />{p.status === "paying" && <> · <span className="g-chip">Paying…</span></>}</td>
+        <td><b>{p.shop}</b><Money cents={p.amountCents} />{p.status === "paying" && <> · <span className="g-chip">Paying…</span></>}
+          {p.setAside && <span className="g-note" style={{ display: "block" }}>Set aside by a demo reset — not counted</span>}</td>
         <td>{p.amaraApproved ? <>You approved it · Rules v{p.ruleVersion}</> : <>Within Rules v{p.ruleVersion}</>}</td>
         <td className="g-proof"><span className="g-muted">PayPal capture</span><br /><code>{p.captureId}</code></td>
       </tr>

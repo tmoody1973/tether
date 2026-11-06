@@ -9,7 +9,7 @@ import type { Level } from "@/engine/ladder";
 export type NeedsYou =
   | { kind: "rules"; nudged?: true } // no grant in force: Zoe can't spend until Amara signs (nudged: she asked for it)
   | { kind: "message"; note: string } // this week Zoe asked about something her rules can't pay for
-  | { kind: "paypal" } // no saved PayPal: approved purchases can't be charged
+  | { kind: "paypal"; removedByRevoke?: true } // no saved PayPal (on the demo family: Revoke deleted it at PayPal)
   | { kind: "approval"; id: string; subject: PendingApproval["subject"]; amountCents?: number; shop?: string; symbol?: string; note: string | null };
 
 export interface GuardianHome {
@@ -17,6 +17,8 @@ export interface GuardianHome {
   level: Level | null; grantVersion: number | null; weeklyCents: number; expiresAt: Date | null; grantEnded: boolean;
   spentThisWeekCents: number; savingsCents: number; goal: { title: string; targetCents: number } | null;
   paypalSaved: boolean; needsYou: NeedsYou[]; now: Date;
+  /** The shared demo family (it carries a seed snapshot): the demo box offers Reset. */
+  isDemo: boolean;
 }
 
 /** Read model for Amara's home: signals, not a feed. `now` is the family's demo-clock time. */
@@ -40,10 +42,10 @@ export async function guardianHome(db: Db, familyId: string, now: Date): Promise
       ...(grantEnded ? [nudgedToRenew(fam, grant?.expiresAt ?? null) ? { kind: "rules", nudged: true } as const : { kind: "rules" } as const] : []),
       ...(fam.teenNudgeAt && fam.teenNudgeNote && weekKey(fam.teenNudgeAt) === weekKey(now)
         ? [{ kind: "message", note: fam.teenNudgeNote } as const] : []),
-      ...(vault ? [] : [{ kind: "paypal" } as const]),
+      ...(vault ? [] : [fam.demo ? { kind: "paypal", removedByRevoke: true } as const : { kind: "paypal" } as const]),
       ...approvals,
     ],
-    now,
+    now, isDemo: fam.demo !== null,
   };
 }
 

@@ -1,7 +1,7 @@
 import { generateText, jsonSchema, stepCountIs, tool, type LanguageModel, type Tool } from "ai";
 import { PayPalAgentToolkit } from "@paypal/agent-toolkit/ai-sdk";
 import type { Db } from "@/db/client";
-import { captureIdsForFamily, receiptsForMonth } from "@/db/repo";
+import { captureIdsForFamily, receiptsForMonth, type MonthReceipt } from "@/db/repo";
 
 // ponytail: the toolkit bundles its own older `ai` (v4 tool shape); the live smoke proves generateText accepts it.
 // Read-only by construction: the model only ever sees tools from ALLOWED_PAYPAL_TOOLS plus
@@ -92,6 +92,13 @@ const SYSTEM = `You answer a parent's questions about their teenager's spending,
 
 const dollars = (c: number) => (c / 100).toFixed(2);
 
+/** One tether_record row for the model: whitelisted fields only. */
+export const recordRow = (r: MonthReceipt) => ({
+  date: r.at.toISOString().slice(0, 10), shop: r.shop, amount: dollars(r.amountCents),
+  status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? "Amara approved this one" : "within the rules Amara signed",
+  countsTowardBudget: !r.setAside, // false: a demo reset set it aside; the PayPal charge still happened
+});
+
 function recordTool(db: Db, familyId: string, onRows: (n: number) => void): Tool {
   return tool({
     description: "Tether's receipts for this family in one month: date, shop, amount (dollars), status, rule version, and how it was allowed (within the rules Amara signed, or approved by Amara one by one).",
@@ -103,10 +110,7 @@ function recordTool(db: Db, familyId: string, onRows: (n: number) => void): Tool
       const month = typeof input?.month === "string" ? input.month : "";
       const rows = MONTH_RE.test(month) ? await receiptsForMonth(db, familyId, month) : [];
       onRows(rows.length);
-      return rows.map((r) => ({
-        date: r.at.toISOString().slice(0, 10), shop: r.shop, amount: dollars(r.amountCents),
-        status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? "Amara approved this one" : "within the rules Amara signed",
-      }));
+      return rows.map(recordRow);
     },
   });
 }

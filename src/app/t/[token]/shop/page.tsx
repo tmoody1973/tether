@@ -6,6 +6,7 @@ import { formatCents } from "@/ui/grantWords";
 import { LinkGone, TeenLoading, TeenShell } from "@/ui/teen";
 import { NotShopping } from "../NotShopping";
 import { ShopForms } from "./ShopForms";
+import { Seam } from "@/ui/Seam";
 
 // F5 / F5b: find something, only inside the shops Amara allowed; every result is labelled by the rule engine.
 export default function ShopPage({ params }: PageProps<"/t/[token]/shop">) {
@@ -38,6 +39,7 @@ async function Shop({ params }: { params: Promise<{ token: string }> }) {
         <p className="t-small" style={{ marginTop: 4 }}><b className="money">{formatCents(w.leftCents)}</b> left this week</p>
       </div>
       <ShopForms token={token} guardian={w.guardianName} />
+      <Seam center kinds={["sandbox", "merchant"]} />
     </TeenShell>
   );
 }
