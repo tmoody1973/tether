@@ -4,10 +4,19 @@ import { E2E } from "./tests/e2e/fixtures";
 const baseURL = `http://localhost:${E2E.port}`;
 
 // Own port and a freshly seeded on-disk PGlite every run; never reuses whatever else is on :3000.
+const live = process.env.LIVE_BASE_URL;
+
 export default defineConfig({
   testDir: "tests/e2e",
   workers: 1, // one PGlite, one dev server
-  webServer: [
+  // `local` is the default suite (fakes, local dev server). `live` hits the deployed demo (Task 20: LIVE_BASE_URL=https://... pnpm e2e --project=live)
+  // and only runs live.spec.ts; with no LIVE_BASE_URL its tests skip themselves.
+  projects: [
+    { name: "local", testIgnore: /live\.spec\.ts/, use: { baseURL } },
+    { name: "live", testMatch: /live\.spec\.ts/, use: { baseURL: live ?? baseURL } },
+  ],
+  // With LIVE_BASE_URL set we are testing a hosted deploy: no local servers, and TETHER_E2E is never set anywhere near it.
+  webServer: live ? [] : [
     {
       command: "pnpm tsx tests/e2e/fake-paypal.ts",
       url: `http://localhost:${E2E.fakePort}/health`,

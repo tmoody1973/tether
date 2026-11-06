@@ -2,6 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
 import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
 import { getDb } from "@/db/client";
+import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 
 const MAX_QUESTION = 500;
 
@@ -24,12 +25,14 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: `question must be 1-${MAX_QUESTION} characters` }, { status: 400 });
   }
   try {
+    const db = await getDb();
     const { ANTHROPIC_API_KEY: apiKey, PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: clientSecret } = process.env;
     if (!apiKey || !clientId || !clientSecret) throw new Error("assistant not configured");
+    if (!(await takeDaily(db, familyId, "month_ask"))) return Response.json({ answer: DAILY_CAP_MESSAGE }); // only now: validated, configured, about to pay for the model
     const result = await askAboutMonth({
       model: createAnthropic({ apiKey })("claude-haiku-5-5"),
       paypalTools: readOnlyPaypalTools({ clientId, clientSecret, sandbox: true }),
-      db: await getDb(),
+      db,
     }, familyId, question);
     return Response.json(result);
   } catch (err) {

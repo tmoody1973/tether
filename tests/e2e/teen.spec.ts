@@ -150,6 +150,7 @@ test("R40: Zoe asks $15 with $9.50 left ⇒ Amara approves ⇒ paid, and her wee
 });
 
 test("paused rules: a calm page and no shopping", async ({ page }) => {
+  test.setTimeout(90_000); // cold dev compile of several pages
   await open(page, E2E.teen.paused);
   await expect(page.getByRole("heading", { name: "Amara paused your rules." })).toBeVisible();
   await expect(page.locator(".t-hero")).toHaveCount(0);
