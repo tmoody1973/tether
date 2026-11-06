@@ -54,6 +54,7 @@ test("home shows this week, what needs you, recent payments and her rules at a g
   const recent = page.getByRole("region", { name: "Recent" });
   await expect(recent.locator("li", { hasText: "Target" })).toContainText("Within her rules");
   await expect(recent.locator("li", { hasText: "Target" })).toContainText("$6.00");
+  await expect(recent.locator("li", { hasText: "Target" })).toContainText("Notebook"); // what she bought, under the shop
   await expect(recent.getByRole("link", { name: "See all activity" })).toHaveAttribute("href", "/g/activity");
   const glance = page.getByRole("region", { name: "Her rules at a glance" });
   await expect(glance).toContainText("Each week$20.00");
@@ -181,8 +182,10 @@ test("activity lists purchases in plain words, with the proof folded under each"
   await page.goto("/g/activity");
   await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
   await expect(nav(page).getByRole("link", { name: "Activity" })).toHaveAttribute("aria-current", "page");
-  const row = page.locator(".g-rows > li", { hasText: "$6.00" });
+  // The paid $6.00 row (it has a Proof). A parallel teen test can add its own $6.00 Notebook that is still paying.
+  const row = page.locator(".g-rows > li").filter({ has: page.locator("summary", { hasText: /^Proof for \$6\.00 at Target, / }) }).first();
   await expect(row).toContainText("Target");
+  await expect(row.locator(".g-row__items")).toHaveText("Notebook"); // the seeded item, under the shop
   await expect(row).toContainText("Within her rules");
   await expect(row.getByText(E2E.receiptCapture)).toBeHidden(); // folded until she asks
   await expect(row.locator("summary")).toHaveText(/^Proof for \$6\.00 at Target, /); // its name says which payment
@@ -193,7 +196,9 @@ test("activity lists purchases in plain words, with the proof folded under each"
   await expect(row).toContainText("Cart fingerprint");
   await expect(row.locator(".g-clause")).toContainText("Zoe can spend up to $20.00 a week");
   await expect(row.locator("dd", { hasText: "Matches PayPal" })).toBeVisible();
-  await expect(page.locator(".g-rows > li", { hasText: "Paying… no receipt yet" })).toContainText("$4.50"); // money left, no receipt
+  const settling = page.locator(".g-rows > li", { hasText: "Paying… no receipt yet" });
+  await expect(settling).toContainText("$4.50"); // money left, no receipt
+  await expect(settling.locator(".g-row__items")).toHaveText("Notebook"); // its cart is known, so is what she's buying
   await expect(page.getByRole("region", { name: /check-in$/ })).toContainText("The check-in runs at month end");
   await expect(page.getByRole("button", { name: "What did Zoe buy this month?" })).toBeVisible();
   await expect(page.getByText("Rules history")).toBeVisible();

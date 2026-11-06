@@ -1,6 +1,8 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
+import { paypalFromEnv } from "@/adapters/paypal/http";
 import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
+import { now } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 
@@ -30,9 +32,11 @@ export async function POST(req: Request): Promise<Response> {
     if (!apiKey || !clientId || !clientSecret) throw new Error("assistant not configured");
     if (!(await takeDaily(db, familyId, "month_ask"))) return Response.json({ answer: DAILY_CAP_MESSAGE }); // only now: validated, configured, about to pay for the model
     const result = await askAboutMonth({
-      model: createAnthropic({ apiKey })("claude-haiku-5-5"),
+      model: createAnthropic({ apiKey })("claude-sonnet-5-5"), // decision 018: Sonnet reasons across four read-only sources; Haiku stays elsewhere
       paypalTools: readOnlyPaypalTools({ clientId, clientSecret, sandbox: true }),
+      paypal: paypalFromEnv(), // paypal_check: the Activity page's reconciliation, read-only
       db,
+      now: await now(db, familyId), // the family's demo clock: the model must ask about the months Tether shows
     }, familyId, question);
     return Response.json(result);
   } catch (err) {

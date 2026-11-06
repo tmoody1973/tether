@@ -39,7 +39,12 @@ async function family() {
     const p = await repo.insertPurchase(db, { familyId: fam.id, cart: cart(cents), cartHash: `ask-${n}-${cents}`, status: "needs_approval", decision });
     return (await requestApproval(deps(), fam.id, "purchase", p.id, p.cartHash, note)).approvalId;
   };
-  return { familyId: fam.id, now, paid, asking };
+  /** Money left the budget, PayPal hasn't answered: no receipt yet. */
+  const paying = async (cents: number) => {
+    const p = await repo.insertPurchase(db, { familyId: fam.id, cart: cart(cents), cartHash: `pay-${n}-${cents}`, status: "paying", decision });
+    await repo.appendJournal(db, { familyId: fam.id, kind: "spend", amountCents: cents, at: now, ref: p.id, note: null });
+  };
+  return { familyId: fam.id, now, paid, asking, paying };
 }
 
 describe("requestView", () => {
@@ -82,11 +87,18 @@ describe("guardianRecord", () => {
     const r = await guardianRecord(db, a.familyId, "2026-11", a.now);
     expect(r.receipts).toHaveLength(1);
     expect(r.receipts[0]).toMatchObject({ captureId: `GV-REC-${n}`, ruleVersion: 1, amaraApproved: false, shop: "Target", amountCents: 600 });
+    expect(r.receipts[0].items).toEqual([{ title: "Sneakers", qty: 1 }]); // what she bought, not only where
     expect(r.receipts[0].slip.clause).toMatch(/^Zoe can spend up to \$20\.00 a week at .*Target/); // merchants are shared across this file's families
     expect(r.receipts[0].slip.expiresAt.getTime() - r.receipts[0].slip.issuedAt.getTime()).toBe(120_000);
     expect(JSON.stringify(r.receipts[0].slip)).not.toMatch(/signature|secret/i);
     expect(r.grants).toEqual([expect.objectContaining({ version: 1, level: 1, status: "active", shops: expect.arrayContaining(["Target"]) })]);
     expect((await guardianRecord(db, a.familyId, "2026-10", a.now)).receipts).toEqual([]);
+  });
+  it("a payment still settling (no receipt yet) shows what she's buying", async () => {
+    const a = await family();
+    await a.paying(450);
+    const r = await guardianRecord(db, a.familyId, "2026-11", a.now);
+    expect(r.unreceipted).toEqual([expect.objectContaining({ shop: "Target", amountCents: 450, items: [{ title: "Sneakers", qty: 1 }] })]);
   });
 });
 

@@ -26,6 +26,10 @@ export function hiddenNote(n: number, flagged = 0): string | null {
   return flagged > 0 ? `${base}; PayPal's check flagged ${flagged} of them.` : `${base}.`;
 }
 
+/** What she bought, under the shop: the first item, then how many more ("Crayola 64-pack + 1 more"). Null: no items. */
+export const itemsLine = (items: { title: string }[]): string | null =>
+  items.length === 0 ? null : items.length === 1 ? items[0].title : `${items[0].title} + ${items.length - 1} more`;
+
 /** Sunday of `now`'s ISO week, UTC (the ledger's weeks). */
 export function weekEnd(now: Date): Date {
   const day = now.getUTCDay() || 7;

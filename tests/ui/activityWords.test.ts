@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkWords, hiddenNote, monthEnd, needsBadge, shownReceipts, weekEnd } from "@/ui/activityWords";
+import { checkWords, hiddenNote, itemsLine, monthEnd, needsBadge, shownReceipts, weekEnd } from "@/ui/activityWords";
 import { reviewMonth, type WeekRecord } from "@/engine/ladder";
 
 const kept = (k: string): WeekRecord => ({ weekKey: k, allowanceCents: 2000, spentCents: 1000, commitmentCents: 200 });
@@ -34,6 +34,14 @@ describe("activity words (Amara's Activity page)", () => {
     expect(weekEnd(new Date("2027-01-03T23:00:00Z")).toISOString().slice(0, 10)).toBe("2027-01-03"); // Sun stays Sun
     expect(monthEnd(new Date("2026-12-05T00:00:00Z")).toISOString().slice(0, 10)).toBe("2026-12-31");
     expect(monthEnd(new Date("2027-02-10T00:00:00Z")).toISOString().slice(0, 10)).toBe("2027-02-28");
+  });
+
+  it("names what she bought under the shop: the first item, then how many more", () => {
+    const item = (title: string) => ({ title, qty: 1 });
+    expect(itemsLine([item("Crayola 64-pack")])).toBe("Crayola 64-pack");
+    expect(itemsLine([item("Crayola 64-pack"), item("Sketchbook")])).toBe("Crayola 64-pack + 1 more");
+    expect(itemsLine([item("Crayola 64-pack"), item("Sketchbook"), item("Pens")])).toBe("Crayola 64-pack + 2 more");
+    expect(itemsLine([])).toBeNull();
   });
 
   it("the nav badge shows only when something needs her", () => {
