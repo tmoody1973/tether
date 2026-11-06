@@ -45,9 +45,10 @@ const CACHE_MAX = 500;
 /** Validated model sentences by symbol: what a fund is doesn't change, so the model is asked once per process. */
 const said = new Map<string, string>();
 
-export async function fundWords(llm: Llm | null, facts: FundFacts): Promise<string> {
+/** `take` (I4): asked before a model call for an uncached symbol; false (daily cap reached) ⇒ the plain description. */
+export async function fundWords(llm: Llm | null, facts: FundFacts, take: () => Promise<boolean> = async () => true): Promise<string> {
   let sentence = said.get(facts.symbol) ?? description(facts);
-  if (llm && !said.has(facts.symbol)) {
+  if (llm && !said.has(facts.symbol) && (await take())) {
     try {
       const user = JSON.stringify({ name: facts.name, symbol: facts.symbol, exchange: facts.exchange, fractionable: facts.fractionable });
       const out = await llm.json<{ text: string }>({ system: SYSTEM, user, schema: SCHEMA, maxTokens: 100 });

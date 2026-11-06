@@ -194,7 +194,8 @@ export const investments = pgTable("investments", {
   amountCents: integer("amount_cents").notNull(),
   answers: jsonb("answers").$type<Record<string, unknown>>().notNull(),
   status: text("status", {
-    enum: ["proposed", "approved", "depositing", "queued", "filled", "rejected", "cash_held", "needs_review"],
+    // expired (M3): Zoe asked, Amara's approval window ran out unanswered; nothing moved, she can ask again.
+    enum: ["proposed", "approved", "depositing", "queued", "filled", "rejected", "cash_held", "needs_review", "expired"],
   }).notNull(),
   alpacaAccountId: text("alpaca_account_id"),
   transferId: text("transfer_id"),
@@ -208,7 +209,7 @@ export const investments = pgTable("investments", {
 /** Real-time daily usage counters for the public demo key (R45): one row per family, kind and UTC day. */
 export const usage = pgTable("usage", {
   familyId: text("family_id").notNull().references(() => families.id),
-  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask"] }).notNull(),
+  kind: text("kind", { enum: ["shop_agent", "shop_lookup", "month_ask", "fund_words"] }).notNull(),
   day: text("day").notNull(), // YYYY-MM-DD, real UTC date (never the demo clock)
   count: integer("count").notNull().default(0),
 }, (u) => [primaryKey({ columns: [u.familyId, u.kind, u.day] })]);

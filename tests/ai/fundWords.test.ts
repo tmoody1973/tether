@@ -31,6 +31,18 @@ describe("fundWords", () => {
       const f = fresh();
       expect(await fundWords(say(s), f)).toBe(`${PLAIN(f)} ${ONE} ${FIVE}`);
     });
+  it("over the daily cap (take ⇒ false) ⇒ plain description, no model call; a cached symbol never asks (I4)", async () => {
+    let calls = 0;
+    const counting: Llm = { json: (async () => { calls++; return { text: "Vanguard S&P 500 ETF trades on ARCA." }; }) as Llm["json"] };
+    const f = fresh();
+    expect(await fundWords(counting, f, async () => false)).toBe(`${PLAIN(f)} ${ONE} ${FIVE}`);
+    expect(calls).toBe(0);
+    let takes = 0;
+    const take = async () => { takes++; return true; };
+    await fundWords(counting, f, take);
+    await fundWords(counting, f, take); // cached now
+    expect([calls, takes]).toEqual([1, 1]);
+  });
   it("falls back when the model throws", async () => {
     const f = fresh();
     const bad: Llm = { json: async () => { throw new Error("down"); } };

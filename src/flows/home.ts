@@ -9,7 +9,7 @@ import type { Level } from "@/engine/ladder";
 export type NeedsYou =
   | { kind: "rules"; nudged?: true } // no grant in force: Zoe can't spend until Amara signs (nudged: she asked for it)
   | { kind: "message"; note: string } // this week Zoe asked about something her rules can't pay for
-  | { kind: "paypal"; removedByRevoke?: true } // no saved PayPal (on the demo family: Revoke deleted it at PayPal)
+  | { kind: "paypal"; removedByRevoke?: true } // no saved PayPal (on the demo family: it was deleted at PayPal)
   | { kind: "approval"; id: string; subject: PendingApproval["subject"]; amountCents?: number; shop?: string; symbol?: string; note: string | null };
 
 export interface GuardianHome {

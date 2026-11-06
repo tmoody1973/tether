@@ -42,5 +42,5 @@ export async function proposeAction(_prev: ProposeState, form: FormData): Promis
     amount: "Say an amount in dollars, at least $1.00.",
     asked: `You've already asked ${g} about ${symbol}.`,
   };
-  return { error: r.error === "savings" ? `You have ${formatCents(r.savingsCents)} saved, so at most that.` : words[r.error], values };
+  return { error: r.error === "savings" ? `You have ${formatCents(r.savingsCents)} available to invest, so at most that.` : words[r.error], values };
 }

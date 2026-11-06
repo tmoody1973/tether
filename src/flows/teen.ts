@@ -12,6 +12,8 @@ import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { monthReviewView, reviewWeeks } from "@/flows/month";
 import { proposePurchase, settlePurchase, type Deps, type SettleResult } from "@/flows/purchase";
 import { formatCents } from "@/ui/grantWords";
+import { explainRefusal, type ExplainCtx, type Explanation } from "@/ai/explain";
+import type { Llm } from "@/ai/llm";
 
 const WEEK_MS = 7 * 86_400_000;
 
@@ -189,6 +191,20 @@ export async function teenPurchase(db: Db, familyId: string, purchaseId: string)
   return { id: p.id, title: titleOf(p.cart), shop: names.get(p.cart.merchantId) ?? "a shop", amountCents: p.cart.totalCents, status: p.status, decision: p.decision };
 }
 
+/**
+ * I4: the refusal sentence for one of her refused carts. Written once (model, or the template) and stored on the
+ * purchase's decision; every later render reuses it, so re-opening the sheet costs no model call.
+ */
+export async function refusalSentence(
+  db: Db, familyId: string, p: { id: string; decision: Decision }, llm: Llm | null, ctx: ExplainCtx,
+): Promise<Explanation> {
+  if (p.decision.explained) return { ...(await explainRefusal(null, p.decision, ctx)), sentence: p.decision.explained };
+  const e = await explainRefusal(llm, p.decision, ctx);
+  await db.update(t.purchases).set({ decision: { ...p.decision, explained: e.sentence } })
+    .where(and(eq(t.purchases.id, p.id), eq(t.purchases.familyId, familyId)));
+  return e;
+}
+
 /** Buy: settles a cart the engine already allowed (R12 re-check, slip, PayPal). Anything else is left alone. */
 export async function buy(deps: Deps, familyId: string, purchaseId: string): Promise<SettleResult> {
   const p = await own(deps.db, familyId, purchaseId);
@@ -239,12 +255,13 @@ export async function openAsk(db: Db, familyId: string, purchaseId: string): Pro
 }
 
 const HOUR_MS = 3_600_000;
-export const SHOP_HOURLY_LIMIT = 60;
-export const THROTTLED = "That's a lot of looking. Try again in a bit.";
+// I3: rows, not searches, are counted, and one search stores ~6, so the limit is generous; the daily caps bound cost.
+export const SHOP_HOURLY_LIMIT = 300;
+export const THROTTLED = "Lots of looking this hour — try again in a few minutes.";
 
 /**
  * Every search, link and agent run costs real Channel3 (and model) calls and stores purchase rows, so: at most
- * SHOP_HOURLY_LIMIT proposals an hour (real time, not demo time). Cost is bounded by the daily caps in takeDaily.
+ * SHOP_HOURLY_LIMIT purchase rows an hour (real time, not demo time). Cost is bounded by the daily caps in takeDaily.
  * ponytail: no per-run gap — it keyed on the newest purchase row, which a demo reset/freshen creates, so it refused
  * the first agent run of a judge who had just arrived.
  */

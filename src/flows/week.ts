@@ -39,10 +39,15 @@ export async function closeWeek(deps: Pick<Deps, "db" | "now">, familyId: string
       const key = weekKey(monday);
       const end = new Date(monday.getTime() + WEEK_MS);
       const grant = [...grants].reverse().find((g) => g.signedAt < end) ?? grants[0]; // grant in force that week
+      // Final review I2: rules that had ended before the week began, or were stopped, give no allowance: nothing is
+      // saved and the week can't count as kept. ponytail: grants have no revoked-at time, so a stopped grant gives 0 for
+      // every week not yet closed when it is stopped; the demo clock closes weeks as it moves, so that is at most this week.
+      const inForce = grant.status !== "revoked" && grant.expiresAt > monday;
+      // R33: never less than the floor Amara signed for that week, so an unset commitment can't count as kept.
+      const promised = Math.max(commitment, commitmentFloorCents(grant.body.weeklyCents, grant.body.commitmentFloorPct));
       const ins = await tx.insert(t.weeks).values({
-        familyId, weekKey: key, allowanceCents: grant.body.weeklyCents, closedAt: now,
-        // R33: never less than the floor Amara signed for that week, so an unset commitment can't count as kept.
-        commitmentCents: Math.max(commitment, commitmentFloorCents(grant.body.weeklyCents, grant.body.commitmentFloorPct)),
+        familyId, weekKey: key, allowanceCents: inForce ? grant.body.weeklyCents : 0, closedAt: now,
+        commitmentCents: inForce ? promised : Math.max(1, promised), // 0 allowance never keeps a promise of 1 cent or more
       }).onConflictDoNothing().returning({ k: t.weeks.weekKey });
       if (ins.length === 0) continue;
       const rec = (await weekRecords(tx, familyId)).find((w) => w.weekKey === key)!;

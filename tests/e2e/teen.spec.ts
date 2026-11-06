@@ -295,7 +295,7 @@ test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
 
 test("queued order shows \"Queued for market open\"", async ({ page }) => {
   await propose(page, E2E.teenB.queued, "VTI", "25"); // she has $20 saved
-  await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 saved, so at most that.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 available to invest, so at most that.");
   await expect(page.getByLabel("Why this one?")).toHaveValue("Lots of companies in one fund"); // her words are kept
   await page.getByLabel("How much, in dollars?").fill("5");
   await page.getByRole("button", { name: "Propose to Amara" }).click();

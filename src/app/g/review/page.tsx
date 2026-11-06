@@ -26,6 +26,7 @@ const WALLET_KEPT =
 function flash(sp: Record<string, string | string[] | undefined>, zoe: string): { text: string; warn?: boolean } | null {
   if (sp.stopped === "wallet-removed") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones, and PayPal removed your saved wallet.` };
   if (sp.stopped === "wallet-kept") return { text: WALLET_KEPT, warn: true };
+  if (sp.stopped === "demo-kept") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones. Demo: your saved PayPal is kept so the next person can try it.` };
   if (sp.stopped === "no-wallet") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones. There was no saved PayPal to remove.` };
   if (sp.sent === "1") return { text: "Recorded as sent by you. Tether can't see the money move, and the record says so." };
   if (typeof sp.level === "string" && /^[123]$/.test(sp.level)) return { text: `${zoe} is now at Level ${sp.level}. Your reason is on the record.` };
@@ -114,7 +115,7 @@ async function Review({ searchParams }: { searchParams: Promise<Record<string, s
             ) : (
               <>
                 <p className="g-note" style={{ marginBottom: 10 }}>Ends her rules at once. You can sign new ones any time.</p>
-                <StopRules teenName={zoe} />
+                <StopRules teenName={zoe} demo={v.demo} />
               </>
             )}
           </section>

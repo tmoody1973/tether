@@ -26,11 +26,11 @@ async function Invest() {
   const familyId = await guardianFamilyId();
   if (!familyId) return <SignedOut />;
   const db = await getDb();
-  const [h, funds, investments] = await Promise.all([
-    guardianHome(db, familyId, await clockNow(db, familyId)),
+  const [h, funds] = await Promise.all([
+    guardianHome(db, familyId, await clockNow(db, familyId)), // expires stale asks first (M3), so the list below is current
     db.select().from(t.fundAllowlist).where(eq(t.fundAllowlist.familyId, familyId)),
-    db.select().from(t.investments).where(eq(t.investments.familyId, familyId)),
   ]);
+  const investments = await db.select().from(t.investments).where(eq(t.investments.familyId, familyId));
   const zoe = h.teenName;
   const proposals = h.needsYou.flatMap((n) => (n.kind === "approval" && (n.subject === "fund" || n.subject === "investment") ? [n] : []));
   const custodial = process.env.ALPACA_CUSTODIAL_ENABLED === "true";
@@ -84,7 +84,7 @@ async function Invest() {
               {investments.map((i) => (
                 <li key={i.id} style={{ padding: "10px 2px" }}>
                   <b><Money cents={i.amountCents} /> in {i.symbol}</b>
-                  <small style={{ display: "block", color: "var(--ink-2)" }}>{INVEST_STATUS[i.status]}</small>
+                  <small style={{ display: "block", color: "var(--ink-2)" }}>{i.status === "expired" ? `Asked too long ago — ${zoe} can ask again.` : INVEST_STATUS[i.status]}</small>
                   {i.receiptNote && <small style={{ display: "block", color: "var(--ink-3-text)" }}>{i.receiptNote}</small>}
                 </li>
               ))}

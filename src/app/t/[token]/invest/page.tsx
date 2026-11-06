@@ -6,6 +6,7 @@ import type { Db } from "@/db/client";
 import { brokerFromEnv, STAND_IN_LABEL } from "@/adapters/alpaca/broker";
 import { marketFromEnv, oneYearLine, type AssetHit } from "@/adapters/alpaca/data";
 import { resumeInvestments } from "@/flows/invest";
+import { availableSavingsCents } from "@/ledger/ledger";
 import { teenWeek } from "@/flows/teen";
 import { teenInvestments } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
@@ -35,6 +36,7 @@ async function Invest({ params, searchParams }: { params: Promise<{ token: strin
   const w = await teenWeek(db, fam.id, await clockNow(db, fam.id));
   const gate = investGate(token, w);
   if (gate) return gate;
+  const available = await availableSavingsCents(db, fam.id);
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 60) : "";
 
@@ -43,7 +45,7 @@ async function Invest({ params, searchParams }: { params: Promise<{ token: strin
       <div>
         <h1 className="t-eyebrow">Invest</h1>
         <p className="t-h2" style={{ marginTop: 6 }}>Search the whole market</p>
-        <p className="t-small" style={{ marginTop: 4 }}>You have <b className="money">{formatCents(w.savingsCents)}</b> saved. You propose, {w.guardianName} decides. Tether recommends nothing.</p>
+        <p className="t-small" style={{ marginTop: 4 }}>You have <b className="money">{formatCents(available)}</b> available to invest{available !== w.savingsCents && <> (<span className="money">{formatCents(w.savingsCents)}</span> saved, some of it on its way to you as your release)</>}. You propose, {w.guardianName} decides. Tether recommends nothing.</p>
       </div>
       <form action={`/t/${token}/invest`} method="get" className="t-form" role="search">
         <label className="t-label" htmlFor="invest-q">A fund or company</label>
