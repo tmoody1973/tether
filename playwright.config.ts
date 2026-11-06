@@ -38,6 +38,8 @@ export default defineConfig({
         ALPACA_FIRM_ACCOUNT_ID: "e2e-firm", ALPACA_CUSTODIAL_ENABLED: "false",
         // The landing page's demo buttons point at the read-only Amara & Zoe e2e family.
         DEMO_GUARDIAN_KEY: E2E.guardianKey, DEMO_TEEN_TOKEN: E2E.teenToken,
+        // Push: a fake app id so Amara's card renders; an empty REST key so no push is ever sent from e2e.
+        NEXT_PUBLIC_ONESIGNAL_APP_ID: "e2e-fake-onesignal-app", ONESIGNAL_REST_API_KEY: "",
       },
     },
   ],

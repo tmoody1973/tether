@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { ONESIGNAL_NOTIFICATIONS_URL, pushFromEnv, sendPush, type PushConfig } from "@/adapters/onesignal/push";
 
+type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
 const cfg: PushConfig = { appId: "app-123", restKey: "rest-key-secret" };
 const push = { title: "Tether", body: "Zoe is asking for $25.30 at Best Buy", url: "https://tether.example/g/requests/a1", externalId: "ab".repeat(32) };
 
 function fakeFetch(res: { status?: number; body?: unknown } = {}) {
-  return vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+  return vi.fn<FetchFn>(async () =>
     new Response(JSON.stringify(res.body ?? { id: "n1" }), { status: res.status ?? 200, headers: { "Content-Type": "application/json" } }));
 }
 
@@ -37,7 +39,7 @@ describe("sendPush (OneSignal create notification)", () => {
   });
 
   it("a timeout resolves as failed, without throwing", async () => {
-    const hang = vi.fn((_u: string | URL | Request, init?: RequestInit) => new Promise<Response>((_res, rej) => {
+    const hang = vi.fn<FetchFn>((...[, init]: Parameters<FetchFn>) => new Promise<Response>((_res, rej) => {
       init?.signal?.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" })));
     }));
     const err = vi.spyOn(console, "error").mockImplementation(() => {});

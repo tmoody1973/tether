@@ -18,6 +18,10 @@ describe("service worker routing (money screens are never cached)", () => {
     expect(route("POST", "navigate", O + "/g", O)).toBe("network");
     expect(route("GET", "cors", "https://cdn.example/brand/icon-192.png", O)).toBe("network");
   });
+  it("never caches OneSignal's push worker (it lives beside this one, under /push/onesignal/)", () => {
+    expect(route("GET", "same-origin", O + "/push/onesignal/OneSignalSDKWorker.js", O)).toBe("network");
+    expect(route("GET", "navigate", O + "/g/requests/abc", O)).toBe("navigate"); // a tapped push opens the request fresh
+  });
   it("navigations are network-first (offline page only on failure), including money pages", () => {
     expect(route("GET", "navigate", O + "/g", O)).toBe("navigate");
     expect(route("GET", "navigate", O + "/t/abc123", O)).toBe("navigate");

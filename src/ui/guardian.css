@@ -303,3 +303,14 @@
   .g-home__needs { order: -2; }
   .g-home__week { order: -1; }
 }
+/* Home's "get a buzz" card: an example notification beside the switch (mock: Home's notification card) */
+.g-notify { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.g-phonenote { flex: 1 1 300px; display: flex; gap: 12px; align-items: flex-start; background: #F2F3F5; border: 1px solid #E6E8EC; border-radius: 16px; padding: 12px 14px; }
+.g-phonenote > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.g-phonenote__icon { width: 34px; height: 34px; border-radius: 9px; background: var(--g-accent); display: grid; place-items: center; flex: 0 0 auto; }
+.g-phonenote__app { font-size: 11.5px; color: var(--ink-3-text); display: flex; justify-content: space-between; gap: 12px; }
+.g-phonenote__title { font-weight: 650; font-size: 14px; }
+.g-phonenote__body { font-size: 13px; color: var(--ink-2); }
+.g-notify__side { flex: 1 1 220px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.g-notify__h { font-size: 14.5px; font-weight: 700; margin: 0; }
+.g-notify__on { font-weight: 700; color: var(--g-accent); }

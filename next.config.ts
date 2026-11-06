@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
       { source: "/t/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, noStore] },
       { source: "/g/:path*", headers: [noStore] },
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] }, // a new worker is picked up on the next visit
+      { source: "/push/onesignal/:path*", headers: [{ key: "Cache-Control", value: "no-cache" }] }, // OneSignal's push worker, likewise
     ];
   },
 };

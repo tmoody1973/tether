@@ -8,6 +8,8 @@ import { decideApproval, requestApproval } from "@/flows/approvals";
 import { pushRequest, tellAmara } from "@/flows/notify";
 import { DAILY_CAPS } from "@/flows/usage";
 
+type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
 process.env.TETHER_SIGNING_KEY = "test-key";
 
 let db: Db;
@@ -22,7 +24,7 @@ async function familyWithShopAsk(domain = "etsy.com") {
   return { familyId: fam.id, approvalId, now };
 }
 
-const ok = () => vi.fn(async (_u: string | URL | Request, _i?: RequestInit) => new Response(JSON.stringify({ id: "n1" }), { status: 200 }));
+const ok = () => vi.fn<FetchFn>(async () => new Response(JSON.stringify({ id: "n1" }), { status: 200 }));
 const cfg = { appId: "app", restKey: "k" };
 const opts = (fetchImpl: typeof fetch, realNow?: number) => ({ cfg, baseUrl: "https://tether.example", fetchImpl, realNow });
 

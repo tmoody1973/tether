@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { pushAlias } from "@/auth/guardian";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
@@ -17,6 +18,7 @@ import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
 import { advanceClockAction } from "./actions";
 import { AskBox } from "./AskBox";
+import { NotifyCard } from "./NotifyCard";
 import { PaymentRow } from "./PaymentRow";
 import { ResetDemo } from "./ResetDemo";
 
@@ -83,7 +85,8 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
           {note.text}{note.connectPaypal && <> <a className="g-textlink" href="/g/connect-paypal">Save your PayPal</a></>}
         </p>
       )}
-      <NotifyCard />
+      {/* Push is on only where OneSignal is set up; the alias is this family's opaque external id, never its raw id. */}
+      {process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID && <NotifyCard appId={process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID} alias={pushAlias(familyId)} teenName={zoe} />}
 
       <div className="g-two g-home">
         <div className="g-stack">
@@ -172,10 +175,6 @@ function Def({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 /** Slot for the "get a buzz when Zoe asks" notification card (mockup). Empty for now; a later task fills it. */
-function NotifyCard() {
-  return null;
-}
-
 function NeedsYouRow({ item, zoe, guardian, hadRules }: { item: NeedsYou; zoe: string; guardian: string; hadRules: boolean }) {
   if (item.kind === "rules") {
     return (
