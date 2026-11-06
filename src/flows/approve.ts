@@ -8,12 +8,12 @@ import { settlePurchase, type Deps } from "@/flows/purchase";
 
 /** What Amara's one tap led to, as a short code the home page turns into words (no free text in URLs). */
 export type ApproveCode =
-  | "paid" | "paying" | "changed" | "rules" | "nopaypal" | "paypal-declined" | "notstarted"
+  | "paid" | "paying" | "changed" | "rules" | "nopaypal" | "paypal-off" | "paypal-declined" | "notstarted"
   | "inv-filled" | "inv-queued" | "inv-depositing" | "inv-rejected" | "inv-waiting" | "inv-cash-held" | "inv-review"
   | "fund" | "shop";
 
 export const APPROVE_CODES: readonly ApproveCode[] = [
-  "paid", "paying", "changed", "rules", "nopaypal", "paypal-declined", "notstarted",
+  "paid", "paying", "changed", "rules", "nopaypal", "paypal-off", "paypal-declined", "notstarted",
   "inv-filled", "inv-queued", "inv-depositing", "inv-rejected", "inv-waiting", "inv-cash-held", "inv-review", "fund", "shop",
 ];
 
@@ -35,6 +35,7 @@ export async function approveAndSettle(deps: ApproveDeps, familyId: string, appr
       if (r.status === "failed") return "paypal-declined";
       if (r.reason === "CART_MISMATCH" || r.reason === "UNAVAILABLE") return "changed";
       if (r.reason === "NO_PAYMENT_METHOD") return "nopaypal";
+      if (r.reason === "PAYPAL_UNAVAILABLE") return "paypal-off";
       if (r.status === "refused" || r.status === "needs_approval") return "rules";
       return "notstarted";
     } catch (err) {

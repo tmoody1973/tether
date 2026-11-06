@@ -136,6 +136,19 @@ describe("chargeVaulted", () => {
     expect(rd).toMatchObject({ ok: false, outcome: "declined" });
   });
 
+  it("R38: only known capture-step issues are declined; create 409 is unknown; issue kept on the error", async () => {
+    const issue = (status: number, i: string) => json({ name: "X", message: "m", details: [{ issue: i }] }, status);
+    const approvedThen = (capture: Response) => mockFetch((u) => (u.endsWith("/capture") ? capture
+      : u.endsWith("/v2/checkout/orders") ? json({ id: "O1", status: "APPROVED" }, 201) : json({ id: "O1", status: "APPROVED" })));
+    const declined = await chargeVaulted(token(), cart, SECRET, now, client(approvedThen(issue(422, "INSTRUMENT_DECLINED"))), args);
+    expect(declined).toMatchObject({ ok: false, outcome: "declined", orderId: "O1" });
+    expect(!declined.ok && declined.error).toContain("INSTRUMENT_DECLINED");
+    const other = await chargeVaulted(token(), cart, SECRET, now, client(approvedThen(issue(422, "SOMETHING_ELSE"))), args);
+    expect(other).toMatchObject({ ok: false, outcome: "unknown", orderId: "O1" }); // read the order: still not captured
+    const conflict = await chargeVaulted(token(), cart, SECRET, now, client(mockFetch(() => issue(409, "DUPLICATE_REQUEST_ID"))), args);
+    expect(conflict).toMatchObject({ ok: false, outcome: "unknown" });
+  });
+
   it("payee email passed through when given", async () => {
     const f = mockFetch(() => json(completedOrder, 201));
     await chargeVaulted(token(), cart, SECRET, now, client(f), { ...args, payeeEmail: "shop@example.com" });

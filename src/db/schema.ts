@@ -67,6 +67,11 @@ export const purchases = pgTable("purchases", {
   // R37: what was sent to PayPal, kept so an unknown outcome can be re-sent with the same PayPal-Request-Id.
   charge: jsonb("charge").$type<ChargeIntent>(),
   chargeError: text("charge_error"), // last unknown-outcome error while the purchase stays `paying`
+  // R38: REAL (wall-clock, never demo-clock) times. PayPal forgets a PayPal-Request-Id after 6 hours, after which
+  // a re-send would charge again; the first send time bounds every re-send, the last attempt throttles resumes.
+  chargeSentAt: ts("charge_sent_at"),
+  chargeAttemptedAt: ts("charge_attempted_at"),
+  paypalOrderId: text("paypal_order_id"), // stored as soon as create-order returns one: resume reads it back
 });
 
 export const approvals = pgTable("approvals", {

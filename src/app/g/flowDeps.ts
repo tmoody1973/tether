@@ -12,7 +12,7 @@ export function paypalOrUnavailable(): PaypalHttp {
   try {
     return paypalFromEnv();
   } catch {
-    return { request: unavailable("PayPal") };
+    return { configured: false, request: unavailable("PayPal") };
   }
 }
 

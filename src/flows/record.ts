@@ -26,7 +26,7 @@ export interface RecordView {
   /** Up to the last 4 closed weeks (guardian-only weekly spend). */
   weeks: WeekRecord[];
   /** Money left the budget this month but PayPal hasn't answered yet (no receipt). */
-  unreceipted: { purchaseId: string; at: Date; shop: string; amountCents: number }[];
+  unreceipted: { purchaseId: string; at: Date; shop: string; amountCents: number; needsCheck: boolean }[];
 }
 
 const payees = (g: Grant): string[] =>
@@ -56,7 +56,8 @@ export async function guardianRecord(db: Db, familyId: string, month: string, no
   const receipted = new Set(receipts.map((r) => r.purchaseId));
   const unreceipted = paying
     .filter(({ p, at }) => at.toISOString().startsWith(month) && !receipted.has(p.id))
-    .map(({ p, at }) => ({ purchaseId: p.id, at, shop: name.get(p.cart.merchantId) ?? "a shop", amountCents: p.cart.totalCents }));
+    .map(({ p, at }) => ({ purchaseId: p.id, at, shop: name.get(p.cart.merchantId) ?? "a shop", amountCents: p.cart.totalCents,
+      needsCheck: p.chargeError?.startsWith("NEEDS_CHECK") ?? false }));
   return {
     home, month, grants, investments, weeks: weeks.slice(-4), unreceipted,
     receipts: receipts.slice().reverse().map((r) => {

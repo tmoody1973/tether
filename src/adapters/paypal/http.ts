@@ -1,6 +1,8 @@
 export interface PaypalConfig { baseUrl: string; clientId: string; secret: string }
 
 export interface PaypalHttp {
+  /** false only for the stand-in used when PayPal isn't configured: flows refuse before debiting anything. */
+  configured?: boolean;
   request<T = unknown>(
     method: "GET" | "POST" | "DELETE",
     path: string,
@@ -18,8 +20,10 @@ export class PaypalError extends Error {
     readonly paypalName: string,
     message: string,
     readonly debugId?: string,
+    /** PayPal's `details[0].issue`, e.g. INSTRUMENT_DECLINED or ORDER_ALREADY_CAPTURED. */
+    readonly issue?: string,
   ) {
-    super(`PayPal ${status} ${paypalName}: ${message}${debugId ? ` (debug_id ${debugId})` : ""}`);
+    super(`PayPal ${status} ${paypalName}${issue ? `/${issue}` : ""}: ${message}${debugId ? ` (debug_id ${debugId})` : ""}`);
     this.name = "PaypalError";
   }
 }
@@ -38,8 +42,11 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
         try { data = JSON.parse(text); } catch { data = undefined; }
       }
       if (!res.ok) {
-        const e = (data ?? {}) as { name?: string; message?: string; debug_id?: string; error?: string; error_description?: string };
-        throw new PaypalError(res.status, e.name ?? e.error ?? "HTTP_ERROR", e.message ?? e.error_description ?? res.statusText ?? "request failed", e.debug_id);
+        const e = (data ?? {}) as {
+          name?: string; message?: string; debug_id?: string; error?: string; error_description?: string; details?: { issue?: unknown }[];
+        };
+        const issue = typeof e.details?.[0]?.issue === "string" ? e.details[0].issue : undefined;
+        throw new PaypalError(res.status, e.name ?? e.error ?? "HTTP_ERROR", e.message ?? e.error_description ?? res.statusText ?? "request failed", e.debug_id, issue);
       }
       return { status: res.status, headers: res.headers, data };
     } catch (err) {

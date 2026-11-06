@@ -13,7 +13,8 @@ import { mintToken, verifyToken, type AuthToken } from "@/engine/token";
 import { BOOKS_ONLY, bandOf, compose } from "@/engine/gate2";
 import type { ApprovalGrant, Cart, Decision, Grant, Outcome } from "@/engine/types";
 import type { PaypalHttp } from "@/adapters/paypal/http";
-import { chargeVaulted, sendOrder, type ChargeArgs, type ChargeResult } from "@/adapters/paypal/orders";
+import { chargeVaulted, resumeOrder, sendOrder, type ChargeArgs, type ChargeResult } from "@/adapters/paypal/orders";
+import { listTransactions } from "@/adapters/paypal/transactions";
 import type { ChargeIntent } from "@/db/schema";
 import type { Channel3Adapter } from "@/adapters/channel3/client";
 import type { Classifier } from "@/ai/classifier";
@@ -25,7 +26,16 @@ export type Deps = {
   secret: string;
   /** Demo-clock time for the family. Inside a transaction, pass `conn` (the tx): PGlite has one connection. */
   now: (familyId: string, conn?: Db) => Promise<Date>;
+  /** REAL wall-clock ms (default Date.now). PayPal's 6-hour request-id window runs on real time, never the demo clock. */
+  realNow?: () => number;
 };
+
+const realNow = (deps: Pick<Deps, "realNow">): number => (deps.realNow ?? Date.now)();
+const MINUTE_MS = 60_000;
+/** R38: re-send create-order only while PayPal still remembers the request id (6h by default; 1h margin). */
+export const RESEND_WINDOW_MS = 5 * 60 * MINUTE_MS;
+/** R38: a charge sent (or retried) less than this long ago, in real time, is left alone. */
+export const IN_FLIGHT_MS = MINUTE_MS;
 
 export interface Gate2Finding { rule: string; probability: number | null; model: string; modelVersion: string; band: Outcome }
 /** What purchases.decision / receipts.decision hold: gate 1 plus the gate-2 evidence, outcome = composed. */
@@ -91,6 +101,7 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   if (cartHash(fresh) !== p.cartHash) return refuse(ctx, "CART_MISMATCH");
   const vault = await getVault(db, p.familyId);
   if (!vault) return refuse(ctx, "NO_PAYMENT_METHOD");
+  if (deps.paypal.configured === false) return refuse(ctx, "PAYPAL_UNAVAILABLE"); // nothing debited, nothing sent
 
   const grant = await getActiveGrant(db, p.familyId);
   if (!grant) return refuse(ctx, "no_active_grant");
@@ -108,7 +119,8 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   const debited = await debit(ctx, grant.body, fresh, token, args);
   if ("status" in debited) return debited;
 
-  const charge = await chargeVaulted(token, fresh, deps.secret, now, deps.paypal, args)
+  const keepOrderId = (orderId: string) => db.update(t.purchases).set({ paypalOrderId: orderId }).where(eq(t.purchases.id, p.id)).then(() => undefined);
+  const charge = await chargeVaulted(token, fresh, deps.secret, now, deps.paypal, args, keepOrderId)
     .catch((e: unknown): ChargeResult => ({ ok: false, outcome: "unknown", error: e instanceof Error ? e.message : "CHARGE_THREW" }));
   return settleCharge(db, p.id, debited.intent, charge, now);
 }
@@ -159,7 +171,9 @@ async function debit(
     }
     const intent: ChargeIntent = { token, args, decision: d, approvalId: approval?.id ?? null };
     await appendJournal(tx, { familyId: p.familyId, kind: "spend", amountCents: cart.totalCents, at: now, ref: p.id, note: null });
-    await tx.update(t.purchases).set({ status: "paying", charge: intent, chargeError: null }).where(eq(t.purchases.id, p.id));
+    const sentAt = new Date(realNow(deps)); // real time: the start of PayPal's request-id window
+    await tx.update(t.purchases).set({ status: "paying", charge: intent, chargeError: null, chargeSentAt: sentAt, chargeAttemptedAt: sentAt })
+      .where(eq(t.purchases.id, p.id));
     return { intent };
   });
 }
@@ -179,7 +193,7 @@ async function settleCharge(db: Db, purchaseId: string, intent: ChargeIntent, ch
     return { status: (await getPurchase(db, purchaseId))?.status ?? "paid" };
   }
   if (charge.outcome === "unknown") {
-    await db.update(t.purchases).set({ chargeError: charge.error.slice(0, 200) })
+    await db.update(t.purchases).set({ chargeError: charge.error.slice(0, 200), ...(charge.orderId ? { paypalOrderId: charge.orderId } : {}) })
       .where(and(eq(t.purchases.id, purchaseId), eq(t.purchases.status, "paying")));
     return { status: "paying", message: CHARGE_UNKNOWN_MESSAGE };
   }
@@ -206,9 +220,12 @@ const firstReason = (d: Decision) => d.reasons[0]?.constraint ?? "checkout.seman
 // ---- resume (R37) -----------------------------------------------------------
 
 /**
- * Re-sends a `paying` purchase that has no receipt with the SAME PayPal-Request-Id and body: PayPal returns
- * the order it already made (never a second charge), so the outcome becomes known. Under the family lock.
- * A purchase still mid-charge (slip not yet expired, no error recorded) is left to its own settle.
+ * R37/R38: finds out what happened to a `paying` purchase that has no receipt. Under the family lock, at most
+ * once a minute per purchase (real time), never while its first send is still in flight. In order:
+ *  1. order id stored ⇒ read the order (GET); capture it only if approved-but-uncaptured and still in the window;
+ *  2. no order id, sent < 5h ago (real time) ⇒ re-send create-order with the SAME PayPal-Request-Id and body;
+ *  3. sent ≥ 5h ago ⇒ NEVER re-send (PayPal may have forgotten the id and would charge again): look the slip id up
+ *     in Transaction Search; not found ⇒ stays `paying` with NEEDS_CHECK. Branch 3 never reverses.
  */
 export async function resumePayingPurchase(deps: Deps, purchaseId: string): Promise<SettleResult> {
   const found = await getPurchase(deps.db, purchaseId);
@@ -220,16 +237,43 @@ export async function resumePayingPurchase(deps: Deps, purchaseId: string): Prom
     if (!p || p.status !== "paying" || !intent) return { status: p?.status ?? found.status };
     const [receipt] = await tx.select({ id: t.receipts.id }).from(t.receipts).where(eq(t.receipts.purchaseId, p.id)).limit(1);
     if (receipt) return { status: "paying" }; // PayPal said PENDING; its webhook finishes it
-    const inFlight = p.chargeError === null && now.getTime() <= Date.parse(intent.token.expiresAt);
-    if (inFlight) return { status: "paying" };
-    // The slip was verified and debited when first sent; check it is still ours and untampered before re-sending.
+    const real = realNow(deps);
+    const last = Math.max(p.chargeSentAt?.getTime() ?? 0, p.chargeAttemptedAt?.getTime() ?? 0);
+    if (real - last < IN_FLIGHT_MS) return { status: "paying" }; // in flight, or just tried (throttle)
+    // The slip was verified and debited when first sent; check it is still ours and untampered before using it.
     if (!verifyToken(intent.token, p.cart, new Date(intent.token.issuedAt), deps.secret, () => false).ok) {
-      await tx.update(t.purchases).set({ chargeError: "SLIP_CHECK_FAILED" }).where(eq(t.purchases.id, p.id));
+      await tx.update(t.purchases).set({ chargeError: "SLIP_CHECK_FAILED", chargeAttemptedAt: new Date(real) }).where(eq(t.purchases.id, p.id));
       return { status: "paying" };
     }
-    const charge = await sendOrder(intent.token, deps.paypal, intent.args);
+    await tx.update(t.purchases).set({ chargeAttemptedAt: new Date(real) }).where(eq(t.purchases.id, p.id));
+    const inWindow = p.chargeSentAt !== null && real - p.chargeSentAt.getTime() < RESEND_WINDOW_MS;
+    let charge: ChargeResult;
+    if (p.paypalOrderId) {
+      charge = await resumeOrder(intent.token, deps.paypal, p.paypalOrderId, inWindow);
+    } else if (inWindow) {
+      const keep = (orderId: string) => tx.update(t.purchases).set({ paypalOrderId: orderId }).where(eq(t.purchases.id, p.id)).then(() => undefined);
+      charge = await sendOrder(intent.token, deps.paypal, intent.args, keep);
+    } else {
+      charge = await searchBySlip(deps.paypal, intent.token.tokenId, p.chargeSentAt, real);
+    }
     return settleCharge(tx, p.id, intent, charge, now);
   });
+}
+
+/** R38 branch 3: Transaction Search for the row whose custom_field is this slip's id. Read-only; never "declined". */
+async function searchBySlip(paypal: PaypalHttp, tokenId: string, sentAt: Date | null, real: number): Promise<ChargeResult> {
+  const DAY_MS = 24 * 60 * MINUTE_MS;
+  const start = new Date((sentAt?.getTime() ?? real - 30 * DAY_MS) - 60 * MINUTE_MS);
+  const end = new Date(Math.min(real, start.getTime() + 31 * DAY_MS));
+  try {
+    const rows = await listTransactions(paypal, start, end);
+    const hit = rows.find((r) => r.customField === tokenId && r.amountCents > 0);
+    // Charged (even if later refunded, which the record's PayPal check then shows as "Refunded in PayPal").
+    if (hit) return { ok: true, orderId: "", captureId: hit.id, status: hit.status === "P" ? "PENDING" : "COMPLETED" };
+    return { ok: false, outcome: "unknown", error: "NEEDS_CHECK" };
+  } catch (err) {
+    return { ok: false, outcome: "unknown", error: `NEEDS_CHECK: ${err instanceof Error ? err.message : "search failed"}` };
+  }
 }
 
 /** Resumes every receipt-less `paying` purchase of the family; one failure never stops the others. */

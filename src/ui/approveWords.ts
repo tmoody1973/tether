@@ -12,7 +12,8 @@ export function approveWords(code: ApproveCode, teen: string, paid?: { amountCen
     case "paying": return { text: "Approved. PayPal is confirming the payment." };
     case "changed": return { text: `Approved, but the price or item changed, so nothing was charged. ${teen} can ask again.`, warn: true };
     case "rules": return { text: `Approved, but ${teen}'s rules or budget changed since she asked, so nothing was charged.`, warn: true };
-    case "nopaypal": return { text: "Approved, but there's no saved PayPal, so nothing was charged.", warn: true, connectPaypal: true };
+    case "nopaypal": return { text: `Approved, but there's no saved PayPal, so nothing was charged. ${teen} will need to ask again.`, warn: true, connectPaypal: true };
+    case "paypal-off": return { text: `Approved, but Tether can't reach PayPal right now, so nothing was charged. ${teen} will need to ask again.`, warn: true };
     case "paypal-declined": return { text: "Approved, but PayPal declined the payment, so nothing was charged.", warn: true };
     case "notstarted": return { text: "Approved. The payment didn't start yet; nothing was charged.", warn: true };
     case "inv-filled": return { text: "Bought." };

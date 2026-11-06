@@ -126,7 +126,11 @@ function Payments({ r, thisMonth }: { r: RecordView; thisMonth: string }) {
               <tr key={u.purchaseId}>
                 <td>{formatWhen(u.at)}</td>
                 <td><b>{u.shop}</b><Money cents={u.amountCents} /></td>
-                <td colSpan={2}><span className="g-chip">Paying… no receipt yet</span> <span className="g-muted">Tether is checking with PayPal.</span></td>
+                <td colSpan={2}>
+                  {u.needsCheck
+                    ? <><span className="g-chip g-chip--warn">Checking with PayPal</span> <span className="g-muted">PayPal hasn&apos;t shown this payment yet; nothing will be charged twice.</span></>
+                    : <><span className="g-chip">Paying… no receipt yet</span> <span className="g-muted">Tether is checking with PayPal.</span></>}
+                </td>
               </tr>
             ))}
             {r.receipts.map((p) => <PaymentRow key={p.captureId} p={p} />)}

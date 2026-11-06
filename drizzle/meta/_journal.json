@@ -78,6 +78,13 @@
       "when": 1793920446366,
       "tag": "0010_charge_intent",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793921904045,
+      "tag": "0011_charge_times",
+      "breakpoints": true
     }
   ]
 }
