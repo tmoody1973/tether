@@ -182,6 +182,10 @@ describe("askAboutMonth", () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "  " }]);
     expect(r).toEqual({ answer: "I can't see that.", toolsUsed: ["tether_record"], cards: [] });
   });
+  it("the model saying \"I can't see that.\" after a tool call shows no cards (review I1)", async () => {
+    const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "I can't see that." }]);
+    expect(r).toEqual({ answer: CANT_SEE, toolsUsed: ["tether_record"], cards: [] });
+  });
   it("a bad month gives an empty result", async () => {
     await ask([{ calls: [{ name: "tether_record", input: { month: "October" } }] }, { text: "$99" }]);
     expect(toolOutputs(lastModel)).toEqual([{ month: null, receipts: [], setAsideNote: null }]);

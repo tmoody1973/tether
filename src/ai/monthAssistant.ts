@@ -241,7 +241,8 @@ export async function askAboutMonth(
   if (failed && failed.type === "tool-error") throw failed.error;
   // Tools that returned no rows are still an answer ("no purchases this month"); the prompt keeps it to tool results.
   const text = res.text.trim();
-  if (used.length === 0 || !text) return { answer: CANT_SEE, toolsUsed: used, cards: [] };
+  // No cards beside "I can't see that." either, whether our guard or the model said it.
+  if (used.length === 0 || !text || text === CANT_SEE) return { answer: CANT_SEE, toolsUsed: used, cards: [] };
   // Cards: the last result of each tool, exactly as the tool returned it. The model writes the sentence; it never
   // touches a card's numbers.
   const last: Record<string, unknown> = {};
