@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily } from "@/db/repo";
-import { ledgerView, weekRecords } from "@/ledger/ledger";
+import { availableSavingsCents, ledgerView, weekRecords } from "@/ledger/ledger";
 import { commitmentKept } from "@/engine/ladder";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
 
@@ -52,11 +52,12 @@ export async function requestView(db: Db, familyId: string, approvalId: string, 
   }
   if (a.subject === "shop") return { ...base, shop: { domain: a.subjectId } };
   if (a.subject === "investment") {
-    const [[inv], ledger] = await Promise.all([
-      db.select().from(t.investments).where(eq(t.investments.id, a.subjectId)), ledgerView(db, familyId, now),
+    const [[inv], available] = await Promise.all([
+      db.select().from(t.investments).where(eq(t.investments.id, a.subjectId)), availableSavingsCents(db, familyId),
     ]);
     if (!inv) return null;
-    return { ...base, answers: words(inv.answers), investment: { symbol: inv.symbol, amountCents: inv.amountCents, savingsCents: ledger.savingsCents } };
+    // What she can actually invest: savings minus an open release (I1), so Approve never contradicts this line.
+    return { ...base, answers: words(inv.answers), investment: { symbol: inv.symbol, amountCents: inv.amountCents, savingsCents: available } };
   }
   const [prop] = await db.select().from(t.fundProposals).where(eq(t.fundProposals.id, a.subjectId));
   return prop ? { ...base, answers: words(prop.answers), fund: { symbol: prop.symbol } } : null;

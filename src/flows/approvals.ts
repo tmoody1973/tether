@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getPurchase } from "@/db/repo";
@@ -131,7 +131,8 @@ export async function expireStale(deps: Pick<Deps, "db" | "now">, familyId: stri
   await db.update(t.approvals).set({ expiredAt: now }).where(and(
     eq(t.approvals.familyId, familyId), isNull(t.approvals.result), isNull(t.approvals.expiredAt), lte(t.approvals.expiresAt, now)));
   const unanswered = await db.select({ subjectId: t.approvals.subjectId }).from(t.approvals).where(and(
-    eq(t.approvals.familyId, familyId), eq(t.approvals.subject, "investment"), lte(t.approvals.expiresAt, now), isNull(t.approvals.result)));
+    eq(t.approvals.familyId, familyId), eq(t.approvals.subject, "investment"), isNull(t.approvals.result),
+    or(lte(t.approvals.expiresAt, now), isNotNull(t.approvals.expiredAt)))); // a reset expires asks early
   if (unanswered.length > 0) { // M3: never left reading "Waiting for you"
     await db.update(t.investments).set({ status: "expired" }).where(and(eq(t.investments.familyId, familyId),
       inArray(t.investments.id, unanswered.map((s) => s.subjectId)), eq(t.investments.status, "proposed")));

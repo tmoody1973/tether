@@ -202,6 +202,14 @@ describe("investing from Zoe's side", () => {
     expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
   });
 
+  it("an ask a demo reset expired early also closes, even before its own expiry time (M3 after reset)", async () => {
+    const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    await db.update(t.approvals).set({ expiredAt: clock }).where(eq(t.approvals.familyId, s.familyId)); // what resetDemo does
+    await expireStale(deps(), s.familyId);
+    expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "expired" })]);
+  });
+
   it("an open release takes its savings off what she can invest (I1)", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
     await db.insert(t.releases).values({ id: crypto.randomUUID(), familyId: s.familyId, savedCents: 1000, matchCents: 1000 }); // a promotion's release
