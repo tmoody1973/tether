@@ -235,13 +235,22 @@ describe("purchase flow", () => {
     expect(pp.orders).toHaveLength(0);
   });
 
-  it("gate 1 refuse never calls the classifier", async () => {
-    await seed(withBooks);
+  it("a hard gate-1 refusal never calls the classifier", async () => {
+    await seed((m) => [...withBooks(m), { type: "payment.amount_range", minCents: 100, maxCents: 800 }]);
     const { d, cl } = deps();
-    const { purchaseId, decision } = await proposePurchase(d, familyId, cartOf("a", 900)); // over $8 budget
+    const { purchaseId, decision } = await proposePurchase(d, familyId, cartOf("a", 900)); // over the per-purchase cap
     expect(decision.outcome).toBe("REFUSE");
     expect(cl.ask).not.toHaveBeenCalled();
     expect(await statusOf(purchaseId)).toBe("refused");
+  });
+
+  it("R40: a budget-only refusal still gets the real book check (Amara could lift it)", async () => {
+    await seed(withBooks);
+    const { d, cl } = deps();
+    const { decision } = await proposePurchase(d, familyId, cartOf("a", 900)); // over $8 budget, nothing else
+    expect(decision.outcome).toBe("REFUSE");
+    expect(cl.ask).toHaveBeenCalledTimes(1);
+    expect(decision.gate2).toEqual([expect.objectContaining({ band: "ALLOW" })]);
   });
 
   it("gate 2 at p=0.86 → needs_approval, no charge", async () => {

@@ -89,7 +89,9 @@ export async function decideApproval(
  * meaning check (gate 2) refused it. Returns how far past the week it goes (the most Amara's yes can cover).
  */
 export function liftableOverage(d: StoredDecision | PurchaseDecision): number | null {
-  if ((d as Partial<StoredDecision>).gate2?.some((f) => f.band === "REFUSE")) return null;
+  const gate2 = (d as Partial<StoredDecision>).gate2 ?? [];
+  if (gate2.some((f) => f.band === "REFUSE")) return null;
+  if (d.semanticRules.length > 0 && gate2.length === 0) return null; // a meaning rule nobody checked: never liftable
   return budgetOverage(d.reasons);
 }
 type PurchaseDecision = (typeof t.purchases.$inferSelect)["decision"];

@@ -7,7 +7,7 @@ import {
   type PurchaseRow, type PurchaseStatus,
 } from "@/db/repo";
 import { ledgerView } from "@/ledger/ledger";
-import { decide } from "@/engine/decide";
+import { budgetOverage, decide } from "@/engine/decide";
 import { cartHash } from "@/engine/hash";
 import { mintToken, verifyToken, type AuthToken } from "@/engine/token";
 import { BOOKS_ONLY, bandOf, compose } from "@/engine/gate2";
@@ -60,8 +60,10 @@ export async function proposePurchase(
   const hash = cartHash(cart);
   const grant = await getActiveGrant(deps.db, familyId);
   const gate1 = grant ? decide(grant.body, cart, await ledgerView(deps.db, familyId, now), now, undefined, hash) : NO_GRANT;
-  // Gate 2 is only consulted when gate 1 has not already refused.
-  const gate2 = gate1.outcome === "REFUSE" || gate1.semanticRules.length === 0 ? [] : [await askGate2(deps, cart)];
+  // Gate 2 is consulted unless gate 1 already refused for good. A budget-only refusal can still be lifted by
+  // Amara (R40), so it gets the real meaning check now: her yes must never stand in for "is it a book?".
+  const askable = gate1.outcome !== "REFUSE" || budgetOverage(gate1.reasons) !== null;
+  const gate2 = !askable || gate1.semanticRules.length === 0 ? [] : [await askGate2(deps, cart)];
   const decision: StoredDecision = { ...gate1, outcome: compose(gate1.outcome, gate2.map((f) => f.band)), gate2 };
   const row = await insertPurchase(deps.db, { familyId, cart, cartHash: hash, decision, status: STATUS[decision.outcome] });
   return { purchaseId: row.id, decision };
@@ -165,11 +167,13 @@ async function debit(
     const live = await getActiveGrant(tx, p.familyId);
     if (live?.id !== grant.id || live.version !== grant.version) {
       await updatePurchaseStatus(tx, p.id, "refused");
+      await markSettleRefused(tx, p.id, p.decision as StoredDecision, "GRANT_CHANGED");
       return { status: "refused" as const, reason: "GRANT_CHANGED" };
     }
     const d = await gates(tx, ctx, grant, cart);
     if (d.outcome !== "ALLOW") {
       await updatePurchaseStatus(tx, p.id, STATUS[d.outcome]);
+      if (d.outcome === "REFUSE") await markSettleRefused(tx, p.id, d, firstReason(d));
       return { status: STATUS[d.outcome], reason: firstReason(d) };
     }
     const intent: ChargeIntent = { token, args, decision: d, approvalId: approval?.id ?? null };
@@ -214,8 +218,20 @@ async function settleCharge(db: Db, purchaseId: string, intent: ChargeIntent, ch
 
 async function refuse(ctx: Ctx, reason: string, status: PurchaseStatus = "refused"): Promise<SettleResult> {
   const moved = await transitionPurchase(ctx.deps.db, ctx.p.id, ctx.p.status, status);
+  if (moved && status === "refused") await markSettleRefused(ctx.deps.db, ctx.p.id, ctx.p.decision as StoredDecision, reason);
   if (moved) return { status, reason };
   return { status: (await getPurchase(ctx.deps.db, ctx.p.id))?.status ?? status };
+}
+
+/**
+ * A cart refused at settle keeps that refusal on its decision, so an old lift (R40) can't be offered again:
+ * the stale cart is done, and Zoe re-proposes to get a fresh answer.
+ */
+async function markSettleRefused(db: Db, purchaseId: string, base: StoredDecision, reason: string): Promise<void> {
+  const decision: StoredDecision = {
+    ...base, outcome: "REFUSE", reasons: [...base.reasons, { constraint: "settle.refused", detail: reason }],
+  };
+  await db.update(t.purchases).set({ decision }).where(and(eq(t.purchases.id, purchaseId), eq(t.purchases.status, "refused")));
 }
 
 const firstReason = (d: Decision) => d.reasons[0]?.constraint ?? "checkout.semantic_category";

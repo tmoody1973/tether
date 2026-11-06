@@ -8,8 +8,11 @@ const isApproval = (constraint: string) => APPROVAL_CONSTRAINTS.has(constraint);
 export function budgetOverage(reasons: Reason[]): number | null {
   const hard = reasons.filter((r) => !isApproval(r.constraint));
   if (hard.length === 0 || !hard.every((r) => r.constraint === "payment.budget")) return null;
-  const n = hard[0].numbers;
-  return n?.spentCents !== undefined && n.cartCents !== undefined && n.maxCents !== undefined ? n.spentCents + n.cartCents - n.maxCents : null;
+  const overs = hard.map((r) => {
+    const n = r.numbers;
+    return n?.spentCents !== undefined && n.cartCents !== undefined && n.maxCents !== undefined ? n.spentCents + n.cartCents - n.maxCents : null;
+  });
+  return overs.some((o) => o === null) ? null : Math.max(...(overs as number[])); // the tightest budget decides
 }
 
 /** R40: a lifting approval clears a budget-only refusal, and only while the live overage stays within what Amara saw. */

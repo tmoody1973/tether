@@ -268,3 +268,14 @@ describe("R40: an approval that lifts the budget (one over-budget one-off)", () 
     expect(decide(g, c, ledger(1050), NOW, lift(550, "other-hash")).outcome).toBe("REFUSE");
   });
 });
+
+describe("budgetOverage", () => {
+  it("takes the largest overage across budget reasons; null if anything else is hard", async () => {
+    const { budgetOverage } = await import("@/engine/decide");
+    const b = (spent: number, max: number) => ({ constraint: "payment.budget", detail: "", numbers: { spentCents: spent, cartCents: 500, maxCents: max, remainingCents: 0 } });
+    expect(budgetOverage([b(1000, 1200), b(1000, 1000)])).toBe(500);
+    expect(budgetOverage([b(1000, 1200), { constraint: "approval.over_amount", detail: "" }])).toBe(300);
+    expect(budgetOverage([b(1000, 1200), { constraint: "payment.allowed_payees", detail: "" }])).toBeNull();
+    expect(budgetOverage([])).toBeNull();
+  });
+});
