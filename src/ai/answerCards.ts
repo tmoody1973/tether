@@ -5,7 +5,7 @@ import { itemsLine } from "@/ui/activityWords";
 import type { CheckinResult, MatchResult, RecordResult } from "@/ai/monthAssistant";
 
 /** tether_record's words for a payment Amara approved one by one (the card says "You approved"). */
-export const APPROVED_BY_AMARA = "Amara approved this one";
+export const APPROVED_BY_PARENT = "the parent approved this one";
 
 /** The last result of each tool in one answer, as the tool returned it. */
 export interface ToolResults { tether_record?: RecordResult; month_checkin?: CheckinResult; paypal_check?: MatchResult }
@@ -39,7 +39,7 @@ function purchasesCard(r: RecordResult): PurchasesCard | null {
   if (!r.month) return null;
   const rows = r.receipts.map((x) => ({
     date: x.date, shop: x.shop, items: itemsLine(x.items), amountCents: cents(x.amount),
-    allowedBy: x.allowedBy === APPROVED_BY_AMARA ? "You approved" as const : "Within her rules" as const,
+    allowedBy: x.allowedBy === APPROVED_BY_PARENT ? "You approved" as const : "Within her rules" as const,
   }));
   return { kind: "purchases", month: r.month, rows, totalCents: rows.reduce((s, x) => s + x.amountCents, 0), hiddenNote: r.setAsideNote };
 }

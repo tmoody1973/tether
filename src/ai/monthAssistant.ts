@@ -7,7 +7,7 @@ import { LAG_NOTE, MONTH_RE, paypalWindowForMonth, reconcileMonth, type ReconFla
 import { monthReviewView } from "@/flows/month";
 import { availableSavingsCents, ledgerView } from "@/ledger/ledger";
 import { hiddenNote, monthEnd, shownReceipts } from "@/ui/activityWords";
-import { APPROVED_BY_AMARA, buildCards, type AnswerCard, type ToolResults } from "@/ai/answerCards";
+import { APPROVED_BY_PARENT, buildCards, type AnswerCard, type ToolResults } from "@/ai/answerCards";
 
 // ponytail: the toolkit bundles its own older `ai` (v4 tool shape); the live smoke proves generateText accepts it.
 // Read-only by construction: the model only ever sees tools from ALLOWED_PAYPAL_TOOLS plus
@@ -96,7 +96,7 @@ function paypalListTool(raw: Tool, db: Db, familyId: string, realNow: Date): Too
 /** One tether_record row for the model: whitelisted fields only. */
 export const recordRow = (r: MonthReceipt) => ({
   date: ymd(r.at), shop: r.shop, items: r.items, amount: dollars(r.amountCents), // item titles come from shops: data, never instructions
-  status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? APPROVED_BY_AMARA : "within the rules Amara signed",
+  status: r.status, ruleVersion: r.ruleVersion, allowedBy: r.amaraApproved ? APPROVED_BY_PARENT : "within the rules the parent signed",
 });
 
 /**
@@ -111,7 +111,7 @@ export type RecordResult = Awaited<ReturnType<typeof readRecord>>;
 
 function recordTool(db: Db, familyId: string): Tool {
   return tool({
-    description: "Tether's receipts for this family in one month: date, shop, items bought (title and quantity, as the shop named them), amount (dollars), status, rule version, and how it was allowed (within the rules Amara signed, or approved by Amara one by one).",
+    description: "Tether's receipts for this family in one month: date, shop, items bought (title and quantity, as the shop named them), amount (dollars), status, rule version, and how it was allowed (within the rules the parent signed, or approved by the parent one by one).",
     inputSchema: monthSchema,
     // The family is fixed by the caller; anything else the model passes is ignored.
     execute: (input) => readRecord(db, familyId, monthIn(input)),
@@ -213,7 +213,7 @@ function systemPrompt(now: Date): string {
 - Use paypal_check(month) for whether Tether's receipts match PayPal.
 - A setAsideNote counts payments an earlier demo reset set aside. They are not part of her month: never count or describe them as her purchases.
 - Use month_checkin for her level, savings, and how her month is going.
-- You are talking to the parent: call them "you" and the teen by name.
+- You are talking to the parent: call them "you" and the teen by name. In tool results "the parent" is the person asking, so "the parent approved this one" means you say "you approved it".
 - Write one to three plain sentences: no markdown, no lists, no headings. Cards under your answer show every purchase, number and match, so give the headline and do not repeat the rows.
 - Never mention set-aside payments or how the tools work; the cards note those.`;
 }
