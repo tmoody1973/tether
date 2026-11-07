@@ -81,6 +81,9 @@ export function youOwnWords(shares: number): string {
   return Number(n) <= 1 ? `${n} share` : `${n} shares`;
 }
 
+/** Under this many real days since she first bought, it's too soon to tell (her card says so; so does the assistant). */
+export const TOO_SOON_DAYS = 30;
+
 /** Under 30 real days. A fill a few hours old still reads "1 day". */
 export function tooSoonWords(daysHeld: number): string {
   const d = Math.max(1, daysHeld);

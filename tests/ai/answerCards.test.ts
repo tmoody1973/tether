@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCards } from "@/ai/answerCards";
+import { buildCards, httpUrl } from "@/ai/answerCards";
 
 const receipt = (date: string, shop: string, amount: string, extra: object = {}) => ({
   date, shop, items: [{ title: "Book", qty: 1 }], amount, status: "paid" as const, ruleVersion: 3,
@@ -71,5 +71,58 @@ describe("buildCards (cards come from tool results, never from the model's text)
   it("always in one order: purchases, check-in, PayPal", () => {
     const cards = buildCards({ paypal_check: match, month_checkin: checkin, tether_record: { month: "2026-10", receipts: [], setAsideNote: null } });
     expect(cards.map((c) => c.kind)).toEqual(["purchases", "checkin", "paypal"]);
+  });
+});
+
+const investments = {
+  teen: "Zoe",
+  holdings: [{ symbol: "VTI", shares: "0.0138", putIn: "5.00", worthNow: "5.48", firstBought: "2026-11-06", sameMoneyInWholeMarket: "5.52", tooSoonToTell: false }],
+  otherInvestments: [{ symbol: "VOO", amount: "3.00", status: "Waiting for you" }],
+};
+const inside = { symbol: "VTI", asOf: "2026-06-30", topPct: 32, rows: [{ name: "NVIDIA", ticker: "NVDA", pct: 6.4 }, { name: "Apple", ticker: "AAPL", pct: 5.9 }] };
+const article = (title: string, url: string) => ({ title, source: "Reuters", date: "2026-11-06", url });
+
+describe("buildCards: investing (decision 022)", () => {
+  it("investments: one row per holding in cents, from the tool result", () => {
+    expect(buildCards({ zoe_investments: investments })).toEqual([{
+      kind: "investments", teen: "Zoe", rows: [{ symbol: "VTI", shares: 0.0138, putInCents: 500, worthCents: 548, marketCents: 552 }],
+    }]);
+    expect(buildCards({ zoe_investments: { ...investments, holdings: [] } })).toEqual([]); // nothing bought yet: no card
+  });
+
+  it("inside: the rows (no tickers) and the filing date; none when refused or unavailable", () => {
+    expect(buildCards({ fund_inside: inside })).toEqual([{ kind: "inside", symbol: "VTI", asOf: "2026-06-30", rows: [{ name: "NVIDIA", pct: 6.4 }, { name: "Apple", pct: 5.9 }] }]);
+    expect(buildCards({ fund_inside: { error: "That fund isn't on Zoe's list." } })).toEqual([]);
+    expect(buildCards({ fund_inside: { symbol: "VTI", unavailable: "What's inside VTI isn't available right now." } })).toEqual([]);
+  });
+
+  it("news: up to five headlines; a link that isn't http(s) is dropped, the title kept", () => {
+    const [card] = buildCards({ news: { ticker: "AAPL", articles: [
+      article("Apple news", "https://www.reuters.com/a"), article("Bad link", "javascript:alert(1)"), article("Data link", "data:text/html,<b>x</b>"),
+      article("Plain", "http://example.com/x"), article("Not a url", "reuters.com/a"), article("Sixth", "https://x.test/6"),
+    ] } });
+    expect(card).toEqual({ kind: "news", ticker: "AAPL", articles: [
+      { title: "Apple news", source: "Reuters", date: "2026-11-06", url: "https://www.reuters.com/a" },
+      { title: "Bad link", source: "Reuters", date: "2026-11-06", url: null },
+      { title: "Data link", source: "Reuters", date: "2026-11-06", url: null },
+      { title: "Plain", source: "Reuters", date: "2026-11-06", url: "http://example.com/x" },
+      { title: "Not a url", source: "Reuters", date: "2026-11-06", url: null },
+    ] });
+  });
+
+  it("news: none when refused, unavailable, or a fund's note with no articles", () => {
+    expect(buildCards({ news: { error: "That isn't one of Zoe's funds or a company inside them." } })).toEqual([]);
+    expect(buildCards({ news: { ticker: null, unavailable: "The news isn't available right now." } })).toEqual([]);
+    expect(buildCards({ news: { ticker: "VTI", articles: [], note: "Funds don't have their own news; ask about one of the companies inside it." } })).toEqual([]);
+  });
+
+  it("httpUrl keeps only http and https", () => {
+    expect(httpUrl("https://a.test/x?y=1")).toBe("https://a.test/x?y=1");
+    for (const bad of ["javascript:alert(1)", "JavaScript:alert(1)", " javascript:alert(1)", "vbscript:x", "file:///etc/passwd", "", "//evil.test"]) expect(httpUrl(bad)).toBeNull();
+  });
+
+  it("always in one order: ... PayPal, investments, inside, news", () => {
+    const cards = buildCards({ news: { ticker: null, articles: [article("a", "https://a.test")] }, fund_inside: inside, zoe_investments: investments, month_checkin: checkin });
+    expect(cards.map((c) => c.kind)).toEqual(["checkin", "investments", "inside", "news"]);
   });
 });
