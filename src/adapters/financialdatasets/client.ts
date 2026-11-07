@@ -194,12 +194,19 @@ const NEWS_LIMIT = 5;
 
 interface RawNews { news?: { title?: unknown; source?: unknown; date?: unknown; url?: unknown }[] | null }
 const str = (x: unknown) => (typeof x === "string" ? x.trim() : "");
+/** "2026-11-06T23:11:44+00:00" → "2026-11-06"; anything that isn't a real ISO date → "" (the card then shows no date). */
+function isoDay(x: unknown): string {
+  const day = str(x).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "";
+  const d = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day ? day : "";
+}
 
-/** Pure. At most five, title/source/date (YYYY-MM-DD)/url only; throws when none are usable, so nothing empty is cached. */
+/** Pure. At most five, title/source/date (YYYY-MM-DD, or "" when unreadable)/url only; throws when none are usable, so nothing empty is cached. */
 export function toArticles(raw: RawNews): Article[] {
   const rows = Array.isArray(raw?.news) ? raw.news : [];
   const out = rows.flatMap((a) => (str(a?.title) && str(a?.url)
-    ? [{ title: str(a.title), source: str(a.source), date: str(a.date).slice(0, 10), url: str(a.url) }] : []));
+    ? [{ title: str(a.title), source: str(a.source), date: isoDay(a.date), url: str(a.url) }] : []));
   if (out.length === 0) throw new Error("Financial Datasets returned no news");
   return out.slice(0, NEWS_LIMIT);
 }

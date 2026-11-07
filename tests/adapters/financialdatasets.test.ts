@@ -294,6 +294,14 @@ describe("fundNews (headlines for Amara's assistant, decision 022)", () => {
     expect(DAILY_CAPS.market_data).toBe(40);
   });
 
+  it("a date that isn't an ISO date is left empty, never passed on", async () => {
+    const row = AAPL_NEWS.news[0];
+    fake(undefined, undefined, undefined, undefined, json({ news: [
+      { ...row, date: undefined }, { ...row, date: "yesterday" }, { ...row, date: "2026-13-45T00:00:00Z" }, { ...row, date: "2026-11-06" },
+    ] }));
+    expect((await fundNews("AAPL", await family()))?.map((a) => a.date)).toEqual(["", "", "", "2026-11-06"]);
+  });
+
   it("market news (no ticker) asks for five with no ticker", async () => {
     const f = fake();
     await fundNews(null, await family());

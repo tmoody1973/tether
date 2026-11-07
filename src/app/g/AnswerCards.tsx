@@ -172,7 +172,7 @@ function News({ c }: { c: NewsCard }) {
         {c.articles.map((a, i) => (
           <li key={i}>
             {linkable(a.url) ? <a href={a.url} target="_blank" rel="noopener noreferrer">{a.title}</a> : <span>{a.title}</span>}
-            <span className="g-news__by">{a.source} · {day(a.date)}</span>
+            <span className="g-news__by">{a.date ? `${a.source} · ${day(a.date)}` : a.source}</span>
           </li>
         ))}
       </ul>

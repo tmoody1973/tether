@@ -126,6 +126,12 @@ describe("AnswerCards: investing (decision 022)", () => {
     expect(text([{ ...news, ticker: null }])).toContain("Market news");
   });
 
+  it("a headline with no date shows its source alone, and the card still renders", () => {
+    const t = text([{ ...news, articles: [{ title: "Undated", source: "Reuters", date: "", url: null }] }]);
+    expect(t).toContain("Undated Reuters");
+    expect(t).not.toContain("·");
+  });
+
   it("a link that isn't http(s) never renders as a link, even if a card arrives with one", () => {
     const h = html([{ ...news, articles: [{ title: "x", source: "s", date: "2026-11-06", url: "javascript:alert(1)" }] }]);
     expect(h).not.toContain("<a ");
