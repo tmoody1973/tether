@@ -10,11 +10,10 @@ import { availableSavingsCents } from "@/ledger/ledger";
 import { teenWeek } from "@/flows/teen";
 import { teenInvestments } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
-import { LinkGone, Money, TeenLoading, TeenShell } from "@/ui/teen";
-import { investStatusWords } from "@/ui/teenWords";
+import { LinkGone, TeenLoading, TeenShell } from "@/ui/teen";
 import { teenDeps } from "../../teenDeps";
 import { pageHoldings } from "@/app/g/flowDeps";
-import { HoldingCard } from "@/ui/InvestCards";
+import { YourInvestments, type FreshInvestments } from "./YourInvestments";
 import { investGate, UNAVAILABLE } from "./Gate";
 import { Seam } from "@/ui/Seam";
 
@@ -91,17 +90,7 @@ async function Results({ token, q }: { token: string; q: string }) {
 }
 
 async function Investments({ db, familyId, guardian }: { db: Db; familyId: string; guardian: string }) {
-  // Best effort: a queued order may have filled since. A broker outage must not block the page.
-  try {
-    const d = teenDeps(db);
-    await resumeInvestments({ db, now: d.now, secret: d.secret, alpaca: brokerFromEnv() }, familyId);
-  } catch (err) {
-    console.error("resumeInvestments skipped", err instanceof Error ? err.message : err);
-  }
-  // One card per fund she holds (filled, with Alpaca's numbers), above the rows still on their way.
-  const [rows, holdings] = await Promise.all([teenInvestments(db, familyId), pageHoldings(db, familyId)]);
-  const inCards = new Set(holdings.flatMap((h) => h.investmentIds));
-  const listed = rows.filter((r) => !inCards.has(r.id));
+  const rows = await teenInvestments(db, familyId); // the database only: shown at once, whatever Alpaca is doing
   const custodial = process.env.ALPACA_CUSTODIAL_ENABLED === "true";
   return (
     <section aria-labelledby="mine-h">
@@ -109,21 +98,21 @@ async function Investments({ db, familyId, guardian }: { db: Db; familyId: strin
       {rows.length === 0 ? (
         <div className="t-card"><p className="t-small">None yet. Each one needs {guardian}&apos;s OK.</p></div>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {holdings.map((h) => <HoldingCard key={h.symbol} h={h} />)}
-          {listed.length > 0 && (
-            <ul className="t-card t-card--tight" style={{ listStyle: "none" }}>
-              {listed.map((r) => (
-                <li key={r.id} className="t-row">
-                  <span className="t-row__who">{r.symbol}<small>{investStatusWords(r.status, guardian, r.declined)}{r.receiptNote ? ` · ${r.receiptNote}` : ""}</small></span>
-                  <span className="t-row__amt"><Money cents={r.amountCents} /></span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <YourInvestments rows={rows} fresh={freshInvestments(db, familyId)} guardian={guardian} />
       )}
       {!custodial && <div style={{ marginTop: 10 }}><Seam center>{STAND_IN_LABEL}</Seam></div>}
     </section>
   );
+}
+
+/** Best effort: a queued order may have filled since, then her holdings. A broker outage never fails it. */
+async function freshInvestments(db: Db, familyId: string): Promise<FreshInvestments> {
+  try {
+    const d = teenDeps(db);
+    await resumeInvestments({ db, now: d.now, secret: d.secret, alpaca: brokerFromEnv() }, familyId);
+  } catch (err) {
+    console.error("resumeInvestments skipped", err instanceof Error ? err.message : err);
+  }
+  const [rows, holdings] = await Promise.all([teenInvestments(db, familyId), pageHoldings(db, familyId)]);
+  return { rows, holdings };
 }

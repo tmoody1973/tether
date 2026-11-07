@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import type { Db } from "@/db/client";
 import { pageHoldings } from "@/app/g/flowDeps";
-import { HerHoldingCard } from "@/ui/InvestCards";
+import { HerInvestments } from "./HerInvestments";
 import { eq } from "drizzle-orm";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
@@ -12,8 +11,7 @@ import { STAND_IN_LABEL } from "@/adapters/alpaca/broker";
 import { guardianHome } from "@/flows/home";
 import { allowedFunds } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
-import { INVEST_STATUS } from "@/ui/investWords";
-import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
+import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "./FundFacts";
 import { Seam } from "@/ui/Seam";
 
@@ -84,35 +82,10 @@ async function Invest() {
         <section className="g-card" aria-labelledby="inv-h">
           <h2 className="g-label" id="inv-h">{zoe}&apos;s investments</h2>
           {investments.length === 0 ? <p className="g-muted">None yet. Investing opens at Level 3, and each one needs your OK.</p> : (
-            <HerInvestments db={db} familyId={familyId} investments={investments} zoe={zoe} />
+            <HerInvestments investments={investments} holdings={pageHoldings(db, familyId)} zoe={zoe} />
           )}
         </section>
       </div>
     </GuardianShell>
-  );
-}
-
-/** One card per fund she holds (Alpaca's numbers), then the investments still on their way, as before. */
-async function HerInvestments({ db, familyId, investments, zoe }: {
-  db: Db; familyId: string; investments: (typeof t.investments.$inferSelect)[]; zoe: string;
-}) {
-  const holdings = await pageHoldings(db, familyId);
-  const inCards = new Set(holdings.flatMap((h) => h.investmentIds));
-  const listed = investments.filter((i) => !inCards.has(i.id));
-  return (
-    <>
-      {holdings.map((h) => <HerHoldingCard key={h.symbol} h={h} />)}
-      {listed.length > 0 && (
-        <ul className="g-needs">
-          {listed.map((i) => (
-            <li key={i.id} style={{ padding: "10px 2px" }}>
-              <b><Money cents={i.amountCents} /> in {i.symbol}</b>
-              <small style={{ display: "block", color: "var(--ink-2)" }}>{i.status === "expired" ? `Asked too long ago — ${zoe} can ask again.` : INVEST_STATUS[i.status]}</small>
-              {i.receiptNote && <small style={{ display: "block", color: "var(--ink-3-text)" }}>{i.receiptNote}</small>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
   );
 }
