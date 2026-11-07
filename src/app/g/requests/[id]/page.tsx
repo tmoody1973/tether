@@ -195,10 +195,23 @@ async function ShareLine({ symbol, amountCents }: { symbol: string; amountCents:
   return q ? <p className="g-muted" style={{ marginTop: 4 }}>{requestShareWords(amountCents, q, symbol)}</p> : null;
 }
 
-/** The same "what's inside" Zoe saw, compact. Streams in; hidden for companies or when unavailable. */
+/** Alpaca's listing for a symbol (its asset list is cached per process); undefined when unknown or unavailable. */
+async function assetHit(symbol: string) {
+  try {
+    return (await marketFromEnv().searchAssets(symbol)).find((a) => a.symbol === symbol);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The same "what's inside" Zoe saw, compact. Streams in; hidden for companies, leveraged products (no credit is spent
+ * on a product Tether doesn't offer) or when unavailable. Only with Alpaca's name for it.
+ */
 async function WhatsInside({ symbol }: { symbol: string }) {
   const familyId = await guardianFamilyId(); // read here, so the open/closed switch above stays as it is
-  return familyId ? <InsideLineCard symbol={symbol} inside={await fundInside(symbol, familyId)} /> : null;
+  const hit = familyId ? await assetHit(symbol) : undefined;
+  return familyId && hit ? <InsideLineCard symbol={symbol} inside={await fundInside(symbol, familyId, hit.name)} /> : null;
 }
 
 /**
@@ -210,10 +223,7 @@ async function StockLines({ symbol }: { symbol: string }) {
   const familyId = await guardianFamilyId();
   if (!familyId) return null;
   const market = (() => { try { return marketFromEnv(); } catch { return null; } })();
-  const [hit, close] = await Promise.all([
-    market ? market.searchAssets(symbol).then((a) => a.find((x) => x.symbol === symbol), () => undefined) : undefined,
-    market ? market.latestClose(symbol) : null,
-  ]);
+  const [hit, close] = await Promise.all([assetHit(symbol), market ? market.latestClose(symbol) : null]);
   // Only with Alpaca's name for it: a fund or a leveraged product never spends a paid company lookup.
   const facts = hit ? await companyFacts(symbol, familyId, hit.name) : null;
   const penny = pennyLine(close?.cents ?? null);

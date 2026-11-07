@@ -105,9 +105,12 @@ export async function fetchFundInside(ticker: string, familyId: string): Promise
   return toFundInside((await get(`/index-funds/?${qs}`)) as RawHoldings);
 }
 
-/** What's inside a fund, or null: not configured, not a covered fund (companies aren't), capped, or unavailable. */
-export async function fundInside(ticker: string, familyId: string): Promise<FundInside | null> {
-  if (!config()) return null;
+/**
+ * What's inside a fund, or null: not configured, a leveraged product (its page offers nothing, so no credit is spent),
+ * not a covered fund (companies aren't), capped, or unavailable. `name` is Alpaca's name for it.
+ */
+export async function fundInside(ticker: string, familyId: string, name: string): Promise<FundInside | null> {
+  if (!config() || isLeveragedProduct(name)) return null;
   try {
     if (!(await fundsCovered()).has(ticker)) return null;
     return await fetchFundInside(ticker, familyId);

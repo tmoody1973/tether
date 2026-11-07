@@ -90,7 +90,7 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
       <section className="t-card" aria-label="What it is"><p className="t-small">{about}</p></section>
       {/* Streams in on its own: Financial Datasets being slow, down or capped never holds up the page. */}
       {/* At most one paid call: fundInside only asks for covered funds, companyFacts never does. */}
-      <Suspense fallback={null}><WhatsInside symbol={symbol} familyId={fam.id} /></Suspense>
+      <Suspense fallback={null}><WhatsInside symbol={symbol} familyId={fam.id} name={hit.name} /></Suspense>
       <Suspense fallback={null}><AboutCompany symbol={symbol} familyId={fam.id} name={hit.name} /></Suspense>
 
       <section className="t-card" aria-labelledby="year-h">
@@ -131,8 +131,8 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
 }
 
 /** One paid Financial Datasets call per render at most (cached a week); companies and failures show nothing. */
-async function WhatsInside({ symbol, familyId }: { symbol: string; familyId: string }) {
-  return <InsideCard inside={await fundInside(symbol, familyId)} />;
+async function WhatsInside({ symbol, familyId, name }: { symbol: string; familyId: string; name: string }) {
+  return <InsideCard inside={await fundInside(symbol, familyId, name)} />;
 }
 
 /** A stock's plain facts (cached a week); funds, leveraged products, uncovered tickers and failures show nothing. */

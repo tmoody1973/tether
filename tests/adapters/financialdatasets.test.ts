@@ -29,7 +29,8 @@ const AAPL = { company_facts: {
   is_active: true, location: "Cupertino, CA", sec_filings_url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000320193",
   sic_code: "3571", sic_industry: "Electronic Computers", sic_sector: "Manufacturing",
 } };
-const APPLE = "Apple Inc. Common Stock"; // Alpaca's name for it
+const APPLE = "Apple Inc. Common Stock"; // Alpaca's names for them
+const VTI_NAME = "Vanguard Total Stock Market ETF";
 const answer = (a: Answer) => (typeof a === "function" ? a() : a.clone());
 
 /** Fake Financial Datasets: the free tickers lists, then whatever `holdings` / `facts` answer for the paid calls. */
@@ -88,7 +89,7 @@ describe("fundInside", () => {
   it("returns the fund's top holdings and takes one market_data use for the one paid call", async () => {
     const fam = await family();
     const f = fake();
-    const inside = await fundInside("VTI", fam);
+    const inside = await fundInside("VTI", fam, VTI_NAME);
     expect(inside?.rows[0]).toEqual({ name: "NVIDIA", pct: 6.355382492074 });
     expect(paidCalls(f)).toHaveLength(1);
     expect(new URL(String(paidCalls(f)[0][0])).search).toBe("?ticker=VTI&limit=10&asset_class=equity");
@@ -97,7 +98,7 @@ describe("fundInside", () => {
 
   it("sends the key as X-API-KEY on every call", async () => {
     const f = fake();
-    await fundInside("VTI", await family());
+    await fundInside("VTI", await family(), VTI_NAME);
     expect(f.mock.calls.length).toBeGreaterThanOrEqual(2);
     for (const [, init] of f.mock.calls) expect(new Headers(init?.headers).get("X-API-KEY")).toBe(KEY);
   });
@@ -105,7 +106,7 @@ describe("fundInside", () => {
   it("a ticker it doesn't cover (a company) is null without a paid call or a use taken", async () => {
     const fam = await family();
     const f = fake();
-    expect(await fundInside("AAPL", fam)).toBeNull();
+    expect(await fundInside("AAPL", fam, APPLE)).toBeNull();
     expect(paidCalls(f)).toHaveLength(0);
     expect(await used(fam)).toBe(0);
   });
@@ -113,7 +114,7 @@ describe("fundInside", () => {
   it("no key: null and an empty coverage list, without any call", async () => {
     delete process.env.FINANCIALDATASETS_API_KEY;
     const f = fake();
-    expect(await fundInside("VTI", await family())).toBeNull();
+    expect(await fundInside("VTI", await family(), VTI_NAME)).toBeNull();
     expect(await fundsCovered()).toEqual(new Set());
     expect(f).not.toHaveBeenCalled();
   });
@@ -126,14 +127,14 @@ describe("fundInside", () => {
     ]) {
       const fam = await family();
       fake(answer);
-      expect(await fundInside("VTI", fam)).toBeNull();
+      expect(await fundInside("VTI", fam, VTI_NAME)).toBeNull();
       await expect(fetchFundInside("VTI", fam)).rejects.toThrow();
     }
   });
 
   it("every call carries a timeout signal", async () => {
     const f = fake();
-    await fundInside("VTI", await family());
+    await fundInside("VTI", await family(), VTI_NAME);
     for (const [, init] of f.mock.calls) expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -142,16 +143,24 @@ describe("fundInside", () => {
     const day = new Date().toISOString().slice(0, 10);
     await db.insert(t.usage).values({ familyId: fam, kind: "market_data", day, count: DAILY_CAPS.market_data });
     const f = fake();
-    expect(await fundInside("VTI", fam)).toBeNull();
+    expect(await fundInside("VTI", fam, VTI_NAME)).toBeNull();
     await expect(fetchFundInside("VTI", fam)).rejects.toThrow(/cap/i);
     expect(paidCalls(f)).toHaveLength(0);
     expect(await used(fam)).toBe(DAILY_CAPS.market_data);
   });
 
+  it("a leveraged fund on the covered list never spends a paid call: its page offers nothing", async () => {
+    const fam = await family();
+    const f = fake(json(VTI), ["VTI", "TQQQ"]);
+    expect(await fundInside("TQQQ", fam, "ProShares UltraPro QQQ")).toBeNull();
+    expect(paidCalls(f)).toHaveLength(0);
+    expect(await used(fam)).toBe(0);
+  });
+
   it("the tickers list failing hides the card rather than breaking the page", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ error: "down" }, 500)));
     expect(await fundsCovered()).toEqual(new Set());
-    expect(await fundInside("VTI", await family())).toBeNull();
+    expect(await fundInside("VTI", await family(), VTI_NAME)).toBeNull();
   });
 });
 
@@ -215,10 +224,10 @@ describe("companyFacts", () => {
   it("a stock and a fund on one page: at most one paid call between them", async () => {
     const f = fake();
     const fam = await family();
-    await Promise.all([companyFacts("AAPL", fam, APPLE), fundInside("AAPL", fam)]);
+    await Promise.all([companyFacts("AAPL", fam, APPLE), fundInside("AAPL", fam, APPLE)]);
     expect(paidCalls(f).length + factCalls(f).length).toBe(1);
     const fam2 = await family();
-    await Promise.all([companyFacts("VTI", fam2, "Vanguard Total Stock Market ETF"), fundInside("VTI", fam2)]);
+    await Promise.all([companyFacts("VTI", fam2, "Vanguard Total Stock Market ETF"), fundInside("VTI", fam2, VTI_NAME)]);
     expect(paidCalls(f).length + factCalls(f).length).toBe(2);
   });
 
