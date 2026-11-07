@@ -21,7 +21,8 @@ export interface RequestView {
 
 /**
  * One open request, read for Amara. Null when it doesn't exist, belongs to another family, or has closed
- * (decided, expired, or its purchase already moved on): the page shows the same calm "closed" state for all three.
+ * (decided, expired, or its purchase already moved on). The page then asks closedRequestView what happened: it says so
+ * for her own family's decided or expired request, and shows the same calm "closed" state for the rest.
  */
 export async function requestView(db: Db, familyId: string, approvalId: string, now: Date): Promise<RequestView | null> {
   const a = (await pendingApprovals(db, familyId, now)).find((x) => x.id === approvalId);

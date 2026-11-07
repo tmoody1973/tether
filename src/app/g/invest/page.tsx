@@ -14,7 +14,7 @@ import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian"
 import { FundFactsLine } from "./FundFacts";
 import { Seam } from "@/ui/Seam";
 
-// Amara's fund list: Tether recommends nothing; funds arrive only when Zoe proposes and Amara approves.
+// Amara's fund list: Tether recommends nothing. A fund is on it because she signed it into her rules or approved Zoe's proposal.
 export default function InvestPage() {
   return (
     <Suspense fallback={<GuardianLoading />}>

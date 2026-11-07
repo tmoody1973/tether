@@ -39,6 +39,13 @@ describe("closedWords", () => {
     expect(w).toMatchObject({ line: "$12.00 at Target · approved 6 Nov 20:54", status: "Paid.", href: "/g/activity", button: "See activity" });
   });
 
+  it("an approved purchase that is not yet paying or paid never claims nothing was charged (the charge may be about to start)", () => {
+    const purchase = (status: NonNullable<ClosedRequest["purchase"]>["status"]) =>
+      closedWords({ ...base, outcome: "approved", subject: "purchase", purchase: { amountCents: 800, shop: "Best Buy", status } });
+    expect(purchase("approved").status).toBe("Approved. The payment hasn't gone to PayPal yet.");
+    for (const status of ["approved", "paying", "paid"] as const) expect(purchase(status).status).not.toMatch(/nothing was charged/i);
+  });
+
   it("a fund links to her investments, a shop to her rules", () => {
     expect(closedWords({ ...base, outcome: "approved", subject: "fund", fund: { symbol: "VOO" } }))
       .toMatchObject({ line: "Adding VOO to your fund list · approved 6 Nov 20:54", href: "/g/invest", button: "See Zoe's investments" });

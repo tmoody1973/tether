@@ -47,7 +47,7 @@ const CLOSED_VERB = { approved: "approved", declined: "declined", expired: "ran 
 const PURCHASE_STATUS: Partial<Record<NonNullable<ClosedRequest["purchase"]>["status"], string>> = {
   paid: "Paid.",
   paying: "PayPal is confirming the payment.",
-  approved: "The payment hasn't started. Nothing was charged.",
+  approved: "Approved. The payment hasn't gone to PayPal yet.", // settling: re-pricing and the gates run before it becomes `paying`, so never "nothing was charged"
   failed: "PayPal declined the payment. Nothing was charged.",
   refused: "It didn't go through. Nothing was charged.",
   expired: "It ran out of time. Nothing was charged.",
