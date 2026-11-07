@@ -5,7 +5,7 @@
 //   products whatever the words (the teen e2e agent proposes exactly these); lookup reads `sku-<cents>` from the URL.
 // - Alpaca (broker + market data): a few assets, deterministic daily bars, an account, an instant journal deposit,
 //   and orders that are accepted when placed (the market is "closed", so an approval says queued), then filled the next
-//   time they're looked up, at the symbol's price today, with filled_qty, filled_avg_price and filled_at.
+//   time they're looked up, at last week's close, with filled_qty, filled_avg_price and filled_at.
 // - Financial Datasets: VTI, SPY and VOO are covered; VTI's holdings are a trimmed copy of the real response.
 import { createServer } from "node:http";
 import { E2E } from "./fixtures";
@@ -144,7 +144,10 @@ createServer((req, res) => {
     if (req.method === "GET" && orderGet) {
       const o = placed.get(orderGet[1]);
       if (!o) return send(200, { status: "accepted", filled_qty: "0", filled_avg_price: null, filled_at: null });
-      const price = (PATHS[o.symbol] ?? DEFAULT_PATH).today;
+      // Filled at last week's close: never above what the app reads as the latest close, at any hour (it skips a
+      // session that hasn't closed), so Zoe's card never shows a dip the fake invented.
+      const year = bars(o.symbol, new Date(Date.now() - 365 * DAY).toISOString(), new Date().toISOString());
+      const price = year[year.length - 2].c;
       o.filledAt ??= new Date().toISOString();
       return send(200, { status: "filled", filled_qty: (o.notional / price).toFixed(9), filled_avg_price: price.toFixed(2), filled_at: o.filledAt });
     }
