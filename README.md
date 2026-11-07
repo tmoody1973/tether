@@ -16,6 +16,16 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 **Live app:** https://tether-five-beta.vercel.app (sandbox only, no real money moves)
 **Demo video:** _link coming with the submission_
 
+## The problem
+
+| Who | One cited number | Tether's answer |
+|---|---|---|
+| **Parents:** kids spend their money without real permission | The FTC made Epic Games refund **$245M** for children's charges made "without any parental involvement"; Epic "ignored more than one million user complaints" (FTC, Dec 2022). | No card changes hands. The parent signs weekly rules, code checks every cart before PayPal is called, and each payment uses a single-use permission slip bound to that one cart. |
+| **Teens:** they want autonomy, and classes barely change behaviour | Across 201 studies, financial-education classes explained **0.1%** of the differences in money behaviour, with negligible effects 20 months on; the authors point to "just in time" teaching (Fernandes, Lynch & Netemeyer, 2014). | She shops herself inside the rules. A refusal explains itself at the moment of decision, with her real numbers and two ways forward, and her freedom grows from her own track record. |
+| **Payments and AI:** nobody has settled how an agent proves it was allowed to buy | Google's AP2, with PayPal as a named partner, lists "proving that a user gave an agent the specific authority to make a particular purchase" as an open question (Sept 2025). | The parent's signed rules are the mandate. The agent only proposes, code decides, a model can only add friction, and every payment's proof can be checked against PayPal's own records. |
+
+Sources, sample sizes and the claims we deliberately avoid: [`docs/research/problem.md`](docs/research/problem.md).
+
 ## Try it in five minutes
 
 1. Open https://tether-five-beta.vercel.app and click **Open Zoe's view**. Her week shows one number: what she has left. Go to **Shop**, ask for something ("headphones under $30"). The AI agent searches only her allowed shops and labels every card *Fits your week*, *Needs Amara's OK* or *Over budget*. Open an over-budget card to see the amber refusal sentence and its two ways forward.
