@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { START_COOKIE, openStart } from "@/auth/start";
 import { getDb } from "@/db/client";
-import { ownedFamilies } from "@/flows/start";
+import { isSharedLogin, ownedFamilies } from "@/flows/start";
 import { GuardianLoading, SignedOut } from "@/ui/guardian";
 import "@/ui/start.css";
 
@@ -21,7 +21,8 @@ async function Choose() {
   await connection();
   const who = openStart((await cookies()).get(START_COOKIE)?.value, new Date())?.who;
   if (!who) return <SignedOut login="expired" />;
-  const families = await ownedFamilies(await getDb(), who.sub);
+  const db = await getDb();
+  const families = (await isSharedLogin(db, who)) ? [] : await ownedFamilies(db, who.sub); // the shared login never lists families
   return (
     <div className="g-app">
       <main className="g-gate">

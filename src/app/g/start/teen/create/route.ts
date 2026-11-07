@@ -1,5 +1,8 @@
 import { readCookie } from "@/auth/guardian";
-import { START_COOKIE, STARTED_COOKIE, openStart, openStarted, sealStarted, startedCookieOptions } from "@/auth/start";
+import {
+  BROWSER_FAMILY_COOKIE, START_COOKIE, STARTED_COOKIE, browserFamilyCookieOptions, openStart, openStarted, sealBrowserFamily, sealStarted,
+  startedCookieOptions,
+} from "@/auth/start";
 import { getDb } from "@/db/client";
 import { consumeStartNonce, parseTeenForm, startFamily } from "@/flows/start";
 import { goTo, retireQuietly, sameOrigin, signIn } from "../../../login/login";
@@ -23,5 +26,6 @@ export async function POST(req: Request): Promise<Response> {
   if (!fam) return goTo(req, "/g/start/teen?e=full", { dropStart: true }); // today's new families are used up; this cookie is spent
   const res = signIn(goTo(req, "/g?started=1", { dropStart: true }), fam.id);
   res.cookies.set(STARTED_COOKIE, sealStarted(now), startedCookieOptions());
+  res.cookies.set(BROWSER_FAMILY_COOKIE, sealBrowserFamily(fam.id, now), browserFamilyCookieOptions());
   return res;
 }

@@ -38,6 +38,17 @@ export function openStart(value: string | null | undefined, now: Date): StartTic
   } catch { return null; }
 }
 
+/**
+ * "The family in this browser" (decision 026, review H1): set when this browser makes a family. For the shared sandbox
+ * login it is the ONLY way back into a family, so judges sharing one PayPal test account each keep their own.
+ * Lasts a day past the 7-day retirement.
+ */
+export const BROWSER_FAMILY_COOKIE = "tether_family";
+const BROWSER_FAMILY_MS = 8 * 86_400_000;
+export const browserFamilyCookieOptions = () => opts("/g", BROWSER_FAMILY_MS / 1000);
+export const sealBrowserFamily = (familyId: string, now: Date) => sealValue("browser-family", familyId, now, BROWSER_FAMILY_MS);
+export const openBrowserFamily = (value: string | null | undefined, now: Date) => (value ? safely(() => openValue("browser-family", value, now)) : null);
+
 /** This browser started a family: one per browser per hour (public-demo limit). */
 export const STARTED_COOKIE = "tether_started";
 const STARTED_MS = 60 * 60_000;

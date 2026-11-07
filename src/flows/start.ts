@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, isNotNull, isNull, lt, not, like } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lt, not, like, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { ARCHIVED_PREFIX, insertFamily, type Family } from "@/db/repo";
@@ -7,6 +7,7 @@ import type { PaypalHttp } from "@/adapters/paypal/http";
 import type { PaypalIdentity } from "@/adapters/paypal/identity";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
 import { takePool } from "@/flows/usage";
+import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
 
 // "Start your own family" with Log in with PayPal (decision 026) and its public-demo limits.
 
@@ -38,10 +39,31 @@ export async function consumeStartNonce(db: Db, nonce: string): Promise<boolean>
   return (await db.insert(t.usedStartNonces).values({ nonce }).onConflictDoNothing().returning()).length > 0;
 }
 
+const live = not(like(t.families.guardianToken, `${ARCHIVED_PREFIX}%`));
+
+/**
+ * Is this the published shared sandbox login (review H1)? By its email, case-insensitive. When PayPal leaves the email
+ * out: by a live family already stored with that email under this PayPal id or payer id.
+ */
+export async function isSharedLogin(db: Db, who: PaypalIdentity): Promise<boolean> {
+  const shared = SANDBOX_LOGIN.email.toLowerCase();
+  if (who.email) return who.email.toLowerCase() === shared;
+  const byId = who.payerId ? or(eq(t.families.paypalSub, who.sub), eq(t.families.paypalPayerId, who.payerId)) : eq(t.families.paypalSub, who.sub);
+  const [hit] = await db.select({ id: t.families.id }).from(t.families).where(and(eq(t.families.paypalEmail, shared), byId)).limit(1);
+  return hit !== undefined;
+}
+
+/** True when `familyId` is a live (not retired) family owned by this PayPal id. */
+export async function ownsLiveFamily(db: Db, sub: string, familyId: string): Promise<boolean> {
+  const [hit] = await db.select({ id: t.families.id }).from(t.families)
+    .where(and(eq(t.families.id, familyId), eq(t.families.paypalSub, sub), live)).limit(1);
+  return hit !== undefined;
+}
+
 /** The families this PayPal identity owns and can still open, oldest first: the "Which teen?" list. */
 export async function ownedFamilies(db: Db, sub: string): Promise<{ id: string; teenName: string }[]> {
   return db.select({ id: t.families.id, teenName: t.families.teenName }).from(t.families)
-    .where(and(eq(t.families.paypalSub, sub), not(like(t.families.guardianToken, `${ARCHIVED_PREFIX}%`))))
+    .where(and(eq(t.families.paypalSub, sub), live))
     .orderBy(asc(t.families.createdAt));
 }
 

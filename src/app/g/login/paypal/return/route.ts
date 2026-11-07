@@ -1,15 +1,17 @@
 import { timingSafeEqual } from "node:crypto";
 import { identityFromEnv, type PaypalIdentity } from "@/adapters/paypal/identity";
 import { readCookie } from "@/auth/guardian";
-import { LOGIN_STATE_COOKIE, START_COOKIE, openLoginState, sealStart, startCookieOptions } from "@/auth/start";
+import { BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, START_COOKIE, openBrowserFamily, openLoginState, sealStart, startCookieOptions } from "@/auth/start";
 import { getDb } from "@/db/client";
-import { ownedFamilies } from "@/flows/start";
+import { isSharedLogin, ownedFamilies, ownsLiveFamily } from "@/flows/start";
 import { goTo, loginReturnUrl, retireQuietly, signIn } from "../../login";
 
 const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 // Log in with PayPal, step 2 (the return URL registered with PayPal). Checks the state against this browser's cookie
-// BEFORE using the code, then: no family yet ⇒ the teen form; one ⇒ signed in; several ⇒ "Which teen?".
+// BEFORE using the code. Then, for an ordinary PayPal account: no family yet ⇒ the teen form; one ⇒ signed in;
+// several ⇒ "Which teen?". For the published shared sandbox login (review H1), per browser: the family this browser
+// made, if it is still live and this PayPal owns it; otherwise the teen form. Never a chooser, never another browser's family.
 export async function GET(req: Request): Promise<Response> {
   const params = new URL(req.url).searchParams;
   if (params.has("error")) return goTo(req, "/g?login=cancelled"); // she cancelled, or PayPal refused
@@ -28,9 +30,18 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   await retireQuietly();
-  const owned = await ownedFamilies(await getDb(), who.sub);
-  if (owned.length === 1) return signIn(goTo(req, "/g"), owned[0].id);
-  const res = goTo(req, owned.length === 0 ? "/g/start/teen" : "/g/login/choose");
+  const db = await getDb();
+  let next: string;
+  if (await isSharedLogin(db, who)) {
+    const mine = openBrowserFamily(readCookie(req, BROWSER_FAMILY_COOKIE), new Date());
+    if (mine && (await ownsLiveFamily(db, who.sub, mine))) return signIn(goTo(req, "/g"), mine);
+    next = "/g/start/teen";
+  } else {
+    const owned = await ownedFamilies(db, who.sub);
+    if (owned.length === 1) return signIn(goTo(req, "/g"), owned[0].id);
+    next = owned.length === 0 ? "/g/start/teen" : "/g/login/choose";
+  }
+  const res = goTo(req, next);
   res.cookies.set(START_COOKIE, sealStart(who, new Date()), startCookieOptions());
   return res;
 }

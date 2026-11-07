@@ -9,7 +9,7 @@ import * as t from "@/db/schema";
 import type { PaypalHttp } from "@/adapters/paypal/http";
 import type { AlpacaBroker } from "@/adapters/alpaca/broker";
 import { GUARDIAN_COOKIE, verifyGuardianCookie } from "@/auth/guardian";
-import { START_COOKIE, STARTED_COOKIE, sealStart, sealStarted } from "@/auth/start";
+import { BROWSER_FAMILY_COOKIE, START_COOKIE, STARTED_COOKIE, openBrowserFamily, sealStart, sealStarted } from "@/auth/start";
 import { POST as create } from "@/app/g/start/teen/create/route";
 import { ALPACA_ACCOUNTS_PER_DAY, AccountCapError, NEW_FAMILIES_PER_DAY, RETIRE_AFTER_MS, parseTeenForm, retireStaleFamilies } from "@/flows/start";
 import { DAILY_CAPS, takeDaily } from "@/flows/usage";
@@ -80,6 +80,9 @@ describe("POST /g/start/teen/create", () => {
     expect(await repo.getVault(testDb, familyId)).toBeNull();
     expect(cookieOf(res, START_COOKIE)).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
     expect(cookieOf(res, STARTED_COOKIE)).toMatch(/HttpOnly/i);
+    // "family in this browser": how the shared sandbox login finds this family again, here only (decision 026, H1)
+    expect(cookieOf(res, BROWSER_FAMILY_COOKIE)).toMatch(/HttpOnly/i);
+    expect(openBrowserFamily(valueOf(res, BROWSER_FAMILY_COOKIE)!, new Date())).toBe(familyId);
   });
 
   it("M1: a starting cookie makes one family; replaying it is refused calmly", async () => {
