@@ -194,6 +194,11 @@ function paypalCheckTool(paypal: PaypalHttp, db: Db, familyId: string, realNow: 
 
 const lastMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
 
+/** The model's refusal, whichever apostrophe or ending it used. */
+const REFUSAL = /^i can['\u2019]t see that\.?$/i;
+/** The answer shows as plain text: drop markdown the model writes anyway (bold, bullets, numbered lists, headings). */
+const plain = (t: string): string => t.replace(/\*\*|__/g, "").replace(/^[ \t]*(?:#+|[-*\u2022]|\d+\.)[ \t]+/gm, "").trim();
+
 function systemPrompt(now: Date): string {
   const month = ymd(now).slice(0, 7);
   return `You answer a parent's questions about their teenager's spending, using ONLY the tools provided.
@@ -208,7 +213,9 @@ function systemPrompt(now: Date): string {
 - Use paypal_check(month) for whether Tether's receipts match PayPal.
 - A setAsideNote counts payments an earlier demo reset set aside. They are not part of her month: never count or describe them as her purchases.
 - Use month_checkin for her level, savings, and how her month is going.
-Keep answers short and in plain English.`;
+- You are talking to the parent: call them "you" and the teen by name.
+- Write one to three plain sentences: no markdown, no lists, no headings. Cards under your answer show every purchase, number and match, so give the headline and do not repeat the rows.
+- Never mention set-aside payments or how the tools work; the cards note those.`;
 }
 
 export interface MonthAssistantDeps {
@@ -240,9 +247,9 @@ export async function askAboutMonth(
   const failed = res.steps.flatMap((s) => s.content).find((c) => c.type === "tool-error" && c.error instanceof PaypalUnavailableError);
   if (failed && failed.type === "tool-error") throw failed.error;
   // Tools that returned no rows are still an answer ("no purchases this month"); the prompt keeps it to tool results.
-  const text = res.text.trim();
+  const text = plain(res.text);
   // No cards beside "I can't see that." either, whether our guard or the model said it.
-  if (used.length === 0 || !text || text === CANT_SEE) return { answer: CANT_SEE, toolsUsed: used, cards: [] };
+  if (used.length === 0 || !text || REFUSAL.test(text)) return { answer: CANT_SEE, toolsUsed: used, cards: [] };
   // Cards: the last result of each tool, exactly as the tool returned it. The model writes the sentence; it never
   // touches a card's numbers.
   const last: Record<string, unknown> = {};

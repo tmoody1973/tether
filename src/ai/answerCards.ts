@@ -21,6 +21,8 @@ export interface CheckinCard {
   week: { spentCents: number; leftCents: number; allowanceCents: number };
   weeks: { covers: string; count: number; kept: number; insideBudget: number; savedCents: number };
   nextCheckin: string | null;
+  /** Amara stopped her rules: nothing this week is spendable, whatever the allowance says. */
+  rulesStopped: boolean;
 }
 export interface PaypalCard {
   kind: "paypal"; month: string; matched: number; receiptsChecked: number;
@@ -46,7 +48,7 @@ const checkinCard = (c: CheckinResult): CheckinCard => ({
   kind: "checkin", month: c.month, level: c.level,
   week: { spentCents: cents(c.thisWeek.spent), leftCents: cents(c.thisWeek.left), allowanceCents: cents(c.weeklyAllowance) },
   weeks: { covers: c.weeks.covers, count: c.weeks.count, kept: c.weeks.kept, insideBudget: c.weeks.insideBudget, savedCents: cents(c.weeks.saved) },
-  nextCheckin: c.nextCheckin,
+  nextCheckin: c.nextCheckin, rulesStopped: c.rulesStopped,
 });
 
 function paypalCard(m: MatchResult): PaypalCard | null {

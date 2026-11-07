@@ -38,8 +38,11 @@ describe("buildCards (cards come from tool results, never from the model's text)
       kind: "checkin", month: "2026-10", level: 1,
       week: { spentCents: 150, leftCents: 1850, allowanceCents: 2000 },
       weeks: { covers: "the weeks counting toward her next review", count: 2, kept: 1, insideBudget: 1, savedCents: 1400 },
-      nextCheckin: "2026-10-31",
+      nextCheckin: "2026-10-31", rulesStopped: false,
     }]);
+  });
+  it("check-in: stopped rules travel to the card (CodeRabbit)", () => {
+    expect(buildCards({ month_checkin: { ...checkin, rulesStopped: true } })).toMatchObject([{ kind: "checkin", rulesStopped: true }]);
   });
 
   it("PayPal: how many receipts match, plus each flag as label, shop and amount; the lag note only when something is unconfirmed", () => {
