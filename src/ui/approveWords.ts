@@ -36,7 +36,7 @@ export function requestTitle(v: Pick<RequestView, "teenName" | "purchase" | "inv
   const zoe = v.teenName;
   if (v.purchase) return `${zoe} is asking for ${formatCents(v.purchase.amountCents)} at ${v.purchase.shop}`;
   if (v.investment) return `${zoe} proposes investing ${formatCents(v.investment.amountCents)} in ${v.investment.symbol}`;
-  if (v.fund) return `${zoe} proposes adding ${v.fund.symbol} to your fund list`;
+  if (v.fund) return `${zoe} proposes adding ${v.fund.symbol} to your investing list`;
   return `${zoe} suggests a new shop: ${v.shop?.domain}`;
 }
 
@@ -60,7 +60,7 @@ const PURCHASE_STATUS: Partial<Record<NonNullable<ClosedRequest["purchase"]>["st
 export function closedWords(c: ClosedRequest) {
   const subject = c.purchase ? `${formatCents(c.purchase.amountCents)} at ${c.purchase.shop}`
     : c.investment ? `${formatCents(c.investment.amountCents)} in ${c.investment.symbol}`
-    : c.fund ? `Adding ${c.fund.symbol} to your fund list` : `A new shop: ${c.shop?.domain}`;
+    : c.fund ? `Adding ${c.fund.symbol} to your investing list` : `A new shop: ${c.shop?.domain}`;
   const yes = c.outcome === "approved";
   const inv = c.investment;
   const status = !yes ? null

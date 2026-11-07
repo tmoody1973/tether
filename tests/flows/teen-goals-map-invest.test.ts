@@ -193,7 +193,7 @@ describe("investing from Zoe's side", () => {
     });
     expect(await proposeFromTeen(d, s.familyId, "VOO", 500, ANSWERS)).toEqual({ ok: true, sent: "fund" });
     expect(r.calls).toHaveLength(2);
-    expect(await pushedBody(deps(), s.familyId, r.calls[1].approvalId)).toMatchObject({ contents: { en: "Zoe proposes adding VOO to your fund list" } });
+    expect(await pushedBody(deps(), s.familyId, r.calls[1].approvalId)).toMatchObject({ contents: { en: "Zoe proposes adding VOO to your investing list" } });
     expect(await proposeFromTeen(d, s.familyId, "VTI", 5000, ANSWERS)).toEqual({ ok: false, error: "savings", savingsCents: 1000 });
     expect(r.calls).toHaveLength(2);
     const boom = () => { throw new Error("push down"); };

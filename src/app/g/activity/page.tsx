@@ -252,7 +252,7 @@ function Investments({ r }: { r: RecordView }) {
             </li>
           ))}
         </ul>
-      ) : <p className="g-muted">{open ? "None yet." : `Opens at Level ${INVESTING_FROM}. ${r.home.teenName} proposes a fund, you approve, and the order goes to her investing account.`}</p>}
+      ) : <p className="g-muted">{open ? "None yet." : `Opens at Level ${INVESTING_FROM}. ${r.home.teenName} proposes a fund or stock, you approve, and the order goes to her investing account.`}</p>}
       {open && <p className="g-more"><Link className="g-textlink" href="/g/invest">Investing</Link></p>}
     </section>
   );

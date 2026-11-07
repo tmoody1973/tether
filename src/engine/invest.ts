@@ -14,7 +14,7 @@ export function decideInvestment(grant: Grant, p: InvestProposal, savingsCents: 
   const refuse = (constraint: string, detail: string): Reason => ({ constraint, detail });
   const reasons: Reason[] = [
     ...(!LEVELS[grant.level].investing ? [refuse("invest.level", `Investing opens at Level ${INVESTING_FROM}`)] : []),
-    ...(!grant.fundAllowlist.includes(p.symbol) ? [refuse("invest.allowlist", `${p.symbol} is not on the approved fund list`)] : []),
+    ...(!grant.fundAllowlist.includes(p.symbol) ? [refuse("invest.allowlist", `${p.symbol} is not on the investing list`)] : []),
     ...(!Number.isInteger(p.amountCents) || p.amountCents < MIN_INVEST_CENTS ? [refuse("invest.minimum", "Minimum investment is $1.00")] : []),
     ...(p.amountCents > savingsCents ? [refuse("invest.savings", "More than the savings available")] : []),
   ];

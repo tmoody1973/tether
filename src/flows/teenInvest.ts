@@ -61,7 +61,7 @@ async function investmentWaiting(db: Db, familyId: string, symbol: string, now: 
   return rows.length > 0;
 }
 
-/** allowed: on Amara's fund list. asked: she has a fund proposal waiting. new: neither. */
+/** allowed: on Amara's investing list. asked: she has a fund proposal waiting. new: neither. */
 export async function fundStatus(db: Db, familyId: string, symbol: string, now: Date): Promise<"allowed" | "asked" | "new"> {
   const [grant, listed, asked] = await Promise.all([
     getActiveGrant(db, familyId),

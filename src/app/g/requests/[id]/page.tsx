@@ -124,9 +124,9 @@ function Consequence({ v }: { v: RequestView }) {
   if (v.fund) {
     return (
       <>
-      <section className="g-card" aria-label="What adding this fund means">
+      <section className="g-card" aria-label="What adding this means">
         <p style={{ color: "var(--ink-2)" }}>
-          Adding <b>{v.fund.symbol}</b> lets {v.teenName} propose investing in it. Nothing is bought now, and each investment still comes to you.
+          Adding <b>{v.fund.symbol}</b> to your investing list lets {v.teenName} propose investing in it. Nothing is bought now, and each investment still comes to you.
         </p>
         <FundFactsLine symbol={v.fund.symbol} />
       </section>

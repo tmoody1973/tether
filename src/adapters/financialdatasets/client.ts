@@ -86,7 +86,7 @@ export async function fundsCovered(): Promise<Set<string>> {
   try {
     return new Set(await coveredList());
   } catch (err) {
-    console.error("financial datasets: fund list unavailable", err instanceof Error ? err.message : err);
+    console.error("financial datasets: covered funds unavailable", err instanceof Error ? err.message : err);
     return new Set();
   }
 }

@@ -78,7 +78,7 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
         <h1 className="t-h2" style={{ marginTop: 6 }}>{hit.name}</h1>
         <p className="t-muted">{hit.symbol} · {hit.exchange}</p>
       </div>
-      {sentFund && <p className="t-flash" role="status">Sent. {g} will see your answers. If she adds {symbol} to her list, you can propose an amount.</p>}
+      {sentFund && <p className="t-flash" role="status">Sent. {g} will see your answers. If she adds {symbol} to her investing list, you can propose an amount.</p>}
       {sentInvestment && <p className="t-flash" role="status">Sent. {g} will see your answers and decide.</p>}
 
       <ShareCostCard close={close} />
@@ -105,13 +105,13 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
       </section>
 
       {status === "asked" ? (
-        <div className="t-card"><p className="t-small">You asked {g} to add {symbol} to her list. She&apos;ll decide.</p></div>
+        <div className="t-card"><p className="t-small">You asked {g} to add {symbol} to her investing list. She&apos;ll decide.</p></div>
       ) : (
         <>
           <p className="t-small">
             {status === "allowed"
-              ? `${symbol} is on ${g}'s list. Propose an amount and she decides.`
-              : `${symbol} isn't on ${g}'s list yet. Proposing asks her to add it, with your answers.`}
+              ? `${symbol} is on ${g}'s investing list. Propose an amount and she decides.`
+              : `${symbol} isn't on ${g}'s investing list yet. Proposing asks her to add it, with your answers.`}
           </p>
           <ProposeForm token={token} symbol={symbol} guardian={g} price={close?.cents ?? null} fractionable={hit.fractionable} />
         </>

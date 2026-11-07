@@ -301,12 +301,12 @@ async function propose(page: Page, token: string, symbol: string, amount: string
 
 test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
   await propose(page, E2E.teenB.fund, "VOO", "5");
-  await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers. If she adds VOO to her list, you can propose an amount.");
-  await expect(page.getByText("You asked Amara to add VOO to her list. She'll decide.")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers. If she adds VOO to her investing list, you can propose an amount.");
+  await expect(page.getByText("You asked Amara to add VOO to her investing list. She'll decide.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Propose to Amara" })).toHaveCount(0);
 
   await page.goto(`/g/enter/${E2E.teenFundKey}`);
-  await page.getByRole("link", { name: /Zoe proposes adding VOO to your fund list/ }).click();
+  await page.getByRole("link", { name: /Zoe proposes adding VOO to your investing list/ }).click();
   await expect(page.getByText("How would you feel if this dropped by a third next year?")).toBeVisible();
   await expect(page.getByText("Nervous, but I'd wait")).toBeVisible();
 });
@@ -346,8 +346,8 @@ test("queued when Amara approves, then filled: both see how it's doing (a Level 
   await expect(page.getByRole("main")).toContainText("Queued for market open");
   await page.getByRole("link", { name: "See Zoe's investments" }).click();
   await expect(page).toHaveURL(/\/g\/invest$/);
-  // VTI is on her signed rules (not the fund_allowlist table), and her fund list still shows it.
-  await expect(page.getByRole("region", { name: "Your fund list" })).toContainText("VTI");
+  // VTI is on her signed rules (not the fund_allowlist table), and her investing list still shows it.
+  await expect(page.getByRole("region", { name: "Your investing list" })).toContainText("VTI");
 
   // The fake fills the order the next time it's looked up: Zoe's page resumes it, then reads Alpaca's fill.
   await open(page, E2E.teenB.queued, "/invest");

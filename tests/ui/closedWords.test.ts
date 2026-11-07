@@ -48,7 +48,7 @@ describe("closedWords", () => {
 
   it("a fund links to her investments, a shop to her rules", () => {
     expect(closedWords({ ...base, outcome: "approved", subject: "fund", fund: { symbol: "VOO" } }))
-      .toMatchObject({ line: "Adding VOO to your fund list · approved 6 Nov 20:54", href: "/g/invest", button: "See Zoe's investments" });
+      .toMatchObject({ line: "Adding VOO to your investing list · approved 6 Nov 20:54", href: "/g/invest", button: "See Zoe's investments" });
     expect(closedWords({ ...base, outcome: "declined", subject: "shop", shop: { domain: "nike.com" } }))
       .toMatchObject({ line: "A new shop: nike.com · declined 6 Nov 20:54", href: "/g/rules", button: "See her rules" });
   });
