@@ -14,6 +14,8 @@ import { INVEST_STATUS, TOO_SOON_DAYS } from "@/ui/investWords";
 export const INVEST_TOOLS = ["zoe_investments", "fund_inside", "news"] as const;
 export const FUNDS_NOTE = "Funds don't have their own news; ask about one of the companies inside it.";
 const NEWS_DOWN = "The news isn't available right now.";
+/** Paid news calls one answer may make (distinct queries; a repeat reuses the first). Keeps one question cheap. */
+const NEWS_PER_ANSWER = 2;
 
 // ponytail: fundInside's name guard (leveraged products) needs Alpaca's name, which these tools don't fetch. Without it
 // the free covered-index-funds check still keeps anything that isn't a fund away from a paid call.
@@ -74,7 +76,29 @@ async function readInside(db: Db, familyId: string, teen: string, input: unknown
   };
 }
 
-async function readNews(db: Db, familyId: string, teen: string, input: unknown): Promise<NewsResult> {
+type PaidNews = (ticker: string | null) => Promise<NewsResult>;
+
+/**
+ * One answer's news calls: at most NEWS_PER_ANSWER distinct queries, each fetched once (the promise is kept, so two
+ * parallel calls for the same ticker share one fetch). Past the limit: an explicit result, no fetch.
+ * ponytail: per-answer state in a closure; investTools is built fresh for every question.
+ */
+function newsOncePerQuery(familyId: string): PaidNews {
+  const asked = new Map<string, Promise<NewsResult>>();
+  return (ticker) => {
+    const key = ticker ?? "";
+    const seen = asked.get(key);
+    if (seen) return seen;
+    if (asked.size >= NEWS_PER_ANSWER) {
+      return Promise.resolve({ ticker, unavailable: `That's the news limit for this question: ask about ${ticker ?? "the market news"} on its own.` });
+    }
+    const p = fundNews(ticker, familyId).then((articles): NewsResult => (articles ? { ticker, articles } : { ticker, unavailable: NEWS_DOWN }));
+    asked.set(key, p);
+    return p;
+  };
+}
+
+async function readNews(db: Db, familyId: string, teen: string, input: unknown, paid: PaidNews): Promise<NewsResult> {
   const raw = (input as { ticker?: unknown } | undefined)?.ticker;
   const offList = { error: `That isn't one of ${teen}'s funds or a company inside them.` };
   let ticker: string | null = null;
@@ -88,14 +112,14 @@ async function readNews(db: Db, familyId: string, teen: string, input: unknown):
     const insides = await Promise.all(funds.map((f) => fundInside(f, familyId, NO_NAME)));
     if (!insides.some((i) => i?.rows.some((r) => r.ticker === ticker))) return offList;
   }
-  const articles = await fundNews(ticker, familyId);
-  return articles ? { ticker, articles } : { ticker, unavailable: NEWS_DOWN };
+  return paid(ticker);
 }
 
 const noInput = jsonSchema<Record<string, never>>({ type: "object", properties: {} });
 
 /** The three tools for one family. zoe_investments only when the caller can read her holdings. */
 export function investTools(db: Db, familyId: string, teen: string, holdings?: (familyId: string) => Promise<Holding[]>): Record<string, Tool> {
+  const paidNews = newsOncePerQuery(familyId);
   const tools: Record<string, Tool> = {
     fund_inside: tool({
       description: `What one of ${teen}'s funds owns: its biggest holdings (name, ticker, percent of the fund), how much of the fund they are together (topPct), and the filing's date (asOf). Only for funds on ${teen}'s list or that she holds.`,
@@ -105,7 +129,7 @@ export function investTools(db: Db, familyId: string, teen: string, holdings?: (
     news: tool({
       description: `Recent headlines (title, source, date, url). No ticker: market news. With a ticker: news about one company inside ${teen}'s funds (use fund_inside's tickers). Funds themselves have no news.`,
       inputSchema: jsonSchema<{ ticker?: string }>({ type: "object", properties: { ticker: { type: "string", description: "A company's ticker, e.g. AAPL. Leave out for market news." } } }),
-      execute: (input) => readNews(db, familyId, teen, input),
+      execute: (input) => readNews(db, familyId, teen, input, paidNews),
     }),
   };
   if (holdings) {

@@ -57,8 +57,8 @@ async function family() {
   n++;
   return (await repo.insertFamily(db, { name: "F", teenToken: `fd-${n}`, guardianName: "Amara", teenName: "Zoe" })).id;
 }
-const used = async (familyId: string) =>
-  (await db.select().from(t.usage).where(and(eq(t.usage.familyId, familyId), eq(t.usage.kind, "market_data"))))[0]?.count ?? 0;
+const used = async (familyId: string, kind: "market_data" | "market_news" = "market_data") =>
+  (await db.select().from(t.usage).where(and(eq(t.usage.familyId, familyId), eq(t.usage.kind, kind))))[0]?.count ?? 0;
 
 describe("toFundInside (shaping a real VTI response)", () => {
   it("merges rows with the same name, strips company suffixes, sorts by share, and sums the ten it was given", () => {
@@ -274,7 +274,7 @@ describe("companyFacts", () => {
 const newsCalls = (f: ReturnType<typeof fake>) => f.mock.calls.filter(([u]) => new URL(String(u)).pathname === "/news");
 
 describe("fundNews (headlines for Amara's assistant, decision 022)", () => {
-  it("company news: five at most, title/source/date/url only, one market_data use for the one paid call", async () => {
+  it("company news: five at most, title/source/date/url only, one market_news use (never market_data) for the one paid call", async () => {
     const fam = await family();
     const f = fake();
     const articles = await fundNews("AAPL", fam);
@@ -285,7 +285,13 @@ describe("fundNews (headlines for Amara's assistant, decision 022)", () => {
       source: "Reuters", date: "2026-11-06",
       url: "https://www.reuters.com/business/retail-consumer/apples-predictive-text-restrictions-include-dictator-trump-sleepy-joe-researcher-2026-11-06/",
     });
-    expect(await used(fam)).toBe(1);
+    expect(await used(fam, "market_news")).toBe(1);
+    expect(await used(fam)).toBe(0); // headlines can never use up the budget "What's inside" needs
+  });
+
+  it("news has its own daily cap, 20, apart from market_data's", () => {
+    expect(DAILY_CAPS.market_news).toBe(20);
+    expect(DAILY_CAPS.market_data).toBe(40);
   });
 
   it("market news (no ticker) asks for five with no ticker", async () => {
@@ -302,7 +308,7 @@ describe("fundNews (headlines for Amara's assistant, decision 022)", () => {
 
   it("capped, failing or a 404: null for the assistant (it says so), and the cached step throws so nothing is kept", async () => {
     const capped = await family();
-    await db.insert(t.usage).values({ familyId: capped, kind: "market_data", day: new Date().toISOString().slice(0, 10), count: DAILY_CAPS.market_data });
+    await db.insert(t.usage).values({ familyId: capped, kind: "market_news", day: new Date().toISOString().slice(0, 10), count: DAILY_CAPS.market_news });
     const f = fake();
     expect(await fundNews("AAPL", capped)).toBeNull();
     expect(newsCalls(f)).toHaveLength(0);

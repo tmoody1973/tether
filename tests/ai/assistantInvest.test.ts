@@ -82,8 +82,8 @@ const vtiHolding = (familyId: string): Holding => ({
   words: { why: "I want a slice of everything", drop: "Wait" }, investmentIds: [`inv-vti-1-${nOf.get(familyId)}`, `inv-vti-2-${nOf.get(familyId)}`],
 });
 const fams = { a: "", b: "" };
-const used = async (familyId: string) =>
-  (await db.select().from(t.usage).where(and(eq(t.usage.familyId, familyId), eq(t.usage.kind, "market_data"))))[0]?.count ?? 0;
+const used = async (familyId: string, kind: "market_data" | "market_news" = "market_data") =>
+  (await db.select().from(t.usage).where(and(eq(t.usage.familyId, familyId), eq(t.usage.kind, kind))))[0]?.count ?? 0;
 
 beforeAll(async () => {
   db = createDb("pglite:memory"); await migrateDb(db); testDb = db;
@@ -212,6 +212,33 @@ describe("news (market news, or a company inside one of Zoe's funds)", () => {
     expect(toolOutputs(lastModel)).toEqual([{ ticker: "VTI", articles: [], note: "Funds don't have their own news; ask about one of the companies inside it." }]);
     expect(f).not.toHaveBeenCalled();
     expect(r.cards).toEqual([]);
+  });
+
+  it("one answer makes at most two paid news calls; a repeat query is one call and gets the same result", async () => {
+    const fam = await family();
+    const f = fakeFd();
+    await ask([
+      { calls: [{ name: "news", input: { ticker: "AAPL" } }, { name: "news", input: { ticker: "AAPL" } }, { name: "news", input: {} }] }, // parallel, same step
+      { calls: [{ name: "news", input: {} }, { name: "news", input: { ticker: "NVDA" } }, { name: "news", input: { ticker: "VTI" } }] },
+      { text: "ok" },
+    ], fam);
+    expect(callsTo(f, "/news").map(([u]) => new URL(String(u)).search).sort()).toEqual(["?limit=5", "?ticker=AAPL&limit=5"]);
+    expect(await used(fam, "market_news")).toBe(2);
+    const [aapl1, aapl2, market1] = toolOutputs(lastModel, 1) as { articles?: unknown[] }[];
+    expect(aapl2).toEqual(aapl1);
+    expect(aapl1.articles).toHaveLength(3);
+    const [market2, nvda, vti] = toolOutputs(lastModel, 2).slice(3);
+    expect(market2).toEqual(market1);
+    expect(nvda).toEqual({ ticker: "NVDA", unavailable: "That's the news limit for this question: ask about NVDA on its own." });
+    expect(vti).toMatchObject({ ticker: "VTI", note: expect.stringMatching(/^Funds don't have their own news/) }); // no call, so no limit
+  });
+
+  it("news uses its own daily budget, so headlines never use up market_data", async () => {
+    const fam = await family();
+    fakeFd();
+    await once("news", {}, fam);
+    expect(await used(fam, "market_news")).toBe(1);
+    expect(await used(fam)).toBe(0);
   });
 
   it("news unavailable (failing or capped): an explicit unavailable result, and no card", async () => {

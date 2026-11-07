@@ -205,13 +205,14 @@ export function toArticles(raw: RawNews): Article[] {
 }
 
 /**
- * The paid news call: market news (no ticker) or one company's. Takes one `market_data` use first; throws when capped,
+ * The paid news call: market news (no ticker) or one company's. Takes one `market_news` use first (its own budget, so
+ * headlines never use up the `market_data` that "What's inside" needs); throws when capped,
  * failing or 404 (funds have no news), so the cache never keeps a miss. Per family, like fetchFundInside.
  */
 export async function fetchNews(ticker: string | null, familyId: string): Promise<Article[]> {
   "use cache: remote";
   cacheLife("hours"); // headlines move; an hour is fresh enough for "what's in the news"
-  if (!(await takeDaily(await getDb(), familyId, "market_data"))) throw new Error("market_data daily cap reached");
+  if (!(await takeDaily(await getDb(), familyId, "market_news"))) throw new Error("market_news daily cap reached");
   const qs = new URLSearchParams({ ...(ticker ? { ticker } : {}), limit: String(NEWS_LIMIT) });
   return toArticles((await get(`/news?${qs}`)) as RawNews);
 }
