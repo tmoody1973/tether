@@ -9,15 +9,15 @@ export type DemoLinks = { amara: string; zoe: string } | null;
 const SCREEN = { width: 780, height: 1688 } as const;
 
 /**
- * A real app screen in a phone frame. Lazy by default; the hero's two are `eager` (above the fold on every width).
+ * A real app screen in a phone frame. Lazy by default; the hero's two are `eager`, and only Amara's (first, above the fold at every width) is `high`.
  * `width` is the frame's CSS width at desktop, so `sizes` asks for no more pixels than the frame shows.
  */
-export function Phone({ src, alt, width, eager }: { src: string; alt: string; width: number; eager?: boolean }) {
+export function Phone({ src, alt, width, eager, high }: { src: string; alt: string; width: number; eager?: boolean; high?: boolean }) {
   return (
     <div className="l-phone">
       <Image
         src={`/landing/${src}.png`} alt={alt} width={SCREEN.width} height={SCREEN.height}
-        sizes={`${width}px`} loading={eager ? "eager" : "lazy"} fetchPriority={eager ? "high" : undefined}
+        sizes={`${width}px`} loading={eager ? "eager" : "lazy"} fetchPriority={high ? "high" : undefined}
       />
     </div>
   );

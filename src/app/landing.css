@@ -135,7 +135,7 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 /* ---------- meet the agents ---------- */
 .l-agents { padding: clamp(64px, 8vw, 112px) 0 0; }
 .l-agents > .l-wrap > .l-lede { margin-top: 16px; }
-.l-agents__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 40px; }
+.l-agents__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 40px; align-items: start; }
 .l-agent { border-radius: 28px; padding: clamp(26px, 3.4vw, 40px); display: grid; gap: 14px; align-content: start; }
 .l-agent--teen { background: var(--l-teen-field); }
 .l-agent--guard { background: var(--l-guard-field); }
@@ -285,14 +285,16 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 .l-try #start { scroll-margin-top: 24px; }
 /* The sandbox login's long email: key on its own line so the value + Copy fit the narrow column. */
 .l-try .sb-login { max-width: none; }
-.l-try .sb-login__row { grid-template-columns: 1fr auto; row-gap: 0; }
-.l-try .sb-login__k { grid-column: 1 / -1; }
+.l-try .sb-login__row { grid-template-columns: 1fr auto; grid-template-areas: "k copy" "v v"; row-gap: 2px; }
+.l-try .sb-login__k { grid-area: k; }
+.l-try .sb-login__copy { grid-area: copy; }
+.l-try .sb-login__v { grid-area: v; font-size: 12px; } /* the whole address on one line at 390 (mono 12px ≈ 267px) */
 
 /* ---------- footer ---------- */
 .l-foot { border-top: 1px solid var(--l-line); }
 .l-foot .l-wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; padding-top: 28px; padding-bottom: 36px; font-size: 14.5px; color: var(--l-body); }
 .l-page .l-foot img { height: 32px; width: auto; }
-.l-foot a { font-weight: 600; color: var(--l-brand-ink); }
+.l-foot a { font-weight: 600; color: var(--l-brand-ink); display: inline-block; padding-block: 11px; } /* 44px tap height */
 
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
@@ -318,12 +320,11 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
   .l-problem__grid, .l-refuse .l-feat__in, .l-ai__grid, .l-try__in, .l-agents__pair, .l-checked__list { grid-template-columns: 1fr; }
   .l-refusal { justify-self: stretch; }
   .l-lanes { display: flex; flex-direction: column; }
-  .l-s1 { order: 1; } .l-s2 { order: 2; } .l-s3 { order: 3; } .l-s4 { order: 4; }
   .l-lane-label, .l-cell--empty { display: none; }
   .l-cell { border: 0; min-height: 0; padding: 0 0 0 30px; margin-bottom: 14px; }
   .l-cell::before { content: ""; position: absolute; left: 8px; top: 0; bottom: -14px; width: 2px; background: #D7DFE8; }
   .l-cell::after { content: ""; position: absolute; left: 0; top: 18px; width: 18px; height: 18px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 4px #fff; }
-  .l-s4::before { bottom: 0; }
+  .l-cell--last::before { bottom: 0; }
   .l-how__foot { grid-template-columns: 1fr; }
   .l-pp__rows li { grid-template-columns: 1fr; gap: 6px; }
   .l-honest thead { display: none; }
@@ -350,6 +351,7 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
   .l-page .l-refusal__line { font-size: 21px; }
   .l-pp__proof .l-phone { --w: 250px; }
   .l-wrap { padding: 0 20px; }
+  .l-try__in { padding: 28px 22px; }
   .l-btn { white-space: normal; text-align: center; }
 }
 @media (max-width: 380px) {

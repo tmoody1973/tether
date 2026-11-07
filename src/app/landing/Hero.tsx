@@ -21,7 +21,7 @@ export function Hero({ links }: { links: DemoLinks }) {
             {/* Plain <a>: the guardian door sets a session cookie, so it must never be prefetched. */}
             {links && <a className="l-btn l-btn--guard" href={links.amara}>Open Amara&apos;s view <Arrow /></a>}
           </div>
-          <Phone src="amara-request" width={240} eager alt="Amara's phone: Zoe is asking for $25.30 at Best Buy. She has $13.02 left this week. Approve $25.30 or Not this time." />
+          <Phone src="amara-request" width={240} eager high alt="Amara's phone: Zoe is asking for $25.30 at Best Buy. She has $13.02 left this week. Approve $25.30 or Not this time." />
         </div>
         <div className="l-side l-side--teen">
           <Phone src="zoe-week" width={240} eager alt="Zoe's phone: $13.02 left this week, Level 2, her Best Buy ask waiting for Amara." />
