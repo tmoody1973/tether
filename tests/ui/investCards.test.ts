@@ -79,11 +79,18 @@ describe("Zoe's investments", () => {
     expect(t).not.toContain("Too soon"); // held a year
   });
 
-  it("in a dip: her own answer read back, and the fact in whole percent; never advice", () => {
+  it("in a dip, once the line shows: her own answer read back, and the fact in whole percent; never advice", () => {
     const t = text(render(HoldingCard, { h: holding({ worthCents: 474, marketCents: 473, daysHeld: 140, line: { mine: [500, 474], market: [500, 473] } }) }));
     expect(t).toContain("You said, if it dropped by a third: “" + DROP + "” It's down 5%.");
     expect(t).not.toContain("Why you picked it");
     expect(t).not.toMatch(/\bhold\b|don't worry|should/i);
+  });
+
+  it("down but too soon for a line: no fall in percent (that would be a daily move, D16); why she picked it instead", () => {
+    const t = text(render(HoldingCard, { h: holding({ worthCents: 498, daysHeld: 1 }) }));
+    expect(t).toContain("Why you picked it: “" + WHY + "”");
+    expect(t).not.toContain("It's down");
+    expect(t).not.toContain(DROP);
   });
 });
 

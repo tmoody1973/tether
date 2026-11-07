@@ -55,7 +55,7 @@ export function requestShareWords(amountCents: number, price: { cents: number; f
 
 // ---- how her investments are doing (code, not AI: facts, never a verdict) ----------------------------------------
 
-type HoldingFacts = Pick<Holding, "symbol" | "shares" | "putInCents" | "worthCents" | "marketCents" | "daysHeld" | "words">;
+type HoldingFacts = Pick<Holding, "symbol" | "shares" | "putInCents" | "worthCents" | "marketCents" | "daysHeld" | "words" | "line">;
 const nyDayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "America/New_York" });
 const nyDayMonthYear = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "America/New_York" });
 /** "6 Nov" / "6 Nov 2026", on the market's calendar. */
@@ -83,9 +83,12 @@ export function holdingSentence(h: HoldingFacts, who: "teen" | "guardian"): stri
   return `Her ${put} is worth ${formatCents(h.worthCents)}.${market} She owns ${underOne(n) ? `${n} of a share` : `${n} shares`}.`;
 }
 
-/** Zoe only: down ⇒ her own "dropped by a third" answer and the fall in whole percent; otherwise why she picked it. */
+/**
+ * Zoe only: down ⇒ her own "dropped by a third" answer and the fall in whole percent; otherwise why she picked it.
+ * The fall is said only once the line shows (5+ closes): before that it would be a daily move, which D16 rules out.
+ */
 export function herWords(h: HoldingFacts): { lead: string; quote: string; tail: string } | null {
-  if (h.worthCents < h.putInCents && h.words.drop) {
+  if (h.line && h.worthCents < h.putInCents && h.words.drop) {
     const pct = Math.round(((h.putInCents - h.worthCents) / h.putInCents) * 100);
     return { lead: "You said, if it dropped by a third:", quote: h.words.drop, tail: `It's down ${pct === 0 ? "less than 1" : pct}%.` };
   }
