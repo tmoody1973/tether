@@ -315,8 +315,20 @@ test("queued order shows \"Queued for market open\"", async ({ page }) => {
 
   await page.goto(`/g/enter/${E2E.teenQueuedKey}`);
   await page.getByRole("link", { name: /Zoe proposes investing \$5\.00 in VTI/ }).click();
+  await expect(page).toHaveURL(/\/g\/requests\//); // the link is a client-side navigation: wait for it before reading the URL
+  const requestUrl = page.url();
   await page.getByRole("button", { name: "Approve $5.00" }).click();
   await expect(page.getByRole("main").getByRole("status").first()).toContainText("Queued for market open");
+
+  // Tapping the same push again says what happened and where to look, not a bare "closed".
+  await page.goto(requestUrl);
+  await expect(page.getByText("Already approved.")).toBeVisible();
+  await expect(page.getByRole("main")).toContainText(/\$5\.00 in VTI · approved/);
+  await expect(page.getByRole("main")).toContainText("Queued for market open");
+  await page.getByRole("link", { name: "See Zoe's investments" }).click();
+  await expect(page).toHaveURL(/\/g\/invest$/);
+  // VTI is on her signed rules (not the fund_allowlist table), and her fund list still shows it.
+  await expect(page.getByRole("region", { name: "Your fund list" })).toContainText("VTI");
 
   await open(page, E2E.teenB.queued, "/invest");
   const mine = page.getByRole("region", { name: "Your investments" });

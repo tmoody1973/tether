@@ -4,9 +4,9 @@ import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { guardianHome } from "@/flows/home";
-import { requestView, type RequestView } from "@/flows/request";
+import { closedRequestView, requestView, type ClosedRequest, type RequestView } from "@/flows/request";
 import { formatCents, formatDay } from "@/ui/grantWords";
-import { requestTitle as title } from "@/ui/approveWords";
+import { closedWords, requestTitle as title } from "@/ui/approveWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "../../invest/FundFacts";
 import { decideRequestAction } from "../../actions";
@@ -31,16 +31,17 @@ async function Request({ params }: { params: Promise<{ id: string }> }) {
   // In order, not in parallel: guardianHome expires stale asks first (as on Home), then this request is read.
   const h = await guardianHome(db, familyId, now);
   const v = await requestView(db, familyId, id, now);
+  const closed = v ? null : await closedRequestView(db, familyId, id, now);
   const zoe = h.teenName;
   return (
     <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
       <Link className="g-back" href="/g">‹ Home</Link>
-      {v ? <Open v={v} /> : <Closed />}
+      {v ? <Open v={v} /> : closed ? <Settled c={closed} /> : <Closed />}
     </GuardianShell>
   );
 }
 
-/** The same calm page for decided, expired, unknown and other families' requests: it never says which. */
+/** Unknown and other families' requests (and any closed one with nothing to show): one calm page that never says which. */
 function Closed() {
   return (
     <div className="g-request">
@@ -49,6 +50,22 @@ function Closed() {
         <p>It was already answered, or it ran out of time. Nothing more is needed from you.</p>
       </div>
       <Link className="g-btn g-btn--ghost" href="/g">Back to home</Link>
+    </div>
+  );
+}
+
+/** A request of her own family's that is already decided or expired: what happened, and where to see it. */
+function Settled({ c }: { c: ClosedRequest }) {
+  const w = closedWords(c);
+  return (
+    <div className="g-request">
+      <div className="g-quiet" role="status">
+        <div className="g-quiet__big">{w.heading}</div>
+        <p>{w.line}</p>
+        {w.status && <p>{w.status}</p>}
+        {w.note && <p className="g-note">{w.note}</p>}
+      </div>
+      <Link className="g-btn g-btn--ghost" href={w.href}>{w.button}</Link>
     </div>
   );
 }

@@ -73,6 +73,19 @@ export async function fundStatus(db: Db, familyId: string, symbol: string, now: 
   return asked.length > 0 ? "asked" : "new";
 }
 
+/**
+ * Every fund Amara allows, once each: the ones on her signed rules first, then the ones she approved since.
+ * The same two places fundStatus checks, so the list she reads agrees with what Zoe can propose.
+ */
+export async function allowedFunds(db: Db, familyId: string): Promise<string[]> {
+  const [grant, added] = await Promise.all([
+    getActiveGrant(db, familyId),
+    db.select({ symbol: t.fundAllowlist.symbol }).from(t.fundAllowlist).where(eq(t.fundAllowlist.familyId, familyId))
+      .orderBy(t.fundAllowlist.addedAt, t.fundAllowlist.symbol),
+  ]);
+  return [...new Set([...(grant?.body.fundAllowlist ?? []), ...added.map((f) => f.symbol)])];
+}
+
 export type ProposeResult =
   | { ok: true; sent: "fund" | "investment" }
   | { ok: false; error: "level" | "rules" | "symbol" | "answers" | "amount" | "asked" }

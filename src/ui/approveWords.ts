@@ -1,7 +1,8 @@
 import { CASH_HELD_LABEL, NEEDS_REVIEW_LABEL, QUEUED_LABEL } from "@/engine/invest";
 import type { ApproveCode } from "@/flows/approve";
-import type { RequestView } from "@/flows/request";
-import { formatCents } from "@/ui/grantWords";
+import type { ClosedRequest, RequestView } from "@/flows/request";
+import { formatCents, formatWhen } from "@/ui/grantWords";
+import { INVEST_STATUS } from "@/ui/investWords";
 
 export interface ApproveFlash { text: string; warn?: boolean; connectPaypal?: boolean }
 
@@ -37,4 +38,39 @@ export function requestTitle(v: Pick<RequestView, "teenName" | "purchase" | "inv
   if (v.investment) return `${zoe} proposes investing ${formatCents(v.investment.amountCents)} in ${v.investment.symbol}`;
   if (v.fund) return `${zoe} proposes adding ${v.fund.symbol} to your fund list`;
   return `${zoe} suggests a new shop: ${v.shop?.domain}`;
+}
+
+const CLOSED_HEADING = { approved: "Already approved.", declined: "Already answered: not this time.", expired: "This one ran out of time." };
+const CLOSED_VERB = { approved: "approved", declined: "declined", expired: "ran out of time" };
+
+/** Where an approved purchase stands. Statuses before the yes (asked, waiting) can't follow one, so they have no words. */
+const PURCHASE_STATUS: Partial<Record<NonNullable<ClosedRequest["purchase"]>["status"], string>> = {
+  paid: "Paid.",
+  paying: "PayPal is confirming the payment.",
+  approved: "Approved. The payment hasn't gone to PayPal yet.", // settling: re-pricing and the gates run before it becomes `paying`, so never "nothing was charged"
+  failed: "PayPal declined the payment. Nothing was charged.",
+  refused: "It didn't go through. Nothing was charged.",
+  expired: "It ran out of time. Nothing was charged.",
+};
+
+/**
+ * A request that is no longer open, in Amara's words. Never "you approved": on the shared demo someone else may have
+ * tapped first. Status and receipt note only after a yes; after a no or a timeout nothing moved, and the heading says so.
+ */
+export function closedWords(c: ClosedRequest) {
+  const subject = c.purchase ? `${formatCents(c.purchase.amountCents)} at ${c.purchase.shop}`
+    : c.investment ? `${formatCents(c.investment.amountCents)} in ${c.investment.symbol}`
+    : c.fund ? `Adding ${c.fund.symbol} to your fund list` : `A new shop: ${c.shop?.domain}`;
+  const yes = c.outcome === "approved";
+  const inv = c.investment;
+  const status = !yes ? null
+    : inv ? (inv.status === "rejected" ? approveWords("inv-rejected", c.teenName).text : INVEST_STATUS[inv.status])
+    : (c.purchase && PURCHASE_STATUS[c.purchase.status]) || null;
+  const [href, button] = c.purchase ? ["/g/activity", "See activity"]
+    : c.shop ? ["/g/rules", "See her rules"] : ["/g/invest", `See ${c.teenName}'s investments`];
+  return {
+    heading: CLOSED_HEADING[c.outcome],
+    line: `${subject} · ${CLOSED_VERB[c.outcome]}${c.at ? ` ${formatWhen(c.at)}` : ""}`,
+    status, note: (yes && inv?.receiptNote) || null, href, button,
+  };
 }
