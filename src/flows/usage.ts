@@ -12,7 +12,7 @@ export const DAILY_CAP_MESSAGE = "That's a lot for one day — try again tomorro
  * The paid lookups (a model or a paid data API) that self-started families (decision 026) ALSO take from one shared
  * daily pot, the same size as one family's cap: 30 new families can't cost 30 times one family. Add new paid kinds here.
  */
-export const POOLED_KINDS: readonly UsageKind[] = ["shop_agent", "shop_lookup", "month_ask", "fund_words", "market_data"];
+export const POOLED_KINDS: readonly UsageKind[] = ["shop_agent", "shop_lookup", "month_ask", "fund_words", "market_data", "market_news"];
 
 const utcDay = (realNow: number) => new Date(realNow).toISOString().slice(0, 10);
 

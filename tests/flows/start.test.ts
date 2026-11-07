@@ -158,6 +158,13 @@ describe("shared daily pot for self-started families", () => {
     expect(await takeDaily(testDb, seeded.id, "shop_agent")).toBe(true); // the demo and seeded families never touch the pot
     expect(await takeDaily(testDb, mine.id, "push")).toBe(true); // push isn't a paid lookup
   });
+
+  it("the assistant's paid news calls (market_news) draw from the pot too", async () => {
+    const mine = await repo.insertFamily(testDb, { name: "x", teenToken: "pot-news", guardianName: "A", teenName: "Z" });
+    await testDb.update(t.families).set({ paypalSub: "S-pot-news" }).where(eq(t.families.id, mine.id));
+    await setPool("market_news", DAILY_CAPS.market_news);
+    expect(await takeDaily(testDb, mine.id, "market_news")).toBe(false);
+  });
 });
 
 describe("retireStaleFamilies", () => {
