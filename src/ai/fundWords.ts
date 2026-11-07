@@ -19,8 +19,9 @@ const BANNED = [
 ];
 const LINK = /https?:|www\.|\]\(|\b[a-z0-9-]+\.(?:com|org|net|io|co|gov)\b/i;
 
-// One investment: a fund or a single company's stock (decision 025). The checks below don't change for stocks.
-const SYSTEM = `You describe one investment, a fund or a single company's stock, for a teenager, in one plain sentence.
+// A fund or a single company's stock (decision 025). The checks below don't change for stocks; the prompt avoids
+// "invest", which they ban, so a model echoing it isn't rejected (and re-asked on every view).
+const SYSTEM = `You describe what one fund or one company's stock is, for a teenager, in one plain sentence.
 Use only the name, symbol, exchange and whether it can be held in fractions. Write no numbers, no comparisons, no opinions, no advice, no links.
 Reply as JSON: {"text": "..."}.`;
 

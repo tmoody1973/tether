@@ -84,11 +84,11 @@ describe("fundWords for a stock as well as a fund", () => {
     return { llm, seen };
   };
 
-  it("the prompt says it describes one investment, a fund or a single company's stock, and keeps every rule", async () => {
+  it("the prompt says it describes one fund or one company's stock, without a word its own check bans, and keeps every rule", async () => {
     const { llm, seen } = capture("Apple Inc. Common Stock is a single company's stock, traded on NASDAQ in part-shares.");
     await fundWords(llm, fresh({ name: "Apple Inc. Common Stock", exchange: "NASDAQ" }));
-    expect(seen.system).toMatch(/one investment, a fund or a single company's stock/);
-    expect(seen.system).not.toMatch(/one fund is/);
+    expect(seen.system).toMatch(/You describe what one fund or one company's stock is, for a teenager, in one plain sentence\./);
+    expect(seen.system).not.toMatch(/invest/i); // a model echoing the prompt's words must not be rejected for them
     expect(seen.system).toMatch(/no numbers, no comparisons, no opinions, no advice, no links/);
   });
 
