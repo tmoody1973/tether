@@ -29,6 +29,7 @@ const AAPL = { company_facts: {
   is_active: true, location: "Cupertino, CA", sec_filings_url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000320193",
   sic_code: "3571", sic_industry: "Electronic Computers", sic_sector: "Manufacturing",
 } };
+const APPLE = "Apple Inc. Common Stock"; // Alpaca's name for it
 const answer = (a: Answer) => (typeof a === "function" ? a() : a.clone());
 
 /** Fake Financial Datasets: the free tickers lists, then whatever `holdings` / `facts` answer for the paid calls. */
@@ -176,7 +177,7 @@ describe("companyFacts", () => {
   it("returns a company's facts and takes one market_data use for the one paid call", async () => {
     const fam = await family();
     const f = fake();
-    expect(await companyFacts("AAPL", fam)).toMatchObject({ name: "Apple", sector: "Technology" });
+    expect(await companyFacts("AAPL", fam, APPLE)).toMatchObject({ name: "Apple", sector: "Technology" });
     expect(factCalls(f)).toHaveLength(1);
     expect(new URL(String(factCalls(f)[0][0])).search).toBe("?ticker=AAPL");
     expect(new Headers(factCalls(f)[0][1]?.headers).get("X-API-KEY")).toBe(KEY);
@@ -187,7 +188,18 @@ describe("companyFacts", () => {
   it("a fund (on the index-funds list) never asks the paid company endpoint, even when the company list has it", async () => {
     const fam = await family();
     const f = fake();
-    expect(await companyFacts("VTI", fam)).toBeNull();
+    expect(await companyFacts("VTI", fam, "Vanguard Total Stock Market ETF")).toBeNull();
+    expect(factCalls(f)).toHaveLength(0);
+    expect(await used(fam)).toBe(0);
+  });
+
+  it("a leveraged product, or a name that reads as a fund, never spends a paid call, even when the company list has it", async () => {
+    const fam = await family();
+    const f = fake(json(VTI), undefined, json(AAPL), ["AAPL", "TQQQ", "JPST", "SPY"]);
+    expect(await companyFacts("TQQQ", fam, "ProShares UltraPro QQQ")).toBeNull();
+    expect(await companyFacts("JPST", fam, "JPMorgan Ultra-Short Income ETF")).toBeNull();
+    expect(await companyFacts("SPY", fam, "SPDR S&P 500 ETF Trust")).toBeNull();
+    expect(await companyFacts("AAPL", fam, "T-Rex 2X Long Apple Daily Target ETF")).toBeNull(); // leveraged, whatever the ticker
     expect(factCalls(f)).toHaveLength(0);
     expect(await used(fam)).toBe(0);
   });
@@ -195,7 +207,7 @@ describe("companyFacts", () => {
   it("a ticker the company list doesn't cover is null without a paid call", async () => {
     const fam = await family();
     const f = fake();
-    expect(await companyFacts("ZZZZ", fam)).toBeNull();
+    expect(await companyFacts("ZZZZ", fam, "Zed Holdings Inc. Common Stock")).toBeNull();
     expect(factCalls(f)).toHaveLength(0);
     expect(await used(fam)).toBe(0);
   });
@@ -203,17 +215,17 @@ describe("companyFacts", () => {
   it("a stock and a fund on one page: at most one paid call between them", async () => {
     const f = fake();
     const fam = await family();
-    await Promise.all([companyFacts("AAPL", fam), fundInside("AAPL", fam)]);
+    await Promise.all([companyFacts("AAPL", fam, APPLE), fundInside("AAPL", fam)]);
     expect(paidCalls(f).length + factCalls(f).length).toBe(1);
     const fam2 = await family();
-    await Promise.all([companyFacts("VTI", fam2), fundInside("VTI", fam2)]);
+    await Promise.all([companyFacts("VTI", fam2, "Vanguard Total Stock Market ETF"), fundInside("VTI", fam2)]);
     expect(paidCalls(f).length + factCalls(f).length).toBe(2);
   });
 
   it("no key: null, without any call", async () => {
     delete process.env.FINANCIALDATASETS_API_KEY;
     const f = fake();
-    expect(await companyFacts("AAPL", await family())).toBeNull();
+    expect(await companyFacts("AAPL", await family(), APPLE)).toBeNull();
     expect(f).not.toHaveBeenCalled();
   });
 
@@ -225,7 +237,7 @@ describe("companyFacts", () => {
     ]) {
       const fam = await family();
       fake(json(VTI), undefined, facts);
-      expect(await companyFacts("AAPL", fam)).toBeNull();
+      expect(await companyFacts("AAPL", fam, APPLE)).toBeNull();
       await expect(fetchCompanyFacts("AAPL", fam)).rejects.toThrow();
     }
   });
@@ -235,7 +247,7 @@ describe("companyFacts", () => {
     const day = new Date().toISOString().slice(0, 10);
     await db.insert(t.usage).values({ familyId: fam, kind: "market_data", day, count: DAILY_CAPS.market_data });
     const f = fake();
-    expect(await companyFacts("AAPL", fam)).toBeNull();
+    expect(await companyFacts("AAPL", fam, APPLE)).toBeNull();
     await expect(fetchCompanyFacts("AAPL", fam)).rejects.toThrow(/cap/i);
     expect(factCalls(f)).toHaveLength(0);
     expect(await used(fam)).toBe(DAILY_CAPS.market_data);
@@ -243,6 +255,6 @@ describe("companyFacts", () => {
 
   it("either free list failing hides the card rather than breaking the page", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ error: "down" }, 500)));
-    expect(await companyFacts("AAPL", await family())).toBeNull();
+    expect(await companyFacts("AAPL", await family(), APPLE)).toBeNull();
   });
 });

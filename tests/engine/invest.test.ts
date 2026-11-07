@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideInvestment, isLeveragedProduct, LEVERAGED_TEXT, QUEUED_LABEL } from "@/engine/invest";
+import { decideInvestment, isLeveragedProduct, LEVERAGED_TEXT, QUEUED_LABEL, readsAsFund } from "@/engine/invest";
 import { INVESTING_FROM } from "@/engine/ladder";
 import type { Grant } from "@/engine/types";
 
@@ -73,5 +73,27 @@ describe("decideInvestment refuses leveraged and inverse products", () => {
   it("a plain name, or none, is not refused for it", () => {
     expect(decideInvestment(grant(), { symbol: "VTI", amountCents: 500, name: "Vanguard Total Stock Market ETF" }, 5000).outcome).toBe("NEEDS_APPROVAL");
     expect(decideInvestment(grant(), { symbol: "VTI", amountCents: 500 }, 5000).outcome).toBe("NEEDS_APPROVAL");
+  });
+});
+
+describe("readsAsFund (so a fund is never paid for as a company)", () => {
+  it.each([
+    ["Apple Inc. Common Stock", false],
+    ["Microsoft Corporation Common Stock", false],
+    ["Alibaba Group Holding Limited American Depositary Shares", false], // plain "Shares" is a company's stock
+    ["Coinbase Global, Inc. Class A Common Stock", false],
+    ["ProShares UltraPro QQQ", true],
+    ["JPMorgan Ultra-Short Income ETF", true],
+    ["SPDR S&P 500 ETF Trust", true],
+    ["Vanguard Total Stock Market ETF", true],
+    ["iShares 0-3 Month Treasury Bond ETF", true],
+    ["Invesco QQQ Trust, Series 1", true],
+    ["Fidelity 500 Index Fund", true],
+    ["iPath Bloomberg Commodity Index Total Return ETN", true],
+    ["Technology Select Sector SPDR Fund", true],
+  ])("%s → %s", (name, want) => expect(readsAsFund(name)).toBe(want));
+
+  it("a company with Trust in its name reads as a fund: no company card, never a wasted credit (accepted trade-off)", () => {
+    expect(readsAsFund("Vornado Realty Trust Common Shares of Beneficial Interest")).toBe(true);
   });
 });

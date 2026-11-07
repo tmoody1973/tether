@@ -210,11 +210,12 @@ async function StockLines({ symbol }: { symbol: string }) {
   const familyId = await guardianFamilyId();
   if (!familyId) return null;
   const market = (() => { try { return marketFromEnv(); } catch { return null; } })();
-  const [hit, close, facts] = await Promise.all([
+  const [hit, close] = await Promise.all([
     market ? market.searchAssets(symbol).then((a) => a.find((x) => x.symbol === symbol), () => undefined) : undefined,
     market ? market.latestClose(symbol) : null,
-    companyFacts(symbol, familyId),
   ]);
+  // Only with Alpaca's name for it: a fund or a leveraged product never spends a paid company lookup.
+  const facts = hit ? await companyFacts(symbol, familyId, hit.name) : null;
   const penny = pennyLine(close?.cents ?? null);
   return (
     <>

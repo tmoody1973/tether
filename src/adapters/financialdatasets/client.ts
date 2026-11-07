@@ -2,6 +2,7 @@
 // What's inside a fund comes from its SEC filing; what a company is, from its own filings (company facts). Credits are real: every paid call first takes a `market_data` use.
 import { cacheLife } from "next/cache";
 import { isE2eLocal } from "@/adapters/paypal/http";
+import { isLeveragedProduct, readsAsFund } from "@/engine/invest";
 import { getDb } from "@/db/client";
 import { takeDaily } from "@/flows/usage";
 
@@ -166,9 +167,10 @@ export async function fetchCompanyFacts(ticker: string, familyId: string): Promi
 /**
  * What a company is, or null: not configured, a fund (fundInside covers those, so a page pays once), not covered,
  * capped, or unavailable. Both free lists must load: without the funds list a fund could be charged as a company.
+ * `name` is Alpaca's name for it: a leveraged product or a fund-sounding name never spends a credit, whatever the lists say.
  */
-export async function companyFacts(ticker: string, familyId: string): Promise<CompanyFacts | null> {
-  if (!config()) return null;
+export async function companyFacts(ticker: string, familyId: string, name: string): Promise<CompanyFacts | null> {
+  if (!config() || isLeveragedProduct(name) || readsAsFund(name)) return null;
   try {
     const [funds, companies] = await Promise.all([coveredList(), companyList()]);
     if (funds.includes(ticker) || !companies.includes(ticker)) return null;

@@ -19,6 +19,15 @@ const LEVERAGED = /\b(?:\d+(?:\.\d+)?x|leveraged|inverse|ultrapro|ultrashort|ult
  */
 export const isLeveragedProduct = (name: string): boolean => LEVERAGED.test(name);
 
+// ETF/ETN/Fund/Trust/Index, or a fund family's brand. Plain "Shares" stays a company's (ADRs, "Common Shares").
+const FUND_NAME = /\b(?:etfs?|etns?|funds?|trust|index|ishares|proshares|spdr)\b/i;
+
+/**
+ * Pure. A name that reads as a fund, so it is never paid for as a company (Financial Datasets' company list has funds too).
+ * ponytail: names only; a company called "... Trust" (some REITs) reads as a fund and just gets no company card.
+ */
+export const readsAsFund = (name: string): boolean => FUND_NAME.test(name);
+
 /** `name` is the product's name from Alpaca's asset list, when the caller has it (Zoe's propose does). */
 export interface InvestProposal { symbol: string; amountCents: Cents; name?: string }
 
