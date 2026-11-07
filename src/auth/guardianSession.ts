@@ -10,9 +10,14 @@ import { ARCHIVED_PREFIX, getFamily } from "@/db/repo";
  */
 export async function requireLiveGuardian(req: Request): Promise<string> {
   const familyId = requireGuardian(req);
+  if (!(await isLiveFamily(familyId))) throw new GuardianAuthError();
+  return familyId;
+}
+
+/** The family exists and isn't archived (a re-seeded demo) or retired (a week-old family started with PayPal). */
+export async function isLiveFamily(familyId: string): Promise<boolean> {
   const fam = await getFamily(await getDb(), familyId);
-  if (!fam || fam.guardianToken.startsWith(ARCHIVED_PREFIX)) throw new GuardianAuthError();
-  return fam.id;
+  return !!fam && !fam.guardianToken.startsWith(ARCHIVED_PREFIX);
 }
 
 /** For pages and server actions: the signed-in guardian's family id, or null. Reads cookies, so call it inside <Suspense>. */

@@ -1,8 +1,8 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
 import { paypalFromEnv } from "@/adapters/paypal/http";
-import { GuardianAuthError } from "@/auth/guardian";
-import { requireLiveGuardian } from "@/auth/guardianSession";
+import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
+import { isLiveFamily } from "@/auth/guardianSession";
 import { now } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
@@ -13,7 +13,7 @@ const MAX_QUESTION = 500;
 export async function POST(req: Request): Promise<Response> {
   let familyId: string;
   try {
-    familyId = await requireLiveGuardian(req);
+    familyId = requireGuardian(req);
   } catch (err) {
     if (err instanceof GuardianAuthError) return Response.json({ error: "sign-in required" }, { status: 401 });
     console.error("ask: guardian check failed", err);
@@ -27,6 +27,8 @@ export async function POST(req: Request): Promise<Response> {
   if (!question || question.length > MAX_QUESTION) {
     return Response.json({ error: `question must be 1-${MAX_QUESTION} characters` }, { status: 400 });
   }
+  // Review M2: a retired family's signed cookie outlives it by up to 7 days; it gets nothing paid for.
+  if (!(await isLiveFamily(familyId).catch(() => false))) return Response.json({ error: "sign-in required" }, { status: 401 });
   try {
     const db = await getDb();
     const { ANTHROPIC_API_KEY: apiKey, PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: clientSecret } = process.env;
