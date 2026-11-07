@@ -1,7 +1,8 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { askAboutMonth, PaypalUnavailableError, readOnlyPaypalTools } from "@/ai/monthAssistant";
 import { paypalFromEnv } from "@/adapters/paypal/http";
-import { GuardianAuthError, requireGuardian } from "@/auth/guardian";
+import { GuardianAuthError } from "@/auth/guardian";
+import { requireLiveGuardian } from "@/auth/guardianSession";
 import { now } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
@@ -12,7 +13,7 @@ const MAX_QUESTION = 500;
 export async function POST(req: Request): Promise<Response> {
   let familyId: string;
   try {
-    familyId = requireGuardian(req);
+    familyId = await requireLiveGuardian(req);
   } catch (err) {
     if (err instanceof GuardianAuthError) return Response.json({ error: "sign-in required" }, { status: 401 });
     console.error("ask: guardian check failed", err);

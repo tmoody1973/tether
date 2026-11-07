@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireGuardian } from "@/auth/guardian";
+import { requireLiveGuardian } from "@/auth/guardianSession";
 import { paypalFromEnv } from "@/adapters/paypal/http";
 import { createSetupToken } from "@/adapters/paypal/vault";
 import { SETUP_COOKIE, appBaseUrl, setupCookieOptions } from "./setup";
@@ -7,7 +7,7 @@ import { SETUP_COOKIE, appBaseUrl, setupCookieOptions } from "./setup";
 // Step 1 of saving Amara's PayPal (sandbox): ask PayPal for a setup token, send her to approve it.
 export async function GET(req: Request): Promise<Response> {
   try {
-    requireGuardian(req);
+    await requireLiveGuardian(req);
   } catch {
     return NextResponse.redirect(new URL("/g", req.url), 303);
   }

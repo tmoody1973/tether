@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { readCookie, requireGuardian } from "@/auth/guardian";
+import { readCookie } from "@/auth/guardian";
+import { requireLiveGuardian } from "@/auth/guardianSession";
 import { paypalFromEnv } from "@/adapters/paypal/http";
 import { createPaymentToken, deletePaymentToken, sameAccount } from "@/adapters/paypal/vault";
 import { getDb } from "@/db/client";
-import { ARCHIVED_PREFIX, getFamily, saveVault } from "@/db/repo";
+import { getFamily, saveVault } from "@/db/repo";
 import { SETUP_COOKIE, SETUP_COOKIE_PATH } from "../setup";
 
 // Step 2: PayPal sends Amara back with ?approval_token_id=…; exchange it for a payment token and keep it.
 export async function GET(req: Request): Promise<Response> {
   let familyId: string;
   try {
-    familyId = requireGuardian(req);
+    familyId = await requireLiveGuardian(req);
   } catch {
     return NextResponse.redirect(new URL("/g", req.url), 303);
   }
@@ -26,7 +27,7 @@ export async function GET(req: Request): Promise<Response> {
   try {
     const db = await getDb();
     const fam = await getFamily(db, familyId);
-    if (!fam || fam.guardianToken.startsWith(ARCHIVED_PREFIX)) return done("failed"); // a retired family's cookie outlives it
+    if (!fam) return done("failed");
     const paypal = paypalFromEnv();
     const wallet = await createPaymentToken(paypal, setupId);
     // Decision 026: a family started with Log in with PayPal saves only that same PayPal account.

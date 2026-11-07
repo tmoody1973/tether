@@ -75,7 +75,8 @@ describe("Save your PayPal: the same account she logged in with", () => {
   it("a retired family's still-valid cookie can't save a wallet", async () => {
     const f = await family({ guardianToken: `${repo.ARCHIVED_PREFIX}gone` });
     payer = {};
-    expect(outcome(await back(f.id, "S-6"))).toBe("failed");
+    const res = await back(f.id, "S-6");
+    expect(new URL(res.headers.get("location")!).pathname + new URL(res.headers.get("location")!).search).toBe("/g"); // signed out (M2)
     expect(await repo.getVault(testDb, f.id)).toBeNull();
   });
 });
