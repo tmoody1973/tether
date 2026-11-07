@@ -387,7 +387,7 @@ test("queued when Amara approves, then filled: both see how it's doing (a Level 
   await expect(card).toContainText(/\$[\d.]+ worth today/);
   await expect(card).toContainText(/You own\s*0\.01\d{2} share/); // $5 at the fake's $300: Alpaca's own count
   await expect(card).toContainText(/You put in\s*\$5\.00 on \d{1,2} [A-Z][a-z]{2}/);
-  await expect(card).toContainText("It's been 1 day. Too soon to tell: funds like this are for years, not days.");
+  await expect(card).toContainText("It's been 1 day. Too soon to tell: investments like this are for years, not days.");
   await expect(card).toContainText("Why you picked it: “Lots of companies in one fund”");
   await expect(card.locator("svg")).toHaveCount(0); // no line until there are 5 closes
   await expect(mine).not.toContainText("Queued for market open"); // the row gave way to the card

@@ -62,7 +62,7 @@ describe("Zoe's investments", () => {
     const html = render(HoldingCard, { h: holding() });
     expect(text(html)).toBe(
       "VTI since 6 Nov 2026 $5.00 worth today You own 0.0138 share You put in $5.00 on 6 Nov " +
-      "It's been 1 day. Too soon to tell: funds like this are for years, not days. Why you picked it: “" + WHY + "”");
+      "It's been 1 day. Too soon to tell: investments like this are for years, not days. Why you picked it: “" + WHY + "”");
     expect(html).not.toContain("<svg");
   });
 
@@ -104,6 +104,6 @@ describe("Amara's Investing page", () => {
 
   it("too soon on Amara's side: the sentence without a market, and the same hint", () => {
     expect(text(render(HerHoldingCard, { h: holding({ daysHeld: 3 }) }))).toBe(
-      "VTI $5.00 Her $5.00 is worth $5.00. She owns 0.0138 of a share. It's been 3 days. Too soon to tell: funds like this are for years, not days.");
+      "VTI $5.00 Her $5.00 is worth $5.00. She owns 0.0138 of a share. It's been 3 days. Too soon to tell: investments like this are for years, not days.");
   });
 });

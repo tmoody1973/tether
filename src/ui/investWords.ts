@@ -84,7 +84,7 @@ export function youOwnWords(shares: number): string {
 /** Under 30 real days. A fill a few hours old still reads "1 day". */
 export function tooSoonWords(daysHeld: number): string {
   const d = Math.max(1, daysHeld);
-  return `It's been ${d === 1 ? "1 day" : `${d} days`}. Too soon to tell: funds like this are for years, not days.`;
+  return `It's been ${d === 1 ? "1 day" : `${d} days`}. Too soon to tell: investments like this are for years, not days.`;
 }
 
 /** "Your $5.00 is worth $5.48. The same $5.00 in the whole market: $5.48." (Amara: "Her …", plus what she owns.) */
