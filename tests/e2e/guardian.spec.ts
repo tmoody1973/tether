@@ -12,7 +12,9 @@ test("no cookie ⇒ neutral page, no data", async ({ page }) => {
     await expect(page.getByText("Open your Tether link to continue.")).toBeVisible();
     const body = await page.locator("body").innerText();
     expect(body).not.toMatch(/Zoe|Amara|\$\d/); // no names, no money
-    await expect(page.getByRole("link")).toHaveCount(0); // no navigation either
+    // No navigation either: the one way on is Log in with PayPal (decision 026).
+    await expect(page.getByRole("link")).toHaveCount(1);
+    await expect(page.getByRole("link")).toHaveAttribute("href", "/g/login/paypal");
   }
   expect((await page.context().cookies()).find((c) => c.name === "tether_g")).toBeUndefined();
   const api = await page.request.post("/api/g/ask", { data: { question: "what did she buy?" } });
