@@ -55,6 +55,13 @@ describe("isLeveragedProduct (real product names)", () => {
     ["Vanguard Short-Term Treasury ETF", false],
     ["Bearing Point Holdings", false], // word-bounded: "bear" inside a word is not a bear fund
     ["Xerox Holdings Corporation Common Stock", false],
+    // A company's own stock is never a leveraged product, whatever words its name has (Alpaca's names for stocks).
+    ["Build-A-Bear Workshop, Inc. Common Stock", false],
+    ["Ultra Clean Holdings, Inc. Common Stock", false],
+    ["10x Genomics, Inc. Class A Common Stock", false],
+    ["Bear Example Holdings Ltd Ordinary Shares", false],
+    ["Ultra Example Group American Depositary Shares", false],
+    ["Bear Example Corp ADR", false],
   ])("%s → %s", (name, want) => expect(isLeveragedProduct(name)).toBe(want));
 
   it("a plain inverse fund with no keyword in its name passes (known gap: names are all we check)", () => {

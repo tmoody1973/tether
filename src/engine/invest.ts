@@ -13,11 +13,14 @@ export const LEVERAGED_TEXT =
 // "2X", "1.5x", "-3X"; the words; "ultra" alone but never "Ultra-Short"/"Ultra Short" (low-risk short-term bond funds).
 const LEVERAGED = /\b(?:\d+(?:\.\d+)?x|leveraged|inverse|ultrapro|ultrashort|ultra(?![-\s]short)|daily target|bear)\b/i;
 
+// How Alpaca names a company's own stock; no leveraged product uses these words ("Build-A-Bear", "10x Genomics").
+const COMPANY_STOCK = /\b(?:common stock|ordinary shares|depositary shares|adrs?)\b/i;
+
 /**
- * Pure. Leveraged, inverse and daily-target products, by the words in their name.
+ * Pure. Leveraged, inverse and daily-target products, by the words in their name. A company's stock never is.
  * ponytail: names only, so a plain inverse fund like "ProShares Short S&P500" passes; a flag from the issuer if one ever exists.
  */
-export const isLeveragedProduct = (name: string): boolean => LEVERAGED.test(name);
+export const isLeveragedProduct = (name: string): boolean => !COMPANY_STOCK.test(name) && LEVERAGED.test(name);
 
 // ETF/ETN/Fund/Trust/Index, or a fund family's brand. Plain "Shares" stays a company's (ADRs, "Common Shares").
 const FUND_NAME = /\b(?:etfs?|etns?|funds?|trust|index|ishares|proshares|spdr)\b/i;
