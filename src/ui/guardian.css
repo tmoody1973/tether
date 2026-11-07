@@ -192,6 +192,11 @@
 .g-ask__row { display: flex; gap: 8px; }
 .g-ask__row .g-input { flex: 1 1 auto; min-width: 0; }
 .g-ask__answer { background: #F7F8F9; border-radius: var(--r-md); padding: 12px 13px; white-space: pre-wrap; }
+/* cards under an answer: the same row, def and flag look as Activity, a little tighter so they sit inside a card */
+.g-ask__cards { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.g-card--inset { padding: 12px 14px; border-radius: var(--r-md); }
+.g-card--inset .g-rows > li { padding: 8px 0; }
+.g-card--inset .g-def { padding: 8px 0; }
 
 .g-request { max-width: 560px; display: flex; flex-direction: column; gap: 14px; }
 .g-request__title { font-size: 21px; font-weight: 750; letter-spacing: -0.01em; margin-top: 6px; }

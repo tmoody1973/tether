@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { AnswerCard } from "@/ai/answerCards";
+import { AnswerCards } from "./AnswerCards";
 
 const EXAMPLES = [
   "What did Zoe buy this month?",
@@ -10,10 +12,11 @@ const EXAMPLES = [
 ];
 const CANT_SEE_NOW = "I can't see that right now.";
 
-/** D20: Amara's read-only month assistant. One box, not a chat; the answer is shown plain. */
+/** D20: Amara's read-only month assistant. One box, not a chat: the answer first, then cards built from the real data (decision 019). */
 export function AskBox() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
+  const [cards, setCards] = useState<AnswerCard[]>([]);
   const [pending, setPending] = useState(false);
 
   async function ask(q: string) {
@@ -22,12 +25,15 @@ export function AskBox() {
     setQuestion(text);
     setPending(true);
     setAnswer(null);
+    setCards([]);
     try {
       const res = await fetch("/api/g/ask", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: text }),
       });
-      const body = (await res.json().catch(() => null)) as { answer?: unknown } | null;
-      setAnswer(res.ok && typeof body?.answer === "string" ? body.answer : CANT_SEE_NOW);
+      const body = (await res.json().catch(() => null)) as { answer?: unknown; cards?: unknown } | null;
+      const ok = res.ok && typeof body?.answer === "string";
+      setAnswer(ok ? (body.answer as string) : CANT_SEE_NOW);
+      setCards(ok && Array.isArray(body.cards) ? (body.cards as AnswerCard[]) : []); // AnswerCards ignores unknown kinds
     } catch {
       setAnswer(CANT_SEE_NOW);
     } finally {
@@ -49,6 +55,7 @@ export function AskBox() {
       <div aria-live="polite">
         {pending && <p className="g-note">Looking at this month&apos;s receipts and PayPal…</p>}
         {answer && <p className="g-ask__answer">{answer}</p>}
+        {answer && <AnswerCards cards={cards} />}
       </div>
       <p className="g-note">Read-only: it can look at receipts, her check-in and PayPal&apos;s list, and can&apos;t move money.</p>
     </form>

@@ -193,6 +193,36 @@ test("approves pending request in one tap", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Approve/ })).toHaveCount(0);
 });
 
+test("the assistant's answer comes first, then cards built from the data; compact at phone width", async ({ page }) => {
+  // A fake /api/g/ask response: this checks the AskBox renders each card type. The cards' contents are unit-tested.
+  const cards = [
+    { kind: "purchases", month: "2026-12", totalCents: 600, hiddenNote: null,
+      rows: [{ date: "2026-12-28", shop: "Target", items: "Notebook", amountCents: 600, allowedBy: "Within her rules" }] },
+    { kind: "checkin", month: "2026-12", level: 1, week: { spentCents: 1050, leftCents: 950, allowanceCents: 2000 },
+      weeks: { covers: "the weeks counting toward her next review", count: 2, kept: 1, insideBudget: 2, savedCents: 1400 }, nextCheckin: "2026-12-31" },
+    { kind: "paypal", month: "2026-12", matched: 1, receiptsChecked: 2, note: "PayPal's list can lag a few hours.", setAsideNote: null,
+      flags: [{ label: "Receipt not confirmed by PayPal", shop: "Target", amountCents: 450 }] },
+  ];
+  await page.route("**/api/g/ask", (route) => route.fulfill({ json: { answer: "In December 2026, Zoe bought a notebook at Target.", toolsUsed: ["tether_record"], cards } }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enter(page);
+  const ask = page.getByRole("region", { name: "Ask about Zoe's month" });
+  await ask.getByRole("button", { name: "What did Zoe buy this month?" }).click();
+  await expect(ask.locator(".g-ask__answer")).toHaveText("In December 2026, Zoe bought a notebook at Target.");
+  await expect(ask.locator(".g-ask__answer + .g-ask__cards")).toHaveCount(1); // text first, cards under it
+  const bought = ask.getByRole("region", { name: "December 2026 purchases" });
+  await expect(bought).toContainText("1 payment · $6.00");
+  await expect(bought.locator(".g-row__items")).toHaveText("Notebook");
+  const checkin = ask.getByRole("region", { name: "December 2026 check-in" });
+  await expect(checkin).toContainText("Level 1");
+  await expect(checkin).toContainText("$10.50 spent · $9.50 left of $20.00");
+  await expect(checkin.getByRole("img", { name: "$10.50 spent of $20.00 this week" })).toBeVisible();
+  const paypal = ask.getByRole("region", { name: "December 2026: Tether and PayPal" });
+  await expect(paypal).toContainText("1 of 2 receipts match PayPal");
+  await expect(paypal).toContainText("Receipt not confirmed by PayPal");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390); // nothing pushes past a phone screen
+});
+
 test("activity lists purchases in plain words, with the proof folded under each", async ({ page }) => {
   await enter(page);
   await page.goto("/g/activity");
