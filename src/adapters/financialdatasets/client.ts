@@ -14,8 +14,8 @@ const TOP = 10;
 export interface FundInside {
   /** The filing's date (UTC midnight). */
   asOf: Date;
-  /** Same-named companies merged (GOOGL + GOOG = Alphabet), largest first. */
-  rows: { name: string; pct: number }[];
+  /** Same-named companies merged (GOOGL + GOOG = Alphabet, keeping the first ticker), largest first. */
+  rows: { name: string; ticker: string | null; pct: number }[];
   /** The ten holdings returned, together. */
   topPct: number;
 }
@@ -61,14 +61,18 @@ export function toFundInside(raw: RawHoldings): FundInside {
   const asOf = new Date(`${raw.fund?.as_of ?? ""}T00:00:00Z`);
   const valid = (raw.holdings ?? []).flatMap((h) => {
     const name = (h.name || h.ticker || "").trim();
-    return name && typeof h.weight === "number" && Number.isFinite(h.weight) ? [{ name: displayName(name), pct: h.weight }] : [];
+    const ticker = h.ticker?.trim() || null;
+    return name && typeof h.weight === "number" && Number.isFinite(h.weight) ? [{ name: displayName(name), ticker, pct: h.weight }] : [];
   });
   if (valid.length === 0 || Number.isNaN(asOf.getTime())) throw new Error("Financial Datasets returned no holdings");
-  const merged = new Map<string, number>();
-  for (const r of valid) merged.set(r.name, (merged.get(r.name) ?? 0) + r.pct);
+  const merged = new Map<string, { name: string; ticker: string | null; pct: number }>();
+  for (const r of valid) {
+    const m = merged.get(r.name);
+    merged.set(r.name, m ? { ...m, pct: m.pct + r.pct } : r);
+  }
   return {
     asOf,
-    rows: [...merged].map(([name, pct]) => ({ name, pct })).sort((a, b) => b.pct - a.pct),
+    rows: [...merged.values()].sort((a, b) => b.pct - a.pct),
     topPct: valid.reduce((s, r) => s + r.pct, 0),
   };
 }
@@ -180,6 +184,45 @@ export async function companyFacts(ticker: string, familyId: string, name: strin
     return await fetchCompanyFacts(ticker, familyId);
   } catch (err) {
     console.error("financial datasets: company facts unavailable", ticker, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** One headline, as the assistant passes it on: nothing else from the article. */
+export interface Article { title: string; source: string; date: string; url: string }
+const NEWS_LIMIT = 5;
+
+interface RawNews { news?: { title?: unknown; source?: unknown; date?: unknown; url?: unknown }[] | null }
+const str = (x: unknown) => (typeof x === "string" ? x.trim() : "");
+
+/** Pure. At most five, title/source/date (YYYY-MM-DD)/url only; throws when none are usable, so nothing empty is cached. */
+export function toArticles(raw: RawNews): Article[] {
+  const rows = Array.isArray(raw?.news) ? raw.news : [];
+  const out = rows.flatMap((a) => (str(a?.title) && str(a?.url)
+    ? [{ title: str(a.title), source: str(a.source), date: str(a.date).slice(0, 10), url: str(a.url) }] : []));
+  if (out.length === 0) throw new Error("Financial Datasets returned no news");
+  return out.slice(0, NEWS_LIMIT);
+}
+
+/**
+ * The paid news call: market news (no ticker) or one company's. Takes one `market_data` use first; throws when capped,
+ * failing or 404 (funds have no news), so the cache never keeps a miss. Per family, like fetchFundInside.
+ */
+export async function fetchNews(ticker: string | null, familyId: string): Promise<Article[]> {
+  "use cache: remote";
+  cacheLife("hours"); // headlines move; an hour is fresh enough for "what's in the news"
+  if (!(await takeDaily(await getDb(), familyId, "market_data"))) throw new Error("market_data daily cap reached");
+  const qs = new URLSearchParams({ ...(ticker ? { ticker } : {}), limit: String(NEWS_LIMIT) });
+  return toArticles((await get(`/news?${qs}`)) as RawNews);
+}
+
+/** Headlines, or null: not configured, capped, or unavailable. Callers scope the ticker; this one doesn't. */
+export async function fundNews(ticker: string | null, familyId: string): Promise<Article[] | null> {
+  if (!config()) return null;
+  try {
+    return await fetchNews(ticker, familyId);
+  } catch (err) {
+    console.error("financial datasets: news unavailable", ticker ?? "market", err instanceof Error ? err.message : err);
     return null;
   }
 }
