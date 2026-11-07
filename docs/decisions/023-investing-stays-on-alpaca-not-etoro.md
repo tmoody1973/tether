@@ -1,0 +1,22 @@
+# 023 — Investing stays on Alpaca, not eToro
+
+**Decision** — Zoe's investments keep running through Alpaca's Broker API. eToro is not a fit on its documented terms, even though it takes PayPal deposits.
+
+**Why this came up** — On 7 November 2026 Tarik asked whether eToro would be a better broker for Tether, because eToro accepts PayPal deposits and has demo endpoints (a practice mode with virtual money). Tether is a PayPal hackathon entry, and today PayPal is not in the investing money path at all, so a PayPal-funded brokerage would make a stronger story. What was at stake: switching brokers five days before the 12 November deadline, and building on terms that might not allow what Tether does. The research, with sources, is in [`doc/eToro API research (2026-11-07).md`](../../doc/eToro%20API%20research%20(2026-11-07).md).
+
+**Options**
+1. **eToro, with deep-link funding.** Amara would deposit by PayPal on eToro's own site, and Tether would trade with her personal API keys. Cost:
+   - eToro is for adults only: "You must be at least 18 years of age to use our Services" ([eToro USA LLC terms](https://kyc.etoro.com/api/v1/tnc/documents/113.pdf); that is the older crypto entity's document, the stocks entity's agreement could not be retrieved). No custodial or minor account was found. Zoe's money would sit in Amara's own account.
+   - The personal keys are for "your own eToro trading account ... but excluding any commercial redistribution of eToro data or use on behalf of third parties" ([Builders' Economy terms, 17 Feb 2026](https://www.etoro.com/wp-content/uploads/2026/03/Master_eToro_Builders_Economy_Terms_17-Feb-2026-clean_R.pdf)). Tether placing trades for a family is a third party acting.
+   - PayPal never appears in eToro's API documentation: the word occurs zero times across the 256-page API index. A deposit happens only on eToro's site, so Tether can't start one, or test one.
+   - The route built for apps like Tether, the Partners API, is contract-gated: "Access to the Partners API is granted per partner. If you are not yet onboarded as an etoro partner, contact your etoro representative" ([Partners API](https://api-portal.etoro.com/partners/introduction.md)).
+2. **Alpaca, with bank funding (chosen; already built).** Cost: Alpaca funds accounts by ACH bank transfer or wire, not PayPal ([funding accounts](https://docs.alpaca.markets/us/docs/funding-accounts)). In production, Amara's PayPal money would reach Zoe's custodial account through her bank. In return, Alpaca offers custodial accounts, an account an adult opens and runs for a child: UGMA/UTMA accounts for Broker API partners, launched 11 May 2026 ([launch post](https://alpaca.markets/blog/alpaca-launches-custodial-accounts-for-broker-partners/)). KYC (identity checks) run on the adult, and "a minor cannot use or trade in a custodial account as they are only the beneficiary" ([custodial accounts](https://docs.alpaca.markets/us/docs/custodial-accounts)). That matches Tether's design: Zoe proposes, Amara approves, code places the order.
+3. **DriveWealth teen accounts.** An adult-owned account where the teen can trade, with parental approval built in (see [`doc/Brokerage rails and hackathon partners for Tether.md`](../../doc/Brokerage%20rails%20and%20hackathon%20partners%20for%20Tether.md)). Cost: partner-gated too, with no self-serve key, so nothing could be built before the deadline.
+
+**What we chose and why** — Option 2, Tarik's call on Claude's recommendation. It is already built and tested against the sandbox, its custodial account has the adult as the legal owner and trader, which is how Tether already works, and nothing in its terms stops Tether acting for the family. eToro's PayPal deposit doesn't carry over: Tether could neither start nor check it, and the account it would fund would be Amara's, not Zoe's.
+
+**What we gave up** — A PayPal-funded brokerage story. PayPal stays central where it already is (Amara's consent, Zoe's purchases, and every receipt checked against PayPal), but money for investing goes through a bank, in production as in the README's diagram. We also give up eToro's demo money, which would have made trades look real without a sandbox stand-in.
+
+**How we'll know if this was right** — If eToro's Partners API or app registration later allows an app to act for a family member, or eToro adds accounts for under-18s, revisit. Until then, the check is that the live demo's investing flow keeps working end to end on Alpaca's sandbox.
+
+**What actually happened** —
