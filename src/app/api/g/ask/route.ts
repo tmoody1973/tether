@@ -6,6 +6,7 @@ import { isLiveFamily } from "@/auth/guardianSession";
 import { now } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
+import { pageHoldings } from "@/app/g/flowDeps";
 
 const MAX_QUESTION = 500;
 
@@ -40,6 +41,7 @@ export async function POST(req: Request): Promise<Response> {
       paypal: paypalFromEnv(), // paypal_check: the Activity page's reconciliation, read-only
       db,
       now: await now(db, familyId), // the family's demo clock: the model must ask about the months Tether shows
+      holdings: (id) => pageHoldings(db, id), // zoe_investments: the same holdings as her Investing page, best effort
     }, familyId, question);
     return Response.json(result);
   } catch (err) {

@@ -5,8 +5,9 @@ import * as repo from "@/db/repo";
 import * as t from "@/db/schema";
 import { DAILY_CAPS } from "@/flows/usage";
 import {
-  companyFacts, displayName, fetchCompanyFacts, fetchFundInside, fundInside, fundsCovered, toCompanyFacts, toFundInside,
+  companyFacts, displayName, fetchCompanyFacts, fetchFundInside, fetchNews, fundInside, fundNews, fundsCovered, toCompanyFacts, toFundInside,
 } from "@/adapters/financialdatasets/client";
+import AAPL_NEWS from "../fixtures/fd-aapl-news.json";
 import VTI from "../fixtures/fd-vti-holdings.json";
 
 // 'use cache' is inert outside Next; cacheLife() would throw outside a cache scope, so it's a no-op here.
@@ -34,13 +35,14 @@ const VTI_NAME = "Vanguard Total Stock Market ETF";
 const answer = (a: Answer) => (typeof a === "function" ? a() : a.clone());
 
 /** Fake Financial Datasets: the free tickers lists, then whatever `holdings` / `facts` answer for the paid calls. */
-function fake(holdings: Answer = json(VTI), tickers = ["VTI", "SPY", "VOO"], facts: Answer = json(AAPL), companies = ["AAPL", "MSFT", "VTI", "SPY"]) {
+function fake(holdings: Answer = json(VTI), tickers = ["VTI", "SPY", "VOO"], facts: Answer = json(AAPL), companies = ["AAPL", "MSFT", "VTI", "SPY"], news: Answer = json(AAPL_NEWS)) {
   const f = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(async (url) => {
     const u = new URL(String(url));
     if (u.pathname === "/index-funds/tickers/") return json({ tickers });
     if (u.pathname === "/index-funds/") return answer(holdings);
     if (u.pathname === "/company/facts/tickers/") return json({ resource: "company_facts", tickers: companies });
     if (u.pathname === "/company/facts") return answer(facts);
+    if (u.pathname === "/news") return answer(news);
     return json({ error: "not faked" }, 404);
   });
   vi.stubGlobal("fetch", f);
@@ -55,8 +57,8 @@ async function family() {
   n++;
   return (await repo.insertFamily(db, { name: "F", teenToken: `fd-${n}`, guardianName: "Amara", teenName: "Zoe" })).id;
 }
-const used = async (familyId: string) =>
-  (await db.select().from(t.usage).where(and(eq(t.usage.familyId, familyId), eq(t.usage.kind, "market_data"))))[0]?.count ?? 0;
+const used = async (familyId: string, kind: "market_data" | "market_news" = "market_data") =>
+  (await db.select().from(t.usage).where(and(eq(t.usage.familyId, familyId), eq(t.usage.kind, kind))))[0]?.count ?? 0;
 
 describe("toFundInside (shaping a real VTI response)", () => {
   it("merges rows with the same name, strips company suffixes, sorts by share, and sums the ten it was given", () => {
@@ -64,6 +66,7 @@ describe("toFundInside (shaping a real VTI response)", () => {
     expect(inside.rows.map((r) => r.name)).toEqual([
       "NVIDIA", "Apple", "Alphabet", "Microsoft", "Amazon.com", "Broadcom", "Micron Technology", "Meta Platforms", "Tesla",
     ]);
+    expect(inside.rows.map((r) => r.ticker).slice(0, 3)).toEqual(["NVDA", "AAPL", "GOOGL"]); // a merged row keeps its first ticker
     expect(inside.rows[2].pct).toBeCloseTo(2.895474860135 + 2.280013198965, 9); // GOOGL + GOOG
     expect(inside.topPct).toBeCloseTo(32.03, 2);
     expect(inside.asOf.toISOString()).toBe("2026-06-30T00:00:00.000Z");
@@ -90,7 +93,7 @@ describe("fundInside", () => {
     const fam = await family();
     const f = fake();
     const inside = await fundInside("VTI", fam, VTI_NAME);
-    expect(inside?.rows[0]).toEqual({ name: "NVIDIA", pct: 6.355382492074 });
+    expect(inside?.rows[0]).toEqual({ name: "NVIDIA", ticker: "NVDA", pct: 6.355382492074 });
     expect(paidCalls(f)).toHaveLength(1);
     expect(new URL(String(paidCalls(f)[0][0])).search).toBe("?ticker=VTI&limit=10&asset_class=equity");
     expect(await used(fam)).toBe(1); // the free tickers list took nothing
@@ -265,5 +268,70 @@ describe("companyFacts", () => {
   it("either free list failing hides the card rather than breaking the page", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ error: "down" }, 500)));
     expect(await companyFacts("AAPL", await family(), APPLE)).toBeNull();
+  });
+});
+
+const newsCalls = (f: ReturnType<typeof fake>) => f.mock.calls.filter(([u]) => new URL(String(u)).pathname === "/news");
+
+describe("fundNews (headlines for Amara's assistant, decision 022)", () => {
+  it("company news: five at most, title/source/date/url only, one market_news use (never market_data) for the one paid call", async () => {
+    const fam = await family();
+    const f = fake();
+    const articles = await fundNews("AAPL", fam);
+    expect(new URL(String(newsCalls(f)[0][0])).search).toBe("?ticker=AAPL&limit=5");
+    expect(articles).toHaveLength(3);
+    expect(articles?.[1]).toEqual({
+      title: "EXCLUSIVE: Apple's autocomplete restrictions include 'Dictator Trump' and 'Sleepy Joe,' researcher finds - Reuters",
+      source: "Reuters", date: "2026-11-06",
+      url: "https://www.reuters.com/business/retail-consumer/apples-predictive-text-restrictions-include-dictator-trump-sleepy-joe-researcher-2026-11-06/",
+    });
+    expect(await used(fam, "market_news")).toBe(1);
+    expect(await used(fam)).toBe(0); // headlines can never use up the budget "What's inside" needs
+  });
+
+  it("news has its own daily cap, 20, apart from market_data's", () => {
+    expect(DAILY_CAPS.market_news).toBe(20);
+    expect(DAILY_CAPS.market_data).toBe(40);
+  });
+
+  it("a date that isn't an ISO date is left empty, never passed on", async () => {
+    const row = AAPL_NEWS.news[0];
+    fake(undefined, undefined, undefined, undefined, json({ news: [
+      { ...row, date: undefined }, { ...row, date: "yesterday" }, { ...row, date: "2026-13-45T00:00:00Z" }, { ...row, date: "2026-11-06" },
+    ] }));
+    expect((await fundNews("AAPL", await family()))?.map((a) => a.date)).toEqual(["", "", "", "2026-11-06"]);
+  });
+
+  it("market news (no ticker) asks for five with no ticker", async () => {
+    const f = fake();
+    await fundNews(null, await family());
+    expect(new URL(String(newsCalls(f)[0][0])).search).toBe("?limit=5");
+  });
+
+  it("drops rows without a title or url, and keeps five", async () => {
+    const row = AAPL_NEWS.news[0];
+    fake(undefined, undefined, undefined, undefined, json({ news: [{ ...row, title: "" }, { ...row, url: null }, ...Array(7).fill(row)] }));
+    expect(await fundNews("AAPL", await family())).toHaveLength(5);
+  });
+
+  it("capped, failing or a 404: null for the assistant (it says so), and the cached step throws so nothing is kept", async () => {
+    const capped = await family();
+    await db.insert(t.usage).values({ familyId: capped, kind: "market_news", day: new Date().toISOString().slice(0, 10), count: DAILY_CAPS.market_news });
+    const f = fake();
+    expect(await fundNews("AAPL", capped)).toBeNull();
+    expect(newsCalls(f)).toHaveLength(0);
+    for (const answer of [json({ error: "No data found", message: "No news found for VTI" }, 404), json({ error: "down" }, 500), json({ news: "x" })]) {
+      const fam = await family();
+      fake(undefined, undefined, undefined, undefined, answer);
+      expect(await fundNews("AAPL", fam)).toBeNull();
+      await expect(fetchNews("AAPL", fam)).rejects.toThrow();
+    }
+  });
+
+  it("no key: null without any call", async () => {
+    delete process.env.FINANCIALDATASETS_API_KEY;
+    const f = fake();
+    expect(await fundNews(null, await family())).toBeNull();
+    expect(f).not.toHaveBeenCalled();
   });
 });

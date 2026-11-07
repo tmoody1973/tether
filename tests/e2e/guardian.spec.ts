@@ -228,6 +228,45 @@ test("the assistant's answer comes first, then cards built from the data; compac
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390); // nothing pushes past a phone screen
 });
 
+test("asking how Zoe's investments are doing shows her investments card, then what's inside and the news (decision 022)", async ({ page }) => {
+  // A fake /api/g/ask response, as above: this checks the AskBox draws the investing cards. Their contents are unit-tested.
+  const cards = [
+    { kind: "investments", teen: "Zoe", rows: [{ symbol: "VTI", shares: 0.0138, putInCents: 500, worthCents: 500, marketCents: null }] },
+    { kind: "inside", symbol: "VTI", asOf: "2026-06-30", rows: [{ name: "NVIDIA", pct: 6.4 }, { name: "Apple", pct: 5.9 }] },
+    { kind: "news", ticker: "AAPL", articles: [
+      { title: "Apple headline", source: "Reuters", date: "2026-11-06", url: "https://www.reuters.com/a" },
+      { title: "Bad link headline", source: "Seeking Alpha", date: "2026-11-06", url: "javascript:alert(1)" },
+    ] },
+  ];
+  const sent: string[] = [];
+  await page.route("**/api/g/ask", (route) => {
+    sent.push(String(route.request().postDataJSON()?.question));
+    return route.fulfill({ json: { answer: "Zoe has one investment: $5.00 in VTI, bought on 6 November. It's too soon to tell.", toolsUsed: ["zoe_investments"], cards } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enter(page);
+  const ask = page.getByRole("region", { name: "Ask about Zoe's month" });
+  await ask.getByRole("button", { name: "How are Zoe's investments doing?" }).click();
+  await expect(ask.locator(".g-ask__answer")).toHaveText("Zoe has one investment: $5.00 in VTI, bought on 6 November. It's too soon to tell.");
+  expect(sent).toEqual(["How are Zoe's investments doing?"]);
+  const held = ask.getByRole("region", { name: "Zoe's investments" });
+  await expect(held).toContainText("VTI");
+  await expect(held).toContainText("$5.00");
+  await expect(held).toContainText("0.0138 share · put in $5.00");
+  const inside = ask.getByRole("region", { name: "What's inside VTI" });
+  await expect(inside).toContainText("NVIDIA");
+  await expect(inside).toContainText("6.4%");
+  await expect(inside).toContainText("From the fund's filing for 30 Jun 2026, via Financial Datasets.");
+  const news = ask.getByRole("region", { name: "News about AAPL" });
+  const link = news.getByRole("link", { name: "Apple headline" });
+  await expect(link).toHaveAttribute("href", "https://www.reuters.com/a");
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(news.getByRole("link")).toHaveCount(1); // the javascript: link is never drawn
+  await expect(news).toContainText("Bad link headline");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
 test("activity lists purchases in plain words, with the proof folded under each", async ({ page }) => {
   await enter(page);
   await page.goto("/g/activity");

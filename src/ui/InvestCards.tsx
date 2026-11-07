@@ -5,7 +5,7 @@ import type { Close } from "@/adapters/alpaca/data";
 import type { Holding } from "@/flows/holdings";
 import { ValueLine } from "@/ui/FiveYearLine";
 import { formatCents } from "@/ui/grantWords";
-import { closeWords, companyLine, dayMonth, dayMonthYear, herWords, holdingSentence, tooSoonWords, youOwnWords } from "@/ui/investWords";
+import { closeWords, companyLine, dayMonth, dayMonthYear, herWords, holdingSentence, TOO_SOON_DAYS, tooSoonWords, youOwnWords } from "@/ui/investWords";
 
 const pct1 = (p: number) => `${p.toFixed(1)}%`;
 const filingDay = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -84,7 +84,6 @@ export function InsideLineCard({ symbol, inside }: { symbol: string; inside: Fun
   );
 }
 
-const HINT_DAYS = 30;
 const unit = { fontSize: 15, fontWeight: 600, letterSpacing: 0, color: "var(--ink-3-text)" } as const;
 
 /** Zoe's "Your investments": one card per fund she holds. A line only once there are 5 closes; her own words last. */
@@ -108,7 +107,7 @@ export function HoldingCard({ h }: { h: Holding }) {
       )}
       <div className="t-row"><span>You own</span><b>{youOwnWords(h.shares)}</b></div>
       {!h.line && <div className="t-row"><span>You put in</span><b>{put} on {dayMonth(h.since)}</b></div>}
-      {h.daysHeld < HINT_DAYS && <p className="t-hint" style={{ marginTop: 8 }}>{tooSoonWords(h.daysHeld)}</p>}
+      {h.daysHeld < TOO_SOON_DAYS && <p className="t-hint" style={{ marginTop: 8 }}>{tooSoonWords(h.daysHeld)}</p>}
       {said && <p className="t-quote" style={{ marginTop: 10 }}>{said.lead} <i>&ldquo;{said.quote}&rdquo;</i>{said.tail && ` ${said.tail}`}</p>}
     </section>
   );
@@ -123,7 +122,7 @@ export function HerHoldingCard({ h }: { h: Holding }) {
         <ValueLine fund={h.line.mine} market={h.line.market} base={h.putInCents} label={holdingSentence(h, "guardian")} tone="g" chart="since-bought" />
       )}
       <p style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{holdingSentence(h, "guardian")}</p>
-      {h.daysHeld < HINT_DAYS && <p className="g-note" style={{ marginTop: 4 }}>{tooSoonWords(h.daysHeld)}</p>}
+      {h.daysHeld < TOO_SOON_DAYS && <p className="g-note" style={{ marginTop: 4 }}>{tooSoonWords(h.daysHeld)}</p>}
     </div>
   );
 }
