@@ -58,7 +58,7 @@ sequenceDiagram
   Z->>T: Searches the whole market, opens a fund ("Look closer")
   T-->>Z: Facts only: what it is, one-year line, five years vs the whole market, what's inside
   Z->>T: Answers three questions and proposes $5.00 (about 0.0138 of a share)
-  T->>T: Rule engine checks: Level 3, fund on Amara's list, enough savings
+  T->>T: Rule engine checks: investing level, fund on Amara's list, enough savings
   Note over Z,T: Not on Amara's list yet? Proposing asks her to add it first.
   T-)A: One push: "Zoe proposes investing $5.00 in VTI"
   A->>T: Taps it: the request page shows about 0.0138 of a share, what's inside VTI, her savings, Zoe's answers, her recent weeks
