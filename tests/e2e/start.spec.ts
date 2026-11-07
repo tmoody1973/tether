@@ -45,6 +45,10 @@ test("start your own family with Log in with PayPal, through to the teen's first
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page).toHaveURL(/\/g$/, { timeout: 60_000 });
   await expect(page.getByRole("heading", { name: "Get Zoe started" })).toHaveCount(0); // all three done: Home as usual
+  // Review L9: a family started with PayPal reads the teen's name, not "her".
+  await expect(page.getByRole("heading", { name: "Zoe's rules at a glance" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Change Zoe's rules" })).toBeVisible();
+  await expect(page.getByText("what Zoe didn't spend counts as saved", { exact: false })).toBeAttached();
 
   const zoe = await context.newPage();
   await zoe.goto(link);
