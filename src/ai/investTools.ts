@@ -5,7 +5,7 @@ import { jsonSchema, tool, type Tool } from "ai";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
-import { fundInside, fundNews, type Article } from "@/adapters/financialdatasets/client";
+import { fundInside, fundNews, fundsCovered, type Article } from "@/adapters/financialdatasets/client";
 import { marketDay } from "@/adapters/alpaca/data";
 import type { Holding } from "@/flows/holdings";
 import { allowedFunds, isSymbol } from "@/flows/teenInvest";
@@ -31,7 +31,7 @@ const symbolIn = (x: unknown): string | null => {
 /** Investments still on their way: today's words for them, as on Amara's Investing page. Refused or lapsed ones aren't. */
 const OPEN = new Set<string>(["proposed", "approved", "depositing", "queued", "cash_held", "needs_review"]);
 
-/** Zoe's funds: her signed rules plus the funds Amara approved since (allowedFunds), and any fund she holds. */
+/** Zoe's list (her signed rules plus what Amara approved since: allowedFunds; funds or single stocks) and anything she holds. */
 async function herFunds(db: Db, familyId: string): Promise<string[]> {
   const [listed, held] = await Promise.all([
     allowedFunds(db, familyId),
@@ -105,12 +105,18 @@ async function readNews(db: Db, familyId: string, teen: string, input: unknown, 
   if (raw !== undefined && raw !== null && raw !== "") {
     ticker = symbolIn(raw);
     if (!ticker) return offList;
-    const funds = await herFunds(db, familyId);
-    // ponytail: her list is a fund list, so a ticker on it is treated as a fund (FD has no news for funds: 404).
-    if (funds.includes(ticker)) return { ticker, articles: [], note: FUNDS_NOTE };
-    // Her funds' top holdings come from the weekly-cached call her fund page makes anyway: a cache hit takes no use.
-    const insides = await Promise.all(funds.map((f) => fundInside(f, familyId, NO_NAME)));
-    if (!insides.some((i) => i?.rows.some((r) => r.ticker === ticker))) return offList;
+    const [funds, indexFunds] = await Promise.all([herFunds(db, familyId), fundsCovered()]);
+    if (funds.includes(ticker)) {
+      // Her list can hold single stocks too. A fund is a ticker in Financial Datasets' free, cached index-fund list:
+      // funds have no news (it answers 404), so they get the note without a paid call. Anything else is a company.
+      // ponytail: when that list is unavailable, a fund of hers is treated as a company (its news call then fails,
+      // said as "unavailable", one market_news use). Fine while the free list is up.
+      if (indexFunds.has(ticker)) return { ticker, articles: [], note: FUNDS_NOTE };
+    } else {
+      // Her funds' top holdings come from the weekly-cached call her fund page makes anyway: a cache hit takes no use.
+      const insides = await Promise.all(funds.map((f) => fundInside(f, familyId, NO_NAME)));
+      if (!insides.some((i) => i?.rows.some((r) => r.ticker === ticker))) return offList;
+    }
   }
   return paid(ticker);
 }
@@ -127,7 +133,7 @@ export function investTools(db: Db, familyId: string, teen: string, holdings?: (
       execute: (input) => readInside(db, familyId, teen, input),
     }),
     news: tool({
-      description: `Recent headlines (title, source, date, url). No ticker: market news. With a ticker: news about one company inside ${teen}'s funds (use fund_inside's tickers). Funds themselves have no news.`,
+      description: `Recent headlines (title, source, date, url). No ticker: market news. With a ticker: news about one company on ${teen}'s list or inside her funds (use fund_inside's tickers). Funds themselves have no news.`,
       inputSchema: jsonSchema<{ ticker?: string }>({ type: "object", properties: { ticker: { type: "string", description: "A company's ticker, e.g. AAPL. Leave out for market news." } } }),
       execute: (input) => readNews(db, familyId, teen, input, paidNews),
     }),

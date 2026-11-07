@@ -206,12 +206,28 @@ describe("news (market news, or a company inside one of Zoe's funds)", () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it("one of her funds: funds have no news of their own, so it says so without a call, and shows no card", async () => {
+  it("one of her funds (in Financial Datasets' free index-fund list): the funds note, no paid call, no card", async () => {
+    const fam = await family();
     const f = fakeFd();
-    const r = await once("news", { ticker: "VTI" });
+    const r = await once("news", { ticker: "VTI" }, fam);
     expect(toolOutputs(lastModel)).toEqual([{ ticker: "VTI", articles: [], note: "Funds don't have their own news; ask about one of the companies inside it." }]);
-    expect(f).not.toHaveBeenCalled();
+    expect(callsTo(f, "/news")).toHaveLength(0);
+    expect(callsTo(f, "/index-funds/")).toHaveLength(0);
+    expect(await used(fam, "market_news")).toBe(0);
     expect(r.cards).toEqual([]);
+  });
+
+  it("a single stock on her list, or one she holds, is a company: it gets company news", async () => {
+    const fam = await family();
+    await db.insert(t.fundAllowlist).values({ familyId: fam, symbol: "KO" }); // not inside any of her funds' top holdings
+    await db.insert(t.investments).values({ id: `inv-f-${fam}`, familyId: fam, symbol: "F", amountCents: 300, status: "filled", answers: {} });
+    for (const ticker of ["KO", "F"]) {
+      const f = fakeFd();
+      const r = await once("news", { ticker }, fam);
+      expect(callsTo(f, "/news").map(([u]) => new URL(String(u)).search)).toEqual([`?ticker=${ticker}&limit=5`]);
+      expect(r.cards).toMatchObject([{ kind: "news", ticker }]);
+    }
+    expect(await used(fam, "market_news")).toBe(2);
   });
 
   it("one answer makes at most two paid news calls; a repeat query is one call and gets the same result", async () => {
