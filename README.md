@@ -113,7 +113,7 @@ someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpa
 | **Claude** (`claude-haiku-5-5` via the Vercel AI SDK, except the month assistant, which uses `claude-sonnet-5-5`) | The propose-only shopping agent, the "is it a book?" check, plain-English refusal sentences, fund descriptions, and the month assistant. Every model output is validated, with a code fallback. |
 | **Channel3** | Product search scoped to the parent's allowed shops; turns a pasted link into a real cart. |
 | **Alpaca Broker API** (sandbox) | Investing: account, deposit, dollar-amount orders; market search and price history. |
-| **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls: market headlines, or only Zoe's funds and the companies inside them. Fund holdings 40 a family a day, headlines 20 a day and at most two per question. |
+| **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls: market headlines, or only what's on Zoe's list and the companies inside her funds. Fund holdings 40 a family a day, headlines 20 a day and at most two per question. |
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
 
@@ -229,7 +229,7 @@ sequenceDiagram
   - `month_checkin`: her level, this week, savings, and the next check-in.
   - `zoe_investments`: each fund she holds (shares, what she put in, worth now, the same money in the whole market, too soon to tell) and investments still on their way. Same numbers as her Investing page.
   - `fund_inside(symbol)`: what one of Zoe's funds owns. Only a fund on her list or one she holds; anything else is refused before any paid call.
-  - `news(ticker?)`: market headlines, or headlines about a company inside one of her funds (funds have no news of their own). Title, source, date and link only.
+  - `news(ticker?)`: market headlines, or headlines about a stock on her list or a company inside one of her funds (index funds have no news of their own). At most two news searches per question. Title, source, date and link only.
 - **Facts only:** it never advises, predicts, ranks or says what Amara or Zoe should do. For news it says what the headlines are about, never why a price moved.
 - **Cards:** the numbers under each answer (purchases, check-in, PayPal match, Zoe's investments, what's inside, headlines) are built by code from the tool results, never by the model (decision 019). Headline links open in a new tab, and only `http(s)` links are drawn.
 - **Family-only:** every family's charges land in Tether's one PayPal account, so the PayPal tool is wrapped: the server picks the dates, keeps only rows whose payment id matches this family's receipts, and passes only date, amount and status. The model never sees other families, balances or free-text notes.
