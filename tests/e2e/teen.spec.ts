@@ -65,6 +65,8 @@ test("ask Amara ⇒ request appears on Amara's home", async ({ page }) => {
   await page.getByLabel("Search your shops").fill("earbuds");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await card(page, /Earbuds/).getByRole("link", { name: "Ask Amara" }).click();
+  // A client-side navigation to a page the dev server may still be compiling: wait for its heading first.
+  await expect(page.getByRole("heading", { name: "Ask Amara", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("She'll see that you have $14.00 left this week, and your reason.")).toBeVisible();
   await page.getByLabel("Why (optional)").fill("mine broke");
   await page.getByRole("button", { name: "Send" }).click();
