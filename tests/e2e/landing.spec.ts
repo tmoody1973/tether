@@ -59,7 +59,7 @@ test("landing at 390 wide: no horizontal scroll", async ({ page }) => {
 test("landing: the problem in numbers, each with Tether's answer, and a link to the sources", async ({ page }) => {
   await page.goto("/");
   const facts = page.getByRole("list", { name: "The problem in numbers" }).getByRole("listitem");
-  await expect(facts).toHaveCount(3);
+  await expect(facts).toHaveCount(5);
   for (const fact of await facts.all()) await expect(fact.getByText("Tether's answer:")).toBeVisible();
   await expect(page.getByRole("link", { name: "Sources and sample sizes" }))
     .toHaveAttribute("href", "https://github.com/tmoody1973/tether/blob/main/docs/research/problem.md");

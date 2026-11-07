@@ -17,6 +17,20 @@ const FACTS = [
     answer: "A refusal explains itself at the moment she decides, with her real numbers and two ways forward.",
   },
   {
+    who: "Saving",
+    fig: "36%",
+    what: <>of US teens say they save part of the money they get for their future.</>,
+    cite: "Junior Achievement & MissionSquare, 2025",
+    answer: "What she doesn't spend is saved. She sets her own weekly promise, sees the weeks to her goal, and four kept weeks earn her more freedom.",
+  },
+  {
+    who: "Investing",
+    fig: "70%",
+    what: <>of teens are very or extremely interested in investing. Only 14% say they know a lot about it.</>,
+    cite: "Schwab survey, 2025",
+    answer: "From Level 2: facts only, never daily moves. She gives her reasons in her own words, the parent approves each one, and leveraged products are blocked.",
+  },
+  {
     who: "Payments and AI",
     fig: "$190–385B",
     what: <>of US online sales could go through AI shopping agents by 2030. Proving who allowed each purchase is still an open question.</>,
