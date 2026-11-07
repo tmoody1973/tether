@@ -38,7 +38,7 @@ The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home)
 5. **Gate 2, AI, can only tighten:** a model checks things code can't (is this item actually a book?). It can add friction; it can never remove it. *"A model may add friction. Only code may remove it."*
 6. **PayPal charges Amara's saved wallet**, using a single-use permission slip (a signed token, valid 120 seconds, bound to that exact cart).
 7. **Every week, what Zoe didn't spend becomes savings.** Four kept weeks in a row moves her up a level: more money, more shops, and from Level 2, investing.
-8. **Investing (from Level 2):** Zoe searches the whole market and proposes a fund or stock. Tether shows facts only and recommends nothing, and doesn't offer leveraged or inverse products. Amara approves each one; Tether places the order through Alpaca.
+8. **Investing (from Level 2):** Zoe searches the whole market and proposes a fund or stock. Tether shows facts only and recommends nothing, and blocks products whose names say they're leveraged or inverse. Amara approves each one; Tether places the order through Alpaca.
 9. **Amara can ask about the month** ("How much at the bookshop in October?"). A read-only assistant answers from PayPal's transaction list and Tether's receipts. It cannot move money.
 
 ### Investing, from Zoe to Amara
