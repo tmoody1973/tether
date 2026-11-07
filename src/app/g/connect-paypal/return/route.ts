@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readCookie } from "@/auth/guardian";
 import { requireLiveGuardian } from "@/auth/guardianSession";
-import { paypalFromEnv } from "@/adapters/paypal/http";
+import { paypalFromEnv, safeErrorText } from "@/adapters/paypal/http";
 import { createPaymentToken, deletePaymentToken, sameAccount } from "@/adapters/paypal/vault";
 import { getDb } from "@/db/client";
 import { getFamily, saveVault } from "@/db/repo";
@@ -35,7 +35,7 @@ export async function GET(req: Request): Promise<Response> {
       const match = sameAccount({ payerId: fam.paypalPayerId, email: fam.paypalEmail }, wallet);
       if (match === "different") {
         await deletePaymentToken(paypal, wallet.paymentTokenId).catch((err: unknown) => {
-          console.error("connect-paypal: deleting the other account's token failed", err instanceof Error ? err.message : "unknown error");
+          console.error("connect-paypal: deleting the other account's token failed", safeErrorText(err));
         });
         return done("different");
       }
@@ -43,7 +43,7 @@ export async function GET(req: Request): Promise<Response> {
     }
     await saveVault(db, familyId, wallet.paymentTokenId);
   } catch (err) {
-    console.error("connect-paypal: saving the wallet failed", err instanceof Error ? err.message : err);
+    console.error("connect-paypal: saving the wallet failed", safeErrorText(err)); // never the query: it holds the token id
     return done("failed");
   }
   return done("connected");

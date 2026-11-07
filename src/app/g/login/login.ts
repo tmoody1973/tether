@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { GUARDIAN_COOKIE, guardianCookieOptions, signGuardianCookie } from "@/auth/guardian";
 import { LOGIN_STATE_COOKIE, START_COOKIE, loginStateCookieOptions, startCookieOptions } from "@/auth/start";
+import { safeErrorText } from "@/adapters/paypal/http";
 import { getDb } from "@/db/client";
 import { retireStaleFamilies } from "@/flows/start";
 import { appBaseUrl } from "../connect-paypal/setup";
@@ -34,6 +35,6 @@ export function sameOrigin(req: Request): boolean {
 /** Lazy clean-up of week-old self-started families. Never blocks a sign-in. */
 export async function retireQuietly(): Promise<void> {
   await retireStaleFamilies({ db: await getDb(), paypal: paypalOrUnavailable() }).catch((err: unknown) => {
-    console.error("retire: clean-up failed", err instanceof Error ? err.message : "unknown error");
+    console.error("retire: clean-up failed", safeErrorText(err));
   });
 }

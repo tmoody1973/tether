@@ -124,6 +124,17 @@ describe("GET /g/login/paypal/return", () => {
   });
 });
 
+describe("L2: malformed input is the calm page, never a 500", () => {
+  it("a state of the right length with multibyte characters, or a broken %-escape in the cookie ⇒ failed", async () => {
+    const start = await login(new Request("http://localhost/g/login/paypal"));
+    const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+    const cookie = `${LOGIN_STATE_COOKIE}=${encodeURIComponent(valueOf(start, LOGIN_STATE_COOKIE)!)}`;
+    const wide = "é".repeat(state.length);
+    expect(where(await loginReturn(new Request(`http://localhost/g/login/paypal/return?code=good&state=${encodeURIComponent(wide)}`, { headers: { cookie } })))).toBe("/g?login=failed");
+    expect(where(await loginReturn(new Request(`http://localhost/g/login/paypal/return?code=good&state=${state}`, { headers: { cookie: `${LOGIN_STATE_COOKIE}=%E0%A4%A` } })))).toBe("/g?login=failed");
+  });
+});
+
 describe("H1: the published shared sandbox login works per browser", () => {
   const SHARED = { sub: "S-shared", email: SANDBOX_LOGIN.email.toUpperCase(), givenName: "John", payerId: "P-SHARED" };
 

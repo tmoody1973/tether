@@ -3,7 +3,7 @@ import { and, asc, eq, isNotNull, isNull, lt, not, like, or } from "drizzle-orm"
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { ARCHIVED_PREFIX, insertFamily, type Family } from "@/db/repo";
-import type { PaypalHttp } from "@/adapters/paypal/http";
+import { safeErrorText, type PaypalHttp } from "@/adapters/paypal/http";
 import type { PaypalIdentity } from "@/adapters/paypal/identity";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
 import { takePool } from "@/flows/usage";
@@ -116,7 +116,7 @@ export async function retireStaleFamilies(deps: { db: Db; paypal: PaypalHttp }, 
     try {
       await deletePaymentToken(deps.paypal, saved.token);
     } catch (err) {
-      console.error("retire: PayPal didn't delete a retired family's saved PayPal", err instanceof Error ? err.message : "unknown error");
+      console.error("retire: PayPal didn't delete a retired family's saved PayPal", safeErrorText(err));
     }
   }
   if (retired) console.info(`retire: ${retired} self-started famil${retired === 1 ? "y" : "ies"} older than 7 days retired`);

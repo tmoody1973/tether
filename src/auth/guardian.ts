@@ -12,7 +12,8 @@ export function guardianCookieOptions() {
 /** One cookie's raw value from a request's Cookie header, or null. */
 export function readCookie(req: Request, name: string): string | null {
   const raw = (req.headers.get("cookie") ?? "").split(";").map((c) => c.trim()).find((c) => c.startsWith(`${name}=`));
-  return raw ? decodeURIComponent(raw.slice(name.length + 1)) : null;
+  if (!raw) return null;
+  try { return decodeURIComponent(raw.slice(name.length + 1)); } catch { return null; } // a broken %-escape is no cookie
 }
 
 export class GuardianAuthError extends Error {

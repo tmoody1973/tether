@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
+import { safeErrorText } from "@/adapters/paypal/http";
 import { identityFromEnv } from "@/adapters/paypal/identity";
 import { LOGIN_STATE_COOKIE, loginStateCookieOptions, sealLoginState } from "@/auth/start";
 import { loginReturnUrl } from "../login";
@@ -12,7 +13,7 @@ export async function GET(req: Request): Promise<Response> {
     res.cookies.set(LOGIN_STATE_COOKIE, sealLoginState(state, new Date()), loginStateCookieOptions());
     return res;
   } catch (err) {
-    console.error("login: can't start Log in with PayPal", err instanceof Error ? err.message : "unknown error");
+    console.error("login: can't start Log in with PayPal", safeErrorText(err));
     return NextResponse.redirect(new URL("/g?login=failed", req.url), 303);
   }
 }

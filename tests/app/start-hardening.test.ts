@@ -39,3 +39,19 @@ describe("M2: a retired family's still-valid parent cookie is refused", () => {
     expect(where(c)).toBe("/g");
   });
 });
+
+describe("L1: a database failure while creating a family", () => {
+  it("is the calm page, and the log is a fixed sentence without the query's values", async () => {
+    failInsert = true;
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = await create(new Request("http://localhost/g/start/teen/create", {
+      method: "POST", body: new URLSearchParams({ teenName: "Zoe", age: "15", guardian: "on" }),
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie: `${START_COOKIE}=${encodeURIComponent(sealStart({ sub: "S-leak", email: "amara@example.com" }, new Date()))}` },
+    }));
+    expect(where(res)).toBe("/g?login=failed");
+    expect(log).toHaveBeenCalled();
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/amara@example\.com|S-leak|params/);
+    log.mockRestore();
+    failInsert = false;
+  });
+});
