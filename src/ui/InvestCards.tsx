@@ -1,11 +1,11 @@
 // Investing cards for Zoe's fund page, Amara's request page and both investment lists (decision 020, D16's rules):
 // facts only, every number computed by code, no daily moves, never red or green.
-import type { FundInside } from "@/adapters/financialdatasets/client";
+import type { CompanyFacts, FundInside } from "@/adapters/financialdatasets/client";
 import type { Close } from "@/adapters/alpaca/data";
 import type { Holding } from "@/flows/holdings";
 import { ValueLine } from "@/ui/FiveYearLine";
 import { formatCents } from "@/ui/grantWords";
-import { closeWords, dayMonth, dayMonthYear, herWords, holdingSentence, tooSoonWords, youOwnWords } from "@/ui/investWords";
+import { closeWords, companyLine, dayMonth, dayMonthYear, herWords, holdingSentence, tooSoonWords, youOwnWords } from "@/ui/investWords";
 
 const pct1 = (p: number) => `${p.toFixed(1)}%`;
 const filingDay = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
@@ -45,6 +45,29 @@ export function InsideCard({ inside }: { inside: FundInside | null }) {
       <p className="t-muted t-fine" style={{ marginTop: 6 }}>From the fund&apos;s filing for {filingDay.format(inside.asOf)}, via Financial Datasets.</p>
     </section>
   );
+}
+
+/** Zoe's page for a stock: what the company is, in plain rows (no ratios, no market cap, no opinions). Nothing when unavailable. */
+export function AboutCompanyCard({ facts }: { facts: CompanyFacts | null }) {
+  if (!facts) return null;
+  const rows: [string, string | null][] = [
+    ["Name", facts.name], ["Sector", facts.sector], ["Industry", facts.industry], ["Based in", facts.location],
+    ["Employees", facts.employees === null ? null : facts.employees.toLocaleString("en-US")],
+  ];
+  return (
+    <section className="t-card" aria-labelledby="company-h">
+      <h2 className="t-card__k" id="company-h">About the company</h2>
+      <dl style={{ marginTop: 4 }}>
+        {rows.flatMap(([k, v]) => (v ? [<div className="t-row" key={k}><dt className="t-muted">{k}</dt><dd>{v}</dd></div>] : []))}
+      </dl>
+      <p className="t-muted t-fine" style={{ marginTop: 6 }}>From the company&apos;s SEC filings, via Financial Datasets.</p>
+    </section>
+  );
+}
+
+/** Amara's request page for a stock: what the company is, in one line. Nothing when unavailable. */
+export function CompanyLine({ facts }: { facts: CompanyFacts | null }) {
+  return facts ? <p className="g-note" style={{ marginTop: 6 }}>{companyLine(facts)}</p> : null;
 }
 
 /** Amara's request page: the same facts Zoe saw, compact. Nothing when unavailable. */

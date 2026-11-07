@@ -5,6 +5,7 @@ import { now as clockNow } from "@/clock/clock";
 import type { Db } from "@/db/client";
 import { brokerFromEnv, STAND_IN_LABEL } from "@/adapters/alpaca/broker";
 import { marketFromEnv, oneYearLine, type AssetHit } from "@/adapters/alpaca/data";
+import { isLeveragedProduct } from "@/engine/invest";
 import { resumeInvestments } from "@/flows/invest";
 import { availableSavingsCents } from "@/ledger/ledger";
 import { teenWeek } from "@/flows/teen";
@@ -18,7 +19,8 @@ import { investGate, UNAVAILABLE } from "./Gate";
 import { Seam } from "@/ui/Seam";
 
 // F17 / D13: the whole market, ordered by match to what she typed (never popularity). No movers, no daily moves.
-// Each result's only action is "Look closer"; proposing happens on the fund page, with her own answers.
+// Each result's only action is "Look closer" (leveraged and inverse products say they're not available instead);
+// proposing happens on the fund page, with her own answers.
 export default function InvestPage({ params, searchParams }: PageProps<"/t/[token]/invest">) {
   return (
     <Suspense fallback={<TeenLoading />}>
@@ -80,7 +82,9 @@ async function Results({ token, q }: { token: string; q: string }) {
             <article className="t-card t-result" aria-label={`${a.name} (${a.symbol})`}>
               <div className="t-result__top"><span className="t-result__title">{a.name}</span><span className="t-muted">{a.symbol}</span></div>
               <div className="t-result__shop">1 year: {line ?? UNAVAILABLE}</div>
-              <Link className="t-btn t-btn--ghost" href={`/t/${token}/invest/${encodeURIComponent(a.symbol)}`}>Look closer</Link>
+              {isLeveragedProduct(a.name)
+                ? <span className="t-chip">Not available on Tether</span>
+                : <Link className="t-btn t-btn--ghost" href={`/t/${token}/invest/${encodeURIComponent(a.symbol)}`}>Look closer</Link>}
             </article>
           </li>
         ))}

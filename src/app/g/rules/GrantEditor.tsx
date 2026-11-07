@@ -166,7 +166,7 @@ export function GrantEditor(p: GrantEditorProps) {
           <div>
             <Def k="Asks you first" v={approvalShort(level)} />
             <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : `opens at Level ${INVESTING_FROM}`}
-              sub={def.investing ? "her funds and your list" : "funds she proposes, you approve"} />
+              sub={def.investing ? "her investments and your investing list" : "funds or stocks she proposes, you approve"} />
             <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href="/g/connect-paypal">save your PayPal</a>} sub="sandbox: no real money" />
           </div>
         </section>

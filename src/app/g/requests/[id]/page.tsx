@@ -6,9 +6,10 @@ import { getDb } from "@/db/client";
 import { guardianHome } from "@/flows/home";
 import { closedRequestView, requestView, type ClosedRequest, type RequestView } from "@/flows/request";
 import { marketFromEnv } from "@/adapters/alpaca/data";
-import { fundInside } from "@/adapters/financialdatasets/client";
-import { InsideLineCard } from "@/ui/InvestCards";
-import { requestShareWords } from "@/ui/investWords";
+import { companyFacts, fundInside } from "@/adapters/financialdatasets/client";
+import { isLeveragedProduct, LEVERAGED_TEXT } from "@/engine/invest";
+import { CompanyLine, InsideLineCard } from "@/ui/InvestCards";
+import { pennyLine, requestShareWords } from "@/ui/investWords";
 import { formatCents, formatDay } from "@/ui/grantWords";
 import { closedWords, requestTitle as title } from "@/ui/approveWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
@@ -116,6 +117,7 @@ function Consequence({ v }: { v: RequestView }) {
           her investing account. Once it&apos;s there it belongs to her and can&apos;t be taken back.
         </p>
         <FundFactsLine symbol={v.investment.symbol} />
+        <Suspense fallback={null}><StockLines symbol={v.investment.symbol} /></Suspense>
       </section>
       <Suspense fallback={null}><WhatsInside symbol={v.investment.symbol} /></Suspense>
       </>
@@ -124,11 +126,12 @@ function Consequence({ v }: { v: RequestView }) {
   if (v.fund) {
     return (
       <>
-      <section className="g-card" aria-label="What adding this fund means">
+      <section className="g-card" aria-label="What adding this means">
         <p style={{ color: "var(--ink-2)" }}>
-          Adding <b>{v.fund.symbol}</b> lets {v.teenName} propose investing in it. Nothing is bought now, and each investment still comes to you.
+          Adding <b>{v.fund.symbol}</b> to your investing list lets {v.teenName} propose investing in it. Nothing is bought now, and each investment still comes to you.
         </p>
         <FundFactsLine symbol={v.fund.symbol} />
+        <Suspense fallback={null}><StockLines symbol={v.fund.symbol} /></Suspense>
       </section>
       <Suspense fallback={null}><WhatsInside symbol={v.fund.symbol} /></Suspense>
       </>
@@ -192,8 +195,43 @@ async function ShareLine({ symbol, amountCents }: { symbol: string; amountCents:
   return q ? <p className="g-muted" style={{ marginTop: 4 }}>{requestShareWords(amountCents, q, symbol)}</p> : null;
 }
 
-/** The same "what's inside" Zoe saw, compact. Streams in; hidden for companies or when unavailable. */
+/** Alpaca's listing for a symbol (its asset list is cached per process); undefined when unknown or unavailable. */
+async function assetHit(symbol: string) {
+  try {
+    return (await marketFromEnv().searchAssets(symbol)).find((a) => a.symbol === symbol);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The same "what's inside" Zoe saw, compact. Streams in; hidden for companies, leveraged products (no credit is spent
+ * on a product Tether doesn't offer) or when unavailable. Only with Alpaca's name for it.
+ */
 async function WhatsInside({ symbol }: { symbol: string }) {
   const familyId = await guardianFamilyId(); // read here, so the open/closed switch above stays as it is
-  return familyId ? <InsideLineCard symbol={symbol} inside={await fundInside(symbol, familyId)} /> : null;
+  const hit = familyId ? await assetHit(symbol) : undefined;
+  return familyId && hit ? <InsideLineCard symbol={symbol} inside={await fundInside(symbol, familyId, hit.name)} /> : null;
+}
+
+/**
+ * Under the facts line: a leveraged product says Tether doesn't offer it (her yes is refused too), a close under $1
+ * gets the plain penny line, and a stock says what the company is. Streams in; each part hides when unavailable.
+ * One paid call at most: companyFacts never asks for a fund, and WhatsInside never asks for a stock.
+ */
+async function StockLines({ symbol }: { symbol: string }) {
+  const familyId = await guardianFamilyId();
+  if (!familyId) return null;
+  const market = (() => { try { return marketFromEnv(); } catch { return null; } })();
+  const [hit, close] = await Promise.all([assetHit(symbol), market ? market.latestClose(symbol) : null]);
+  // Only with Alpaca's name for it: a fund or a leveraged product never spends a paid company lookup.
+  const facts = hit ? await companyFacts(symbol, familyId, hit.name) : null;
+  const penny = pennyLine(close?.cents ?? null);
+  return (
+    <>
+      {hit && isLeveragedProduct(hit.name) && <p className="g-note" style={{ marginTop: 6 }}>{LEVERAGED_TEXT}</p>}
+      <CompanyLine facts={facts} />
+      {penny && <p className="g-note" style={{ marginTop: 6 }}>{penny}</p>}
+    </>
+  );
 }

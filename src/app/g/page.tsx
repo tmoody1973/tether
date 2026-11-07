@@ -201,8 +201,8 @@ function NeedsYouRow({ item, zoe, guardian, hadRules }: { item: NeedsYou; zoe: s
   const title = {
     purchase: `${zoe} is asking for ${amount} at ${item.shop}`,
     shop: `${zoe} suggests a new shop: ${item.shop}`,
-    investment: `${zoe} proposes investing ${amount} in ${item.symbol ?? "a fund"}`,
-    fund: `${zoe} proposes adding ${item.symbol ?? "a fund"} to your fund list`,
+    investment: `${zoe} proposes investing ${amount} in ${item.symbol ?? "a fund or stock"}`,
+    fund: `${zoe} proposes adding ${item.symbol ?? "a fund or stock"} to your investing list`,
   }[item.subject];
   return (
     <li><Link href={`/g/requests/${item.id}`}>

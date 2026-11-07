@@ -4,7 +4,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant } from "@/db/repo";
 import { availableSavingsCents } from "@/ledger/ledger";
-import { MIN_INVEST_CENTS } from "@/engine/invest";
+import { isLeveragedProduct, MIN_INVEST_CENTS } from "@/engine/invest";
 import { LEVELS, type Level } from "@/engine/ladder";
 import { proposeFund, proposeInvestment } from "@/flows/invest";
 import type { Deps } from "@/flows/purchase";
@@ -61,7 +61,7 @@ async function investmentWaiting(db: Db, familyId: string, symbol: string, now: 
   return rows.length > 0;
 }
 
-/** allowed: on Amara's fund list. asked: she has a fund proposal waiting. new: neither. */
+/** allowed: on Amara's investing list. asked: she has a fund proposal waiting. new: neither. */
 export async function fundStatus(db: Db, familyId: string, symbol: string, now: Date): Promise<"allowed" | "asked" | "new"> {
   const [grant, listed, asked] = await Promise.all([
     getActiveGrant(db, familyId),
@@ -89,20 +89,22 @@ export async function allowedFunds(db: Db, familyId: string): Promise<string[]> 
 
 export type ProposeResult =
   | { ok: true; sent: "fund" | "investment" }
-  | { ok: false; error: "level" | "rules" | "symbol" | "answers" | "amount" | "asked" }
+  | { ok: false; error: "level" | "rules" | "symbol" | "leveraged" | "answers" | "amount" | "asked" }
   | { ok: false; error: "savings"; savingsCents: number };
 
 /**
- * "Propose to Amara". Off her list: a fund proposal (adding it to the list), with the amount she has in mind.
- * On her list: an investment request with her answers; the engine checks level, list and savings.
+ * "Propose to Amara". Off her list: a fund proposal (adding the fund or stock to the list), with the amount she has in
+ * mind. On her list: an investment request with her answers; the engine checks level, list, leveraged and savings.
+ * `name` is the product's name from Alpaca's asset list: leveraged and inverse products are refused either way.
  */
 export async function proposeFromTeen(
-  deps: Pick<Deps, "db" | "now" | "notify">, familyId: string, symbol: string, amountCents: number, answers: Answers,
+  deps: Pick<Deps, "db" | "now" | "notify">, familyId: string, symbol: string, amountCents: number, answers: Answers, name: string,
 ): Promise<ProposeResult> {
   const blocked = await canPropose(deps, familyId);
   if (blocked) return { ok: false, error: blocked };
   const now = await deps.now(familyId);
   if (!isSymbol(symbol)) return { ok: false, error: "symbol" };
+  if (isLeveragedProduct(name)) return { ok: false, error: "leveraged" };
   const words = Object.fromEntries((Object.keys(QUESTIONS) as (keyof Answers)[]).map((k) => [QUESTIONS[k], (answers[k] ?? "").trim()]));
   if (Object.values(words).some((a) => a.length < ANSWER_MIN || a.length > ANSWER_MAX)) return { ok: false, error: "answers" };
   if (!Number.isInteger(amountCents) || amountCents < MIN_INVEST_CENTS) return { ok: false, error: "amount" };
@@ -117,10 +119,11 @@ export async function proposeFromTeen(
     return { ok: true, sent: "fund" };
   }
   if (await investmentWaiting(deps.db, familyId, symbol, now)) return { ok: false, error: "asked" };
-  const { decision, approvalId } = await proposeInvestment(deps, familyId, { symbol, amountCents }, words);
+  const { decision, approvalId } = await proposeInvestment(deps, familyId, { symbol, amountCents, name }, words);
   if (approvalId) tellAmara(deps, familyId, approvalId);
   if (decision.outcome !== "REFUSE") return { ok: true, sent: "investment" };
   const c = decision.reasons[0]?.constraint;
   return c === "invest.savings" ? { ok: false, error: "savings", savingsCents: saved }
-    : c === "invest.minimum" ? { ok: false, error: "amount" } : { ok: false, error: c === "invest.level" ? "level" : "rules" };
+    : c === "invest.minimum" ? { ok: false, error: "amount" } : c === "invest.leveraged" ? { ok: false, error: "leveraged" }
+    : { ok: false, error: c === "invest.level" ? "level" : "rules" };
 }

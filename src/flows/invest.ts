@@ -44,7 +44,7 @@ export async function proposeInvestment(
   const symbol = normSymbol(p.symbol);
   const grant = await getActiveGrant(db, familyId);
   const decision = grant
-    ? decideInvestment(await withAllowlist(db, grant.body), { symbol, amountCents: p.amountCents }, await availableSavingsCents(db, familyId))
+    ? decideInvestment(await withAllowlist(db, grant.body), { symbol, amountCents: p.amountCents, name: p.name }, await availableSavingsCents(db, familyId))
     : NO_GRANT;
   const investmentId = crypto.randomUUID();
   await db.insert(t.investments).values({

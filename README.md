@@ -23,7 +23,7 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 3. In **Zoe's rules**, search for a shop (try "Lego") and add it, or remove one. Each change asks once, then applies at once as a new rules version. Zoe can also search for a shop and ask Amara for it.
 4. Ask the month assistant on **Home**: "What did Zoe buy this month?" It reads PayPal's transaction list and Tether's receipts, and can't move money.
 5. On Amara's **Home**, press **Turn on notifications**, then ask for something as Zoe (in another tab or on another device): Amara's browser gets one push, and tapping it opens that request. The demo family is shared, so anyone who turns this on gets the demo's asks (at most 200 a day).
-6. Open **Demo controls** at the bottom of Home and press **Advance to end of month**. Zoe kept her savings promise four weeks running, so the check-in in **Activity** moves her to Level 3 and offers the savings release. From Level 2 (where the demo starts) Zoe can search the whole market, read a facts-only fund page and propose an investment; Amara approves and Tether places a sandbox Alpaca order.
+6. Open **Demo controls** at the bottom of Home and press **Advance to end of month**. Zoe kept her savings promise four weeks running, so the check-in in **Activity** moves her to Level 3 and offers the savings release. From Level 2 (where the demo starts) Zoe can search the whole market, read a facts-only page for a fund or stock and propose an investment; Amara approves and Tether places a sandbox Alpaca order.
 
 The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home) puts it back, and it also resets itself when someone arrives more than 6 hours after the last reset. Dates are on a demo clock set to late December 2026 so a month fits in a few clicks; the screen says so.
 
@@ -38,7 +38,7 @@ The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home)
 5. **Gate 2, AI, can only tighten:** a model checks things code can't (is this item actually a book?). It can add friction; it can never remove it. *"A model may add friction. Only code may remove it."*
 6. **PayPal charges Amara's saved wallet**, using a single-use permission slip (a signed token, valid 120 seconds, bound to that exact cart).
 7. **Every week, what Zoe didn't spend becomes savings.** Four kept weeks in a row moves her up a level: more money, more shops, and from Level 2, investing.
-8. **Investing (from Level 2):** Zoe searches the whole market and proposes a fund. Tether shows facts only and recommends nothing. Amara approves each one; Tether places the order through Alpaca.
+8. **Investing (from Level 2):** Zoe searches the whole market and proposes a fund or stock. Tether shows facts only and recommends nothing, and blocks products whose names say they're leveraged or inverse. Amara approves each one; Tether places the order through Alpaca.
 9. **Amara can ask about the month** ("How much at the bookshop in October?"). A read-only assistant answers from PayPal's transaction list and Tether's receipts. It cannot move money.
 
 ### Investing, from Zoe to Amara

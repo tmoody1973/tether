@@ -1,7 +1,8 @@
 // Financial Datasets (decision 021): only for what Alpaca lacks, through our own narrow, cached, capped calls.
-// What's inside a fund comes from its SEC filing. Credits are real: every paid call first takes a `market_data` use.
+// What's inside a fund comes from its SEC filing; what a company is, from its own filings (company facts). Credits are real: every paid call first takes a `market_data` use.
 import { cacheLife } from "next/cache";
 import { isE2eLocal } from "@/adapters/paypal/http";
+import { isLeveragedProduct, readsAsFund } from "@/engine/invest";
 import { getDb } from "@/db/client";
 import { takeDaily } from "@/flows/usage";
 
@@ -86,7 +87,7 @@ export async function fundsCovered(): Promise<Set<string>> {
   try {
     return new Set(await coveredList());
   } catch (err) {
-    console.error("financial datasets: fund list unavailable", err instanceof Error ? err.message : err);
+    console.error("financial datasets: covered funds unavailable", err instanceof Error ? err.message : err);
     return new Set();
   }
 }
@@ -104,14 +105,81 @@ export async function fetchFundInside(ticker: string, familyId: string): Promise
   return toFundInside((await get(`/index-funds/?${qs}`)) as RawHoldings);
 }
 
-/** What's inside a fund, or null: not configured, not a covered fund (companies aren't), capped, or unavailable. */
-export async function fundInside(ticker: string, familyId: string): Promise<FundInside | null> {
-  if (!config()) return null;
+/**
+ * What's inside a fund, or null: not configured, a leveraged product (its page offers nothing, so no credit is spent),
+ * not a covered fund (companies aren't), capped, or unavailable. `name` is Alpaca's name for it.
+ */
+export async function fundInside(ticker: string, familyId: string, name: string): Promise<FundInside | null> {
+  if (!config() || isLeveragedProduct(name)) return null;
   try {
     if (!(await fundsCovered()).has(ticker)) return null;
     return await fetchFundInside(ticker, familyId);
   } catch (err) {
     console.error("financial datasets: holdings unavailable", ticker, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** A company's plain facts, from its SEC filings. No ratios, no market cap, no opinions. */
+export interface CompanyFacts {
+  name: string;
+  sector: string | null;
+  industry: string | null;
+  /** Where it's based, as the filings give it (e.g. "Cupertino, CA"). */
+  location: string | null;
+  /** Only when the response carries one (the documented schema doesn't). */
+  employees: number | null;
+}
+
+interface RawFacts {
+  company_facts?: {
+    name?: string | null; sector?: string | null; industry?: string | null; location?: string | null; number_of_employees?: number | null;
+  } | null;
+}
+
+const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** Pure. Throws on a response with no company name, so an empty answer is never cached. */
+export function toCompanyFacts(raw: RawFacts): CompanyFacts {
+  const f = raw.company_facts ?? {};
+  const name = text(f.name);
+  if (!name) throw new Error("Financial Datasets returned no company");
+  const n = f.number_of_employees;
+  return {
+    name: displayName(name), sector: text(f.sector), industry: text(f.industry), location: text(f.location),
+    employees: typeof n === "number" && Number.isInteger(n) && n > 0 ? n : null,
+  };
+}
+
+async function companyList(): Promise<string[]> {
+  "use cache";
+  cacheLife("days"); // the companies it covers (~29,000 tickers, funds among them): free, and changes rarely
+  const { tickers } = (await get("/company/facts/tickers/")) as { tickers?: unknown };
+  if (!Array.isArray(tickers) || tickers.length === 0) throw new Error("Financial Datasets returned no company tickers");
+  return tickers.filter((x): x is string => typeof x === "string");
+}
+
+/** The paid call, cached and capped exactly as fetchFundInside is: a miss, a 404 or the cap throws and is never kept. */
+export async function fetchCompanyFacts(ticker: string, familyId: string): Promise<CompanyFacts> {
+  "use cache: remote";
+  cacheLife("weeks"); // a company's sector and home change rarely
+  if (!(await takeDaily(await getDb(), familyId, "market_data"))) throw new Error("market_data daily cap reached");
+  return toCompanyFacts((await get(`/company/facts?${new URLSearchParams({ ticker })}`)) as RawFacts);
+}
+
+/**
+ * What a company is, or null: not configured, a fund (fundInside covers those, so a page pays once), not covered,
+ * capped, or unavailable. Both free lists must load: without the funds list a fund could be charged as a company.
+ * `name` is Alpaca's name for it: a leveraged product or a fund-sounding name never spends a credit, whatever the lists say.
+ */
+export async function companyFacts(ticker: string, familyId: string, name: string): Promise<CompanyFacts | null> {
+  if (!config() || isLeveragedProduct(name) || readsAsFund(name)) return null;
+  try {
+    const [funds, companies] = await Promise.all([coveredList(), companyList()]);
+    if (funds.includes(ticker) || !companies.includes(ticker)) return null;
+    return await fetchCompanyFacts(ticker, familyId);
+  } catch (err) {
+    console.error("financial datasets: company facts unavailable", ticker, err instanceof Error ? err.message : err);
     return null;
   }
 }

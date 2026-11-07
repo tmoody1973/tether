@@ -27,10 +27,12 @@ export const E2E = {
   teenB: {
     goals: "e2e-teen-goals-0001", promise: "e2e-teen-promise-0001", map: "e2e-teen-map-0001",
     fund: "e2e-teen-invest-fund-0001", queued: "e2e-teen-invest-queued-0001", look: "e2e-teen-invest-look-0001",
+    stock: "e2e-teen-invest-stock-0001",
   },
   teenMapKey: "e2e-guardian-key-for-tests-only-0010",
   teenFundKey: "e2e-guardian-key-for-tests-only-0011",
   teenQueuedKey: "e2e-guardian-key-for-tests-only-0012",
+  teenStockKey: "e2e-guardian-key-for-tests-only-0014",
   teenAskKey: "e2e-guardian-key-for-tests-only-0007",
   teenResetKey: "e2e-guardian-key-for-tests-only-0008",
   // Another family entirely (Sam & Kai).

@@ -5,19 +5,21 @@ import { teenSession } from "@/auth/teen";
 import { now as clockNow } from "@/clock/clock";
 import * as t from "@/db/schema";
 import { compareHeading, compareSentence, marketFromEnv, NotEnoughHistoryError, oneYearLine, type AssetHit, type FiveYear } from "@/adapters/alpaca/data";
-import { fundInside } from "@/adapters/financialdatasets/client";
+import { companyFacts, fundInside } from "@/adapters/financialdatasets/client";
 import { fundWords } from "@/ai/fundWords";
+import { isLeveragedProduct, LEVERAGED_TEXT } from "@/engine/invest";
 import { takeDaily } from "@/flows/usage";
 import { teenWeek } from "@/flows/teen";
 import { fundStatus, isSymbol } from "@/flows/teenInvest";
 import { FiveYearLine } from "@/ui/FiveYearLine";
-import { InsideCard, ShareCostCard } from "@/ui/InvestCards";
+import { AboutCompanyCard, InsideCard, ShareCostCard } from "@/ui/InvestCards";
+import { pennyLine } from "@/ui/investWords";
 import { TeenLoading, TeenShell, LinkGone } from "@/ui/teen";
 import { explainLlm } from "../../../teenDeps";
 import { investGate, UNAVAILABLE } from "../Gate";
 import { ProposeForm } from "../ProposeForm";
 
-// D16 fund page: facts (what one share costs, what's inside), the one-year line, ONE fixed 5-year line against the
+// D16 fund page (a fund or a stock): facts (what one share costs, what's inside or what the company is), the one-year line, ONE fixed 5-year line against the
 // whole market, then her own answers.
 // No 1D/1W/1M controls, no daily moves, no "good fit" verdicts, no links out.
 export default function FundPage({ params, searchParams }: PageProps<"/t/[token]/invest/[symbol]">) {
@@ -70,6 +72,8 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
   const sentInvestment = sp.sent === "investment" && (await db.select({ id: t.investments.id }).from(t.investments)
     .where(and(eq(t.investments.familyId, fam.id), eq(t.investments.symbol, symbol), eq(t.investments.status, "proposed"))).limit(1)).length > 0;
   const sentFund = sp.sent === "fund" && status === "asked"; // the flash follows what's stored, not the URL
+  const leveraged = isLeveragedProduct(hit.name);
+  const penny = pennyLine(close?.cents ?? null);
 
   return (
     <TeenShell token={token} active="invest" level={w.level}>
@@ -78,13 +82,16 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
         <h1 className="t-h2" style={{ marginTop: 6 }}>{hit.name}</h1>
         <p className="t-muted">{hit.symbol} · {hit.exchange}</p>
       </div>
-      {sentFund && <p className="t-flash" role="status">Sent. {g} will see your answers. If she adds {symbol} to her list, you can propose an amount.</p>}
+      {sentFund && <p className="t-flash" role="status">Sent. {g} will see your answers. If she adds {symbol} to her investing list, you can propose an amount.</p>}
       {sentInvestment && <p className="t-flash" role="status">Sent. {g} will see your answers and decide.</p>}
 
       <ShareCostCard close={close} />
+      {penny && <p className="t-small">{penny}</p>}
       <section className="t-card" aria-label="What it is"><p className="t-small">{about}</p></section>
       {/* Streams in on its own: Financial Datasets being slow, down or capped never holds up the page. */}
-      <Suspense fallback={null}><WhatsInside symbol={symbol} familyId={fam.id} /></Suspense>
+      {/* At most one paid call: fundInside only asks for covered funds, companyFacts never does. */}
+      <Suspense fallback={null}><WhatsInside symbol={symbol} familyId={fam.id} name={hit.name} /></Suspense>
+      <Suspense fallback={null}><AboutCompany symbol={symbol} familyId={fam.id} name={hit.name} /></Suspense>
 
       <section className="t-card" aria-labelledby="year-h">
         <h2 className="t-card__k" id="year-h">One year</h2>
@@ -104,14 +111,16 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
         ) : <p className="t-small">{UNAVAILABLE}</p>}
       </section>
 
-      {status === "asked" ? (
-        <div className="t-card"><p className="t-small">You asked {g} to add {symbol} to her list. She&apos;ll decide.</p></div>
+      {leveraged ? (
+        <div className="t-card"><p className="t-small">{LEVERAGED_TEXT}</p></div>
+      ) : status === "asked" ? (
+        <div className="t-card"><p className="t-small">You asked {g} to add {symbol} to her investing list. She&apos;ll decide.</p></div>
       ) : (
         <>
           <p className="t-small">
             {status === "allowed"
-              ? `${symbol} is on ${g}'s list. Propose an amount and she decides.`
-              : `${symbol} isn't on ${g}'s list yet. Proposing asks her to add it, with your answers.`}
+              ? `${symbol} is on ${g}'s investing list. Propose an amount and she decides.`
+              : `${symbol} isn't on ${g}'s investing list yet. Proposing asks her to add it, with your answers.`}
           </p>
           <ProposeForm token={token} symbol={symbol} guardian={g} price={close?.cents ?? null} fractionable={hit.fractionable} />
         </>
@@ -122,8 +131,13 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
 }
 
 /** One paid Financial Datasets call per render at most (cached a week); companies and failures show nothing. */
-async function WhatsInside({ symbol, familyId }: { symbol: string; familyId: string }) {
-  return <InsideCard inside={await fundInside(symbol, familyId)} />;
+async function WhatsInside({ symbol, familyId, name }: { symbol: string; familyId: string; name: string }) {
+  return <InsideCard inside={await fundInside(symbol, familyId, name)} />;
+}
+
+/** A stock's plain facts (cached a week); funds, leveraged products, uncovered tickers and failures show nothing. */
+async function AboutCompany({ symbol, familyId, name }: { symbol: string; familyId: string; name: string }) {
+  return <AboutCompanyCard facts={await companyFacts(symbol, familyId, name)} />;
 }
 
 /** Next has normally decoded the segment already; a stray "%" must never become a 500. */

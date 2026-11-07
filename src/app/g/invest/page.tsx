@@ -16,7 +16,7 @@ import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "./FundFacts";
 import { Seam } from "@/ui/Seam";
 
-// Amara's fund list: Tether recommends nothing. A fund is on it because she signed it into her rules or approved Zoe's proposal.
+// Amara's investing list (funds and stocks): Tether recommends nothing. One is on it because she signed it into her rules or approved Zoe's proposal.
 export default function InvestPage() {
   return (
     <Suspense fallback={<GuardianLoading />}>
@@ -46,10 +46,10 @@ async function Invest() {
       <div className="g-two">
         <div className="g-stack">
           <section className="g-card" aria-labelledby="funds-h">
-            <h2 className="g-label" id="funds-h">Your fund list</h2>
+            <h2 className="g-label" id="funds-h">Your investing list</h2>
             {funds.length === 0 ? (
               <p className="g-muted">
-                No funds yet. When {zoe} finds one she wants, she proposes it and you decide. Tether suggests nothing.
+                Nothing on it yet. When {zoe} finds a fund or stock she wants, she proposes it and you decide. Tether suggests nothing.
               </p>
             ) : (
               <ul className="g-needs">
@@ -71,8 +71,8 @@ async function Invest() {
                 {proposals.map((p) => (
                   <li key={p.id}><Link href={`/g/requests/${p.id}`}>
                     <span>{p.subject === "fund"
-                      ? `${zoe} proposes adding ${p.symbol ?? "a fund"}`
-                      : `${zoe} proposes investing ${p.amountCents !== undefined ? formatCents(p.amountCents) : ""} in ${p.symbol ?? "a fund"}`}</span>
+                      ? `${zoe} proposes adding ${p.symbol ?? "a fund or stock"} to your investing list`
+                      : `${zoe} proposes investing ${p.amountCents !== undefined ? formatCents(p.amountCents) : ""} in ${p.symbol ?? "a fund or stock"}`}</span>
                   </Link></li>
                 ))}
               </ul>

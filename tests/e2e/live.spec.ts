@@ -96,7 +96,7 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
   await page.getByRole("button", { name: "Advance to end of week" }).click();
   await expect(page.getByRole("status").first()).toContainText(/Demo clock moved forward/, { timeout: 60_000 });
 
-  // Zoe proposes $5 in VTI (already on Amara's fund list in the seeded grant).
+  // Zoe proposes $5 in VTI (already on Amara's investing list in the seeded grant).
   await page.goto("/");
   await page.getByRole("link", { name: "Open Zoe's view" }).click();
   await expect(page).toHaveURL(/\/t\/([^/]+)$/);

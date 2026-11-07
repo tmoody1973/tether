@@ -19,7 +19,9 @@ const BANNED = [
 ];
 const LINK = /https?:|www\.|\]\(|\b[a-z0-9-]+\.(?:com|org|net|io|co|gov)\b/i;
 
-const SYSTEM = `You describe what one fund is, for a teenager, in one plain sentence.
+// A fund or a single company's stock (decision 025). The checks below don't change for stocks; the prompt avoids
+// "invest", which they ban, so a model echoing it isn't rejected (and re-asked on every view).
+const SYSTEM = `You describe what one fund or one company's stock is, for a teenager, in one plain sentence.
 Use only the name, symbol, exchange and whether it can be held in fractions. Write no numbers, no comparisons, no opinions, no advice, no links.
 Reply as JSON: {"text": "..."}.`;
 
@@ -42,7 +44,7 @@ function valid(text: unknown, f: FundFacts): text is string {
 }
 
 const CACHE_MAX = 500;
-/** Validated model sentences by symbol: what a fund is doesn't change, so the model is asked once per process. */
+/** Validated model sentences by symbol: what a fund or stock is doesn't change, so the model is asked once per process. */
 const said = new Map<string, string>();
 
 /** `take` (I4): asked before a model call for an uncached symbol; false (daily cap reached) ⇒ the plain description. */
