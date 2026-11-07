@@ -51,8 +51,9 @@ export function cleanIdentity(raw: unknown): PaypalIdentity {
   const verified = v === true || v === "true" ? true : v === false || v === "false" ? false : undefined;
   const who: PaypalIdentity = { sub };
   const payerId = str(r.payer_id, 64);
-  const givenName = str(r.given_name, 40);
   const name = str(r.name, 80);
+  // The paypalv1.1 userinfo (checked live in the sandbox, 7 Nov) sends only the full `name`: greet by its first word.
+  const givenName = str(r.given_name, 40) ?? str(name?.trim().split(/\s+/)[0], 40);
   if (payerId && /^[A-Za-z0-9_-]+$/.test(payerId)) who.payerId = payerId;
   if (givenName) who.givenName = givenName;
   if (name) who.name = name;
