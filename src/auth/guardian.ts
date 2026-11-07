@@ -54,6 +54,26 @@ export function verifyGuardianCookie(value: string, now: Date): string | null {
   return want.length === got.length && timingSafeEqual(want, got) ? familyId : null;
 }
 
+/**
+ * Any other short-lived signed cookie: `base64url(payload).expiryMs.hmac`. The MAC covers `kind:` too, so a value sealed
+ * for one purpose never opens as another, and never verifies as a guardian cookie (whose MAC has no kind).
+ */
+export function sealValue(kind: string, payload: string, now: Date, ttlMs: number): string {
+  const body = `${Buffer.from(payload).toString("base64url")}.${now.getTime() + ttlMs}`;
+  return `${body}.${mac(`${kind}:${body}`)}`;
+}
+
+/** The payload of a value sealValue made for this kind, or null (forged, expired, malformed, another kind). */
+export function openValue(kind: string, value: string, now: Date): string | null {
+  const parts = value.split(".");
+  if (parts.length !== 3) return null;
+  const [data, expiry, sig] = parts;
+  if (!/^[A-Za-z0-9_-]*$/.test(data) || !/^\d+$/.test(expiry) || Number(expiry) <= now.getTime()) return null;
+  const want = Buffer.from(mac(`${kind}:${data}.${expiry}`));
+  const got = Buffer.from(sig);
+  return want.length === got.length && timingSafeEqual(want, got) ? Buffer.from(data, "base64url").toString() : null;
+}
+
 /** The family id from a valid guardian cookie, or throws GuardianAuthError (401). */
 export function requireGuardian(req: Request, now: Date = new Date()): string {
   let familyId: string | null = null;
