@@ -76,3 +76,29 @@ describe("fundWords", () => {
     expect(calls).toBe(2);
   });
 });
+
+describe("fundWords for a stock as well as a fund", () => {
+  const capture = (text: string) => {
+    const seen: { system?: string } = {};
+    const llm: Llm = { json: (async (a: { system: string }) => { seen.system = a.system; return { text }; }) as unknown as Llm["json"] };
+    return { llm, seen };
+  };
+
+  it("the prompt says it describes one investment, a fund or a single company's stock, and keeps every rule", async () => {
+    const { llm, seen } = capture("Apple Inc. Common Stock is a single company's stock, traded on NASDAQ in part-shares.");
+    await fundWords(llm, fresh({ name: "Apple Inc. Common Stock", exchange: "NASDAQ" }));
+    expect(seen.system).toMatch(/one investment, a fund or a single company's stock/);
+    expect(seen.system).not.toMatch(/one fund is/);
+    expect(seen.system).toMatch(/no numbers, no comparisons, no opinions, no advice, no links/);
+  });
+
+  it("a plain sentence about a stock passes; the same banned words still fall back", async () => {
+    const f = fresh({ name: "Apple Inc. Common Stock", exchange: "NASDAQ" });
+    const s = "Apple Inc. Common Stock is a single company's stock, traded on NASDAQ in part-shares.";
+    expect(await fundWords(say(s), f)).toBe(`${s} ${ONE} ${FIVE}`);
+    for (const bad of ["Apple is a great company to buy.", "Apple beat the market.", "Apple grew a lot."]) {
+      const g = fresh({ name: "Apple Inc. Common Stock", exchange: "NASDAQ" });
+      expect(await fundWords(say(bad), g)).toBe(`Apple Inc. Common Stock (${g.symbol}) is listed on NASDAQ. It can be held in part-shares. ${ONE} ${FIVE}`);
+    }
+  });
+});
