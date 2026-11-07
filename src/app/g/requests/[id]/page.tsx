@@ -5,6 +5,10 @@ import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { guardianHome } from "@/flows/home";
 import { closedRequestView, requestView, type ClosedRequest, type RequestView } from "@/flows/request";
+import { marketFromEnv } from "@/adapters/alpaca/data";
+import { fundInside } from "@/adapters/financialdatasets/client";
+import { InsideLineCard } from "@/ui/InvestCards";
+import { requestShareWords } from "@/ui/investWords";
 import { formatCents, formatDay } from "@/ui/grantWords";
 import { closedWords, requestTitle as title } from "@/ui/approveWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
@@ -105,6 +109,7 @@ function Consequence({ v }: { v: RequestView }) {
   }
   if (v.investment) {
     return (
+      <>
       <section className="g-card" aria-label="What this does to her savings">
         <p style={{ color: "var(--ink-2)" }}>
           She has <b><Money cents={v.investment.savingsCents} /></b> available to invest. This moves <b><Money cents={v.investment.amountCents} /></b> into
@@ -112,16 +117,21 @@ function Consequence({ v }: { v: RequestView }) {
         </p>
         <FundFactsLine symbol={v.investment.symbol} />
       </section>
+      <Suspense fallback={null}><WhatsInside symbol={v.investment.symbol} /></Suspense>
+      </>
     );
   }
   if (v.fund) {
     return (
+      <>
       <section className="g-card" aria-label="What adding this fund means">
         <p style={{ color: "var(--ink-2)" }}>
           Adding <b>{v.fund.symbol}</b> lets {v.teenName} propose investing in it. Nothing is bought now, and each investment still comes to you.
         </p>
         <FundFactsLine symbol={v.fund.symbol} />
       </section>
+      <Suspense fallback={null}><WhatsInside symbol={v.fund.symbol} /></Suspense>
+      </>
     );
   }
   return (
@@ -140,6 +150,7 @@ function Open({ v }: { v: RequestView }) {
       <div>
         <div className="g-eyebrow">Request</div>
         <h1 className="g-request__title">{title(v)}</h1>
+        {v.investment && <Suspense fallback={null}><ShareLine symbol={v.investment.symbol} amountCents={v.investment.amountCents} /></Suspense>}
       </div>
 
       <Consequence v={v} />
@@ -173,4 +184,16 @@ function Open({ v }: { v: RequestView }) {
       </form>
     </div>
   );
+}
+
+/** Under an investment's title: about how much of a share, at the latest close. Nothing without a price. */
+async function ShareLine({ symbol, amountCents }: { symbol: string; amountCents: number }) {
+  const q = await (async () => marketFromEnv().quote(symbol))().catch(() => null);
+  return q ? <p className="g-muted" style={{ marginTop: 4 }}>{requestShareWords(amountCents, q, symbol)}</p> : null;
+}
+
+/** The same "what's inside" Zoe saw, compact. Streams in; hidden for companies or when unavailable. */
+async function WhatsInside({ symbol }: { symbol: string }) {
+  const familyId = await guardianFamilyId(); // read here, so the open/closed switch above stays as it is
+  return familyId ? <InsideLineCard symbol={symbol} inside={await fundInside(symbol, familyId)} /> : null;
 }

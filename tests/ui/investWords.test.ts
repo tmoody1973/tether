@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeWords, shareCount, shareLine, shareWords } from "@/ui/investWords";
+import { closeWords, requestShareWords, shareCount, shareLine, shareWords } from "@/ui/investWords";
 
 describe("shareCount", () => {
   it("4 decimals under one share, 2 at or over one", () => {
@@ -31,5 +31,13 @@ describe("shareLine (the propose form, live)", () => {
 describe("closeWords", () => {
   it("the market day of the close, in New York", () => {
     expect(closeWords(new Date("2026-11-06T05:00:00Z"))).toBe("At Friday's close (6 Nov). You don't need a whole one: you buy in dollars.");
+  });
+});
+
+describe("requestShareWords (under the request's title)", () => {
+  it("about how much of a share, at what price; whole-shares-only says so", () => {
+    expect(requestShareWords(500, { cents: 36186, fractionable: true }, "VTI")).toBe("About 0.0138 of a share at $361.86");
+    expect(requestShareWords(50000, { cents: 36186, fractionable: true }, "VTI")).toBe("About 1.38 shares at $361.86");
+    expect(requestShareWords(500, { cents: 36186, fractionable: false }, "VTI")).toBe("VTI can only be bought in whole shares, $361.86 each.");
   });
 });

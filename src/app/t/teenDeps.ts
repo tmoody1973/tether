@@ -8,6 +8,7 @@ import { anthropicLlm, type Llm } from "@/ai/llm";
 import type { Deps } from "@/flows/purchase";
 import { paymentDeps } from "@/app/g/flowDeps";
 import { pushFromEnv } from "@/adapters/onesignal/push";
+import { marketFromEnv } from "@/adapters/alpaca/data";
 import { pushRequest, type Notify } from "@/flows/notify";
 
 /** The e2e suite's fakes: only with TETHER_E2E=1 (playwright.config sets it), never in production. */
@@ -32,7 +33,9 @@ function pushNotify(db: Db): Notify | undefined {
   const baseUrl = process.env.APP_BASE_URL;
   if (!cfg || !baseUrl) return undefined;
   const deps = paymentDeps(db);
-  return (familyId, approvalId) => after(() => pushRequest(deps, familyId, approvalId, { cfg, baseUrl }).then(() => undefined));
+  // An investment's share count needs the latest close: Alpaca not configured just means today's push.
+  const quote = async (symbol: string) => marketFromEnv().quote(symbol);
+  return (familyId, approvalId) => after(() => pushRequest(deps, familyId, approvalId, { cfg, baseUrl, quote }).then(() => undefined));
 }
 
 /** The refusal sentence writer; null ⇒ explain.ts uses its plain template. */

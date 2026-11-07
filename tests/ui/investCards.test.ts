@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement, type FunctionComponent } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { toFundInside } from "@/adapters/financialdatasets/client";
-import { InsideCard, ShareCostCard } from "@/ui/InvestCards";
+import { InsideCard, InsideLineCard, ShareCostCard } from "@/ui/InvestCards";
 import VTI from "../fixtures/fd-vti-holdings.json";
 
 /** Visible text: tags dropped, entities decoded, whitespace collapsed. */
@@ -32,5 +32,15 @@ describe("Zoe's fund page", () => {
     const t = text(render(ShareCostCard, { close: { cents: 36186, day: new Date("2026-11-06T05:00:00Z") } }));
     expect(t).toBe("One share costs $361.86 At Friday's close (6 Nov). You don't need a whole one: you buy in dollars.");
     expect(render(ShareCostCard, { close: null })).toBe("");
+  });
+});
+
+describe("Amara's request page", () => {
+  it("What's inside {SYMBOL}: the first five inline, then the top ten's share", () => {
+    const t = text(render(InsideLineCard, { symbol: "VTI", inside }));
+    expect(t).toBe("What's inside VTI NVIDIA 6.4%, Apple 5.9%, Alphabet 5.2%, Microsoft 3.8%, Amazon.com 3.2%… The top ten are 32% of the fund.");
+  });
+  it("hidden when unavailable", () => {
+    expect(render(InsideLineCard, { symbol: "VTI", inside: null })).toBe("");
   });
 });

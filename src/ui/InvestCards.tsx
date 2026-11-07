@@ -44,3 +44,17 @@ export function InsideCard({ inside }: { inside: FundInside | null }) {
     </section>
   );
 }
+
+/** Amara's request page: the same facts Zoe saw, compact. Nothing when unavailable. */
+export function InsideLineCard({ symbol, inside }: { symbol: string; inside: FundInside | null }) {
+  if (!inside) return null;
+  const first = inside.rows.slice(0, 5).map((r) => `${r.name} ${pct1(r.pct)}`).join(", ");
+  return (
+    <section className="g-card" aria-labelledby="inside-h">
+      <h2 className="g-label" id="inside-h">What&apos;s inside {symbol}</h2>
+      <p style={{ color: "var(--ink-2)", fontSize: 14 }}>
+        {first}{inside.rows.length > 5 ? "…" : "."} The top ten are {Math.round(inside.topPct)}% of the fund.
+      </p>
+    </section>
+  );
+}

@@ -326,6 +326,9 @@ test("queued order shows \"Queued for market open\"", async ({ page }) => {
   await page.getByRole("link", { name: /Zoe proposes investing \$5\.00 in VTI/ }).click();
   await expect(page).toHaveURL(/\/g\/requests\//); // the link is a client-side navigation: wait for it before reading the URL
   const requestUrl = page.url();
+  await expect(page.getByText(/^About 0\.01\d{2} of a share at \$[\d.]+$/)).toBeVisible(); // the same facts Zoe saw
+  await expect(page.getByRole("region", { name: "What's inside VTI" })).toContainText("NVIDIA 6.4%, Apple 5.9%, Alphabet 5.2%");
+  await expect(page.getByRole("region", { name: "What's inside VTI" })).toContainText("The top ten are 32% of the fund.");
   await page.getByRole("button", { name: "Approve $5.00" }).click();
   await expect(page.getByRole("main").getByRole("status").first()).toContainText("Queued for market open");
 

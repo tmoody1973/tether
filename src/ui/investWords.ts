@@ -45,3 +45,9 @@ export function closeWords(day: Date): string {
   const parts = Object.fromEntries(closeDay.formatToParts(day).map((p) => [p.type, p.value]));
   return `At ${parts.weekday}'s close (${parts.day} ${parts.month}). You don't need a whole one: you buy in dollars.`;
 }
+
+/** Under an investment request's title: "About 0.0138 of a share at $361.86". */
+export function requestShareWords(amountCents: number, price: { cents: number; fractionable: boolean }, symbol: string): string {
+  const w = shareWords(amountCents, price.cents, price.fractionable, symbol);
+  return price.fractionable ? `${w[0].toUpperCase()}${w.slice(1)} at ${formatCents(price.cents)}` : w;
+}
