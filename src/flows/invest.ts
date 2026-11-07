@@ -10,6 +10,8 @@ import type { Cart, Decision, Grant } from "@/engine/types";
 import { AlpacaError, dollars, type AlpacaBroker, type GuardianKyc, type MinorIdentity } from "@/adapters/alpaca/broker";
 import type { Deps } from "@/flows/purchase";
 import { requestApproval } from "@/flows/approvals";
+import { ALPACA_ACCOUNTS_PER_DAY, AccountCapError } from "@/flows/start";
+import { takePool } from "@/flows/usage";
 
 export type InvestDeps = Pick<Deps, "db" | "secret" | "now"> & { alpaca: AlpacaBroker };
 type InvestmentStatus = (typeof t.investments.$inferSelect)["status"];
@@ -83,6 +85,8 @@ export async function ensureAccount(deps: Pick<InvestDeps, "db" | "alpaca">, fam
   const [f] = await db.select().from(t.families).where(eq(t.families.id, familyId));
   if (!f) throw new Error(`unknown family ${familyId}`);
   if (f.alpacaAccountId) return f.alpacaAccountId;
+  // Public demo (decision 026): self-started families share a daily allowance of new Alpaca accounts.
+  if (f.paypalSub && !(await takePool(db, "alpaca_account", ALPACA_ACCOUNTS_PER_DAY))) throw new AccountCapError();
   const { guardian, minor } = demoIdentities(f);
   const { accountId } = await deps.alpaca.createCustodialAccount(guardian, minor);
   const [won] = await db.update(t.families).set({ alpacaAccountId: accountId })
@@ -121,6 +125,7 @@ export async function settleInvestment(deps: InvestDeps, investmentId: string): 
 
   let accountId: string;
   try { accountId = await ensureAccount(deps, inv.familyId); } catch (e) {
+    if (e instanceof AccountCapError) return closeUnfunded(db, inv, "ACCOUNTS_USED_UP"); // calm refusal: nothing debited
     await patch(db, inv.id, { error: errText(e) }); // nothing debited yet; still `approved`, safe to retry
     return { status: "approved", reason: "ACCOUNT_UNAVAILABLE" };
   }

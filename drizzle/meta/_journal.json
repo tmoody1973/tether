@@ -120,6 +120,13 @@
       "when": 1793971048143,
       "tag": "0016_shop_choices",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794069270046,
+      "tag": "0017_start_with_paypal",
+      "breakpoints": true
     }
   ]
 }

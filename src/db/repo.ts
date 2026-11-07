@@ -20,7 +20,8 @@ export type ReceiptRow = Row<typeof t.receipts>;
 
 export async function insertFamily(
   db: Db,
-  v: Pick<Family, "name" | "teenToken" | "guardianName" | "teenName"> & Partial<Pick<Family, "id" | "clockOffsetMs" | "guardianToken">>,
+  v: Pick<Family, "name" | "teenToken" | "guardianName" | "teenName">
+    & Partial<Pick<Family, "id" | "clockOffsetMs" | "guardianToken" | "paypalSub" | "paypalPayerId" | "paypalEmail" | "parentGivenName">>,
 ): Promise<Family> {
   const [row] = await db.insert(t.families).values({ ...v, id: v.id ?? id() }).returning();
   return plain(row);
@@ -119,6 +120,11 @@ export async function getVault(db: Db, familyId: string): Promise<Row<typeof t.v
 export async function saveVault(db: Db, familyId: string, paymentTokenId: string): Promise<void> {
   await db.insert(t.vault).values({ familyId, paymentTokenId })
     .onConflictDoUpdate({ target: t.vault.familyId, set: { paymentTokenId, deletedAt: null, createdAt: sql`now()` } });
+}
+
+/** Amara pressed Done on "Send Zoe the link" (the first-run checklist's last step). */
+export async function markTeenLinkSent(db: Db, familyId: string, at: Date): Promise<void> {
+  await db.update(t.families).set({ teenLinkSentAt: at }).where(and(eq(t.families.id, familyId), isNull(t.families.teenLinkSentAt)));
 }
 
 /** A guardian approval for this purchase and exact cart that has not expired at `now`. */

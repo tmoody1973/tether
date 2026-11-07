@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
-import { getActiveGrant, getFamily, getVault } from "@/db/repo";
+import { getActiveGrant, getFamily, getLatestGrant, getVault } from "@/db/repo";
+import { removalDate } from "@/flows/start";
 import { ledgerView, weekKey } from "@/ledger/ledger";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
 import type { Level } from "@/engine/ladder";
@@ -19,16 +20,29 @@ export interface GuardianHome {
   paypalSaved: boolean; needsYou: NeedsYou[]; now: Date;
   /** The shared demo family (it carries a seed snapshot): the demo box offers Reset. */
   isDemo: boolean;
+  /** Self-started families (decision 026): the first-run checklist, shown instead of "Needs you" while a step is open. */
+  firstRun: FirstRunStep[] | null;
+  /** Self-started families are retired 7 days (real time) after they were made. */
+  removesAt: Date | null;
+}
+
+export type FirstRunStep = { key: "paypal" | "rules" | "link"; done: boolean };
+
+/** Save your PayPal, sign the first rules, send the teen the link: in that order. */
+export function firstRunSteps(s: { paypalSaved: boolean; rulesSigned: boolean; linkSent: boolean }): FirstRunStep[] {
+  return [{ key: "paypal", done: s.paypalSaved }, { key: "rules", done: s.rulesSigned }, { key: "link", done: s.linkSent }];
 }
 
 /** Read model for Amara's home: signals, not a feed. `now` is the family's demo-clock time. */
 export async function guardianHome(db: Db, familyId: string, now: Date): Promise<GuardianHome> {
   const fam = await getFamily(db, familyId);
   if (!fam) throw new Error(`unknown family ${familyId}`);
-  const [grant, vault, ledger, [goal], pending] = await Promise.all([
+  const [grant, vault, ledger, [goal], pending, latest] = await Promise.all([
     getActiveGrant(db, familyId), getVault(db, familyId), ledgerView(db, familyId, now),
     db.select().from(t.goals).where(eq(t.goals.familyId, familyId)), pendingApprovals(db, familyId, now),
+    getLatestGrant(db, familyId),
   ]);
+  const selfStarted = fam.paypalSub !== null;
   const grantEnded = !grant || grant.expiresAt <= now;
   const approvals = await Promise.all(pending.map((a) => describe(db, a)));
   return {
@@ -46,6 +60,8 @@ export async function guardianHome(db: Db, familyId: string, now: Date): Promise
       ...approvals,
     ],
     now, isDemo: fam.demo !== null,
+    firstRun: selfStarted ? firstRunSteps({ paypalSaved: vault !== null, rulesSigned: latest !== null, linkSent: fam.teenLinkSentAt !== null }) : null,
+    removesAt: selfStarted ? removalDate(fam.createdAt) : null,
   };
 }
 

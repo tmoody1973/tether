@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, boolean, jsonb, timestamp, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, boolean, jsonb, timestamp, primaryKey, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type { Cart, Decision, Grant } from "@/engine/types";
@@ -41,7 +41,15 @@ export const families = pgTable("families", {
   // Demo reset: journal rows written (real time) in (from, to] stay on the record but no longer count in any total.
   ledgerVoidFrom: ts("ledger_void_from"),
   ledgerVoidTo: ts("ledger_void_to"),
-});
+  // Started with Log in with PayPal (decision 026). paypal_sub is PayPal's identity id, NOT unique: one parent may own
+  // several families. All null on the demo family and on seeded ones; a family with paypal_sub set is "self-started".
+  paypalSub: text("paypal_sub"),
+  paypalPayerId: text("paypal_payer_id"),
+  paypalEmail: text("paypal_email"),
+  parentGivenName: text("parent_given_name"),
+  createdAt: createdAt(), // REAL time; a self-started family is retired 7 days after this
+  teenLinkSentAt: ts("teen_link_sent_at"), // Amara pressed Done on "Send Zoe the link": the first-run checklist's step 3
+}, (f) => [index("families_paypal_sub_idx").on(f.paypalSub)]);
 
 export const merchants = pgTable("merchants", {
   id: text("id").primaryKey(),
@@ -213,6 +221,16 @@ export const usage = pgTable("usage", {
   day: text("day").notNull(), // YYYY-MM-DD, real UTC date (never the demo clock)
   count: integer("count").notNull().default(0),
 }, (u) => [primaryKey({ columns: [u.familyId, u.kind, u.day] })]);
+
+/**
+ * Site-wide daily counters (real UTC day) for the public "start your own family" door: new families, new Alpaca
+ * accounts, and the one shared pot of paid lookups every self-started family also draws from. Kind is free text.
+ */
+export const usagePool = pgTable("usage_pool", {
+  kind: text("kind").notNull(),
+  day: text("day").notNull(),
+  count: integer("count").notNull().default(0),
+}, (u) => [primaryKey({ columns: [u.kind, u.day] })]);
 
 /**
  * Amara's own say over Zoe's shops, kept per family so it outlives any one set of rules: every grant built from a level
