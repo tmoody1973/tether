@@ -2,6 +2,7 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { needsBadge } from "@/ui/activityWords";
+import { PaypalLoginButton } from "@/ui/PaypalLogin";
 
 // Money and Bar live in @/ui/money so client components (the assistant's answer cards) can use them too.
 export { Bar, Money } from "@/ui/money";
@@ -46,14 +47,30 @@ export function GuardianShell({ active, teenName, needs = 0, children }: {
   );
 }
 
-/** The neutral page for anyone without Amara's cookie: no data, no navigation. */
-export function SignedOut() {
+const LOGIN_TROUBLE: Record<string, string> = {
+  failed: "PayPal didn't finish signing you in, so nothing changed.",
+  cancelled: "You left PayPal before signing in. Nothing changed.",
+  expired: "That took a while, so Tether lost track of who you are. Nothing was made.",
+};
+
+/**
+ * The neutral page for anyone without Amara's cookie: no data, no navigation. Offers Log in with PayPal (decision 026);
+ * `login` is the outcome of a PayPal round trip that didn't sign her in.
+ */
+export function SignedOut({ login }: { login?: string } = {}) {
+  const trouble = login ? LOGIN_TROUBLE[login] : undefined;
   return (
     <div className="g-app">
       <main className="g-gate">
         <div className="g-card">
           <div className="g-brand" style={{ justifyContent: "center" }}><Image className="g-brand__logo" src="/brand/tether-horizontal-color.svg" alt="Tether" width={106} height={32} priority /></div>
-          <p>Open your Tether link to continue.</p>
+          <h1 className="g-title" style={{ fontSize: 24 }}>Welcome back</h1>
+          {trouble && <p className="g-flash g-flash--warn" role="status" style={{ marginTop: 10 }}>{trouble} <a className="g-textlink" href="/g/login/paypal">Try again</a></p>}
+          <p style={{ margin: "10px 0 16px" }}>Sign in with the PayPal you used to start your family.</p>
+          <PaypalLoginButton />
+          <p className="g-note" style={{ marginTop: 12 }}>PayPal confirms it&apos;s you. Tether never sees your PayPal password.</p>
+          <p className="g-note" style={{ marginTop: 6 }}>Have a private Tether link? Open your Tether link to continue.</p>
+          <p className="g-note" style={{ marginTop: 6 }}>Sandbox only; no real money moves.</p>
         </div>
       </main>
     </div>

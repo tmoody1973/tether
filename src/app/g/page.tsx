@@ -5,6 +5,8 @@ import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { getLatestGrant, recentReceipts } from "@/db/repo";
+import { LEVELS } from "@/engine/ladder";
+import { shopsForLevel } from "@/flows/grant";
 import { commitmentFloorCents } from "@/engine/ladder";
 import { guardianHome, type NeedsYou } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
@@ -21,6 +23,7 @@ import { AskBox } from "./AskBox";
 import { NotifyCard } from "./NotifyCard";
 import { PaymentRow } from "./PaymentRow";
 import { ResetDemo } from "./ResetDemo";
+import { FirstRun, WayBackIn } from "./FirstRun";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
   return (
@@ -45,6 +48,8 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "connected") return { text: "Your PayPal is saved. Tether charges it only for purchases that pass the rules." };
   if (paypal === "failed") return { text: "PayPal didn't finish saving, so nothing was saved. Try again.", warn: true };
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
+  if (paypal === "different") return { text: "That PayPal is a different account from the one you logged in with, so nothing was saved.", warn: true, connectPaypal: true };
+  if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.` };
   const demo = one("demo");
   if (demo === "reset" || demo === "reset-paypal") {
     const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
@@ -61,20 +66,24 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
 
 async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   const familyId = await guardianFamilyId();
-  if (!familyId) return <SignedOut />;
+  const sp = await searchParams;
+  if (!familyId) return <SignedOut login={typeof sp.login === "string" ? sp.login : undefined} />;
   const db = await getDb();
   const now = await clockNow(db, familyId);
   const [h, latest, shops, recent] = await Promise.all([
     guardianHome(db, familyId, now), getLatestGrant(db, familyId), guardianShops(db, familyId, now), recentReceipts(db, familyId, 3),
   ]);
-  const sp = await searchParams;
   const paid = sp.decided === "paid" && typeof sp.req === "string" ? await approvedPurchase(db, familyId, sp.req) : null;
   const note = flash(sp, { teen: h.teenName, guardian: h.guardianName }, paid);
   const zoe = h.teenName;
   const leftCents = Math.max(0, h.weeklyCents - h.spentThisWeekCents);
+  // Decision 026: a family started with PayPal sees its first-run checklist instead of "Needs you" until all three are done.
+  const firstRun = h.firstRun?.some((s) => !s.done) ? h.firstRun : null;
+  const needs = firstRun ? firstRun.filter((s) => !s.done).length : h.needsYou.length;
+  const rulesLine = firstRun ? await firstRulesLine(db, familyId, now) : "";
 
   return (
-    <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
+    <GuardianShell active="home" teenName={zoe} needs={needs}>
       <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}</h1>
         {h.level && <span className="g-chip g-chip--accent">Level {h.level}</span>}
@@ -90,7 +99,12 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
 
       <div className="g-two g-home">
         <div className="g-stack">
-          {h.needsYou.length === 0 ? (
+          {firstRun ? (
+            <>
+              <FirstRun steps={firstRun} teen={zoe} rulesLine={rulesLine} />
+              <WayBackIn />
+            </>
+          ) : h.needsYou.length === 0 ? (
             <div className="g-quiet g-home__needs" role="status">
               <div className="g-quiet__big">Nothing needs you today.</div>
               <p>You&apos;ll hear from Tether when something needs a decision — not every time {zoe} buys something.</p>
@@ -150,7 +164,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <p className="g-more"><Link className="g-textlink" href="/g/rules">{h.level && !h.grantEnded ? "Change her rules" : "Sign her rules"}</Link></p>
           </section>
 
-          <details className="g-card g-demo">
+          <details className="g-card g-demo" open={firstRun !== null}>
             <summary>Demo controls</summary>
             <div style={{ margin: "4px 0 10px" }}>
               <Seam kinds={["clock"]}>Demo date: <b>{formatDay(h.now)}</b>.</Seam>
@@ -162,12 +176,26 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <p className="g-note" style={{ marginTop: 8 }}>
               Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly check-in.
             </p>
+            {h.removesAt && (
+              <p className="g-note" style={{ marginTop: 8 }}>
+                Your family&apos;s own clock: moving it changes nothing for anyone else. This family is removed on <b>{formatDay(h.removesAt)}</b>, 7 days after you made it.
+              </p>
+            )}
             {h.isDemo && <ResetDemo />}
           </details>
         </div>
       </div>
     </GuardianShell>
   );
+}
+
+/** "Level 1: $20 a week at Best Buy and Target. Over $10 asks you first." From the ladder and the shops Level 1 opens. */
+async function firstRulesLine(db: Awaited<ReturnType<typeof getDb>>, familyId: string, now: Date): Promise<string> {
+  const l1 = LEVELS[1];
+  const shops = await shopsForLevel(db, familyId, 1, now);
+  const where = shops.length ? ` at ${listWords(shops)}` : "";
+  const asks = l1.approvalOverCents !== null ? ` Over ${formatCents(l1.approvalOverCents).replace(/\.00$/, "")} asks you first.` : "";
+  return `Level 1: ${formatCents(l1.weeklyCents).replace(/\.00$/, "")} a week${where}.${asks}`;
 }
 
 function Def({ k, v }: { k: string; v: React.ReactNode }) {

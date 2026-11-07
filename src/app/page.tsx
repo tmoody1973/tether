@@ -3,6 +3,7 @@ import "@/ui/tokens.css";
 import "./landing.css";
 import { Seam } from "@/ui/Seam";
 import { demoLinks } from "./demoLinks";
+import { StartFamily } from "./StartFamily";
 
 const REPO_URL = "https://github.com/tmoody1973/tether";
 
@@ -38,6 +39,7 @@ export default function Landing() {
             </div>
           )}
           <Seam center kinds={["sandbox", "family"]} />
+          <StartFamily />
         </section>
 
         <section className="l-band" aria-label="How it works">
