@@ -1,5 +1,6 @@
 // Stand-ins for PayPal's sandbox and Channel3 during e2e. Never real money, never a real shop.
-// - PayPal: OAuth, create-order (idempotent on PayPal-Request-Id, like PayPal), Transaction Search (Tether's
+// - PayPal: OAuth, Log in with PayPal (/connect + userinfo), saving a wallet (vault setup → approve → payment token),
+//   create-order (idempotent on PayPal-Request-Id, like PayPal), Transaction Search (Tether's
 //   whole merchant account: other families' and unlinked rows too), and a vault delete that is refused.
 // - Channel3: product `sku-<cents>` costs <cents>, at the shop it is asked about. Search returns the same three
 //   products whatever the words (the teen e2e agent proposes exactly these); lookup reads `sku-<cents>` from the URL.
@@ -98,7 +99,42 @@ createServer((req, res) => {
     };
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
-    if (req.method === "POST" && path === "/v1/oauth2/token") return send(200, { access_token: "e2e-fake", expires_in: 3600 });
+    // Log in with PayPal: /connect "signs in" at once and sends the browser back with a code; each login is a new
+    // PayPal user (the code names it), so a re-run never finds an earlier run's family.
+    if (req.method === "GET" && path === "/connect") {
+      const back = new URL(url.searchParams.get("redirect_uri") ?? "http://localhost/");
+      back.searchParams.set("code", `E2E-LOGIN-${++n}`);
+      back.searchParams.set("state", url.searchParams.get("state") ?? "");
+      res.writeHead(302, { location: back.toString() });
+      return res.end();
+    }
+    if (req.method === "POST" && path === "/v1/oauth2/token") {
+      const form = new URLSearchParams(raw);
+      if (form.get("grant_type") === "authorization_code") return send(200, { access_token: `login:${form.get("code")}`, expires_in: 28800 });
+      return send(200, { access_token: "e2e-fake", expires_in: 3600 });
+    }
+    if (req.method === "GET" && path === "/v1/identity/oauth2/userinfo") {
+      const who = String(req.headers.authorization ?? "").replace(/^Bearer login:/, "");
+      return send(200, { user_id: `e2e-paypal-user-${who}`, given_name: "Amara", name: "Amara Okafor", payer_id: "E2EPAYER1", verified_account: "true", emails: [{ value: "amara@e2e.example", primary: true }] });
+    }
+    // Saving a wallet (vault v3): a setup token whose approve link comes straight back, then a payment token that says
+    // which PayPal account it belongs to (the same one the login above returns).
+    if (req.method === "POST" && path === "/v3/vault/setup-tokens") {
+      const id = `E2E-SETUP-${++n}`;
+      const back = (JSON.parse(raw || "{}") as { payment_source?: { paypal?: { experience_context?: { return_url?: string } } } })
+        .payment_source?.paypal?.experience_context?.return_url ?? "";
+      const approve = `http://localhost:${E2E.fakePort}/vault/approve?id=${id}&back=${encodeURIComponent(back)}`;
+      return send(201, { id, status: "PAYER_ACTION_REQUIRED", links: [{ rel: "approve", href: approve }] });
+    }
+    if (req.method === "GET" && path === "/vault/approve") {
+      const back = new URL(url.searchParams.get("back") ?? "http://localhost/");
+      back.searchParams.set("approval_token_id", url.searchParams.get("id") ?? "");
+      res.writeHead(302, { location: back.toString() });
+      return res.end();
+    }
+    if (req.method === "POST" && path === "/v3/vault/payment-tokens") {
+      return send(201, { id: `E2E-PT-${++n}`, payment_source: { paypal: { payer_id: "E2EPAYER1", email_address: "amara@e2e.example" } } });
+    }
     if (req.method === "POST" && path === "/v2/checkout/orders") {
       const key = String(req.headers["paypal-request-id"] ?? "");
       if (!orders.has(key)) {

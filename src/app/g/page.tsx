@@ -5,6 +5,8 @@ import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { getLatestGrant, recentReceipts } from "@/db/repo";
+import { LEVELS } from "@/engine/ladder";
+import { shopsForLevel } from "@/flows/grant";
 import { commitmentFloorCents } from "@/engine/ladder";
 import { guardianHome, type NeedsYou } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
@@ -21,6 +23,7 @@ import { AskBox } from "./AskBox";
 import { NotifyCard } from "./NotifyCard";
 import { PaymentRow } from "./PaymentRow";
 import { ResetDemo } from "./ResetDemo";
+import { FirstRun, WayBackIn } from "./FirstRun";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
   return (
@@ -45,6 +48,8 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "connected") return { text: "Your PayPal is saved. Tether charges it only for purchases that pass the rules." };
   if (paypal === "failed") return { text: "PayPal didn't finish saving, so nothing was saved. Try again.", warn: true };
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
+  if (paypal === "different") return { text: "That PayPal is a different account from the one you logged in with, so nothing was saved.", warn: true, connectPaypal: true };
+  if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.` };
   const demo = one("demo");
   if (demo === "reset" || demo === "reset-paypal") {
     const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
@@ -61,24 +66,31 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
 
 async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   const familyId = await guardianFamilyId();
-  if (!familyId) return <SignedOut />;
+  const sp = await searchParams;
+  if (!familyId) return <SignedOut login={typeof sp.login === "string" ? sp.login : undefined} />;
   const db = await getDb();
   const now = await clockNow(db, familyId);
   const [h, latest, shops, recent] = await Promise.all([
     guardianHome(db, familyId, now), getLatestGrant(db, familyId), guardianShops(db, familyId, now), recentReceipts(db, familyId, 3),
   ]);
-  const sp = await searchParams;
   const paid = sp.decided === "paid" && typeof sp.req === "string" ? await approvedPurchase(db, familyId, sp.req) : null;
   const note = flash(sp, { teen: h.teenName, guardian: h.guardianName }, paid);
   const zoe = h.teenName;
   const leftCents = Math.max(0, h.weeklyCents - h.spentThisWeekCents);
+  // Decision 026: a family started with PayPal sees its first-run checklist instead of "Needs you" until all three are done.
+  const firstRun = h.firstRun?.some((s) => !s.done) ? h.firstRun : null;
+  const needs = firstRun ? firstRun.filter((s) => !s.done).length : h.needsYou.length;
+  const rulesLine = firstRun ? await firstRulesLine(db, familyId, now) : "";
+  // Review L9: a family started with PayPal could be anyone's teen, so its Home says the teen's name, never "her".
+  // The shared demo family (and seeded ones) keep today's wording.
+  const w = teenWords(zoe, h.firstRun !== null);
 
   return (
-    <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
+    <GuardianShell active="home" teenName={zoe} needs={needs}>
       <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}</h1>
         {h.level && <span className="g-chip g-chip--accent">Level {h.level}</span>}
-        <span className="g-sub">{!h.expiresAt ? "No rules in force" : h.grantEnded ? `Her rules ended ${formatDay(h.expiresAt)}` : `Rules in force until ${formatDay(h.expiresAt)}`}</span>
+        <span className="g-sub">{!h.expiresAt ? "No rules in force" : h.grantEnded ? `${w.Her} rules ended ${formatDay(h.expiresAt)}` : `Rules in force until ${formatDay(h.expiresAt)}`}</span>
       </div>
       {note && (
         <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">
@@ -90,7 +102,12 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
 
       <div className="g-two g-home">
         <div className="g-stack">
-          {h.needsYou.length === 0 ? (
+          {firstRun ? (
+            <>
+              <FirstRun steps={firstRun} teen={zoe} rulesLine={rulesLine} />
+              <WayBackIn />
+            </>
+          ) : h.needsYou.length === 0 ? (
             <div className="g-quiet g-home__needs" role="status">
               <div className="g-quiet__big">Nothing needs you today.</div>
               <p>You&apos;ll hear from Tether when something needs a decision — not every time {zoe} buys something.</p>
@@ -99,7 +116,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <section className="g-card g-home__needs" aria-labelledby="needs-h">
               <h2 className="g-label" id="needs-h">Needs you</h2>
               <ul className="g-needs">
-                {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} item={n} zoe={zoe} guardian={h.guardianName} hadRules={h.grantVersion !== null} />)}
+                {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} item={n} zoe={zoe} guardian={h.guardianName} hadRules={h.grantVersion !== null} w={w} />)}
               </ul>
             </section>
           )}
@@ -138,7 +155,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
           </section>
 
           <section className="g-card" aria-labelledby="glance-h">
-            <h2 className="g-label" id="glance-h">Her rules at a glance</h2>
+            <h2 className="g-label" id="glance-h">{w.Her} rules at a glance</h2>
             {latest && h.level ? (
               <>
                 <Def k="Each week" v={formatCents(h.weeklyCents)} />
@@ -147,10 +164,10 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
                 <Def k="Saves at least" v={`${formatCents(commitmentFloorCents(h.weeklyCents, latest.body.commitmentFloorPct))} a week`} />
               </>
             ) : <p className="g-muted">No rules in force. {zoe} can&apos;t spend until you sign them.</p>}
-            <p className="g-more"><Link className="g-textlink" href="/g/rules">{h.level && !h.grantEnded ? "Change her rules" : "Sign her rules"}</Link></p>
+            <p className="g-more"><Link className="g-textlink" href="/g/rules">{h.level && !h.grantEnded ? `Change ${w.her} rules` : `Sign ${w.her} rules`}</Link></p>
           </section>
 
-          <details className="g-card g-demo">
+          <details className="g-card g-demo" open={firstRun !== null}>
             <summary>Demo controls</summary>
             <div style={{ margin: "4px 0 10px" }}>
               <Seam kinds={["clock"]}>Demo date: <b>{formatDay(h.now)}</b>.</Seam>
@@ -160,8 +177,13 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
                 .map(([to, label]) => <PendingButton key={to} name="to" value={to} label={label} pendingLabel="Moving the clock…" className="g-btn g-btn--ghost" />)}
             </form>
             <p className="g-note" style={{ marginTop: 8 }}>
-              Ended weeks close as the clock passes them (what she didn&apos;t spend counts as saved). A month end also runs the monthly check-in.
+              Ended weeks close as the clock passes them (what {w.she} didn&apos;t spend counts as saved). A month end also runs the monthly check-in.
             </p>
+            {h.removesAt && (
+              <p className="g-note" style={{ marginTop: 8 }}>
+                Your family&apos;s own clock: moving it changes nothing for anyone else. This family is removed on <b>{formatDay(h.removesAt)}</b>, 7 days after you made it.
+              </p>
+            )}
             {h.isDemo && <ResetDemo />}
           </details>
         </div>
@@ -170,23 +192,39 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   );
 }
 
+/** "Level 1: $20 a week at Best Buy and Target. Over $10 asks you first." From the ladder and the shops Level 1 opens. */
+async function firstRulesLine(db: Awaited<ReturnType<typeof getDb>>, familyId: string, now: Date): Promise<string> {
+  const l1 = LEVELS[1];
+  const shops = await shopsForLevel(db, familyId, 1, now);
+  const where = shops.length ? ` at ${listWords(shops)}` : "";
+  const asks = l1.approvalOverCents !== null ? ` Over ${formatCents(l1.approvalOverCents).replace(/\.00$/, "")} asks you first.` : "";
+  return `Level 1: ${formatCents(l1.weeklyCents).replace(/\.00$/, "")} a week${where}.${asks}`;
+}
+
 function Def({ k, v }: { k: string; v: React.ReactNode }) {
   return <div className="g-def"><span className="g-def__k">{k}</span><span className="g-def__lead" /><span className="g-def__v">{v}</span></div>;
 }
 
 /** Slot for the "get a buzz when Zoe asks" notification card (mockup). Empty for now; a later task fills it. */
-function NeedsYouRow({ item, zoe, guardian, hadRules }: { item: NeedsYou; zoe: string; guardian: string; hadRules: boolean }) {
+/** "her"/"she" for the demo family; the teen's name for a family started with PayPal (review L9). */
+function teenWords(teen: string, named: boolean) {
+  return named ? { her: `${teen}'s`, Her: `${teen}'s`, she: teen } : { her: "her", Her: "Her", she: "she" };
+}
+
+function NeedsYouRow({ item, zoe, guardian, hadRules, w }: {
+  item: NeedsYou; zoe: string; guardian: string; hadRules: boolean; w: ReturnType<typeof teenWords>;
+}) {
   if (item.kind === "rules") {
     return (
       <li><Link href="/g/rules">
         <span>{hadRules ? `${zoe}'s week has ended` : `${zoe} has no rules yet`}
-          <small>{item.nudged ? `${zoe} nudged you to renew them. ` : ""}Sign her rules so she can spend.</small></span>
+          <small>{item.nudged ? `${zoe} nudged you to renew them. ` : ""}Sign {w.her} rules so {w.she} can spend.</small></span>
       </Link></li>
     );
   }
   if (item.kind === "message") {
     // No button: her rules can't pay for it, and an approval never lifts a refusal. It's for a conversation.
-    return <li><span className="g-needs__note">{zoe} asked you about {item.note}<small>Her rules can&apos;t pay for this one this week, so nothing will be charged.</small></span></li>;
+    return <li><span className="g-needs__note">{zoe} asked you about {item.note}<small>{w.Her} rules can&apos;t pay for this one this week, so nothing will be charged.</small></span></li>;
   }
   if (item.kind === "paypal") {
     return (

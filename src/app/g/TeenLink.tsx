@@ -3,8 +3,8 @@
 import { useState } from "react";
 
 /** "Send Zoe her link": shows the link as text to copy into a message. Opening it is how Zoe signs in. */
-export function TeenLink({ url, teenName }: { url: string; teenName: string }) {
-  const [open, setOpen] = useState(false);
+export function TeenLink({ url, teenName, startOpen = false }: { url: string; teenName: string; startOpen?: boolean }) {
+  const [open, setOpen] = useState(startOpen);
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -25,7 +25,7 @@ export function TeenLink({ url, teenName }: { url: string; teenName: string }) {
         <button type="button" className="g-btn" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
       </div>
       <p className="g-note" style={{ marginTop: 8 }} aria-live="polite">
-        Paste it into a message to {teenName}. Opening it is how she gets in — no app, no password.
+        Paste it into a message to {teenName}. Opening it is how {teenName} gets in — no app, no password.
       </p>
     </div>
   );

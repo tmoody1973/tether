@@ -28,6 +28,15 @@ export class PaypalError extends Error {
   }
 }
 
+/**
+ * Safe to log: PayPal's own error text (it carries no ids, tokens or emails), else only the error's class name. A
+ * database error's message lists the query's values (drizzle: "Failed query: … params: …"), so it is never logged.
+ */
+export function safeErrorText(err: unknown): string {
+  if (err instanceof PaypalError) return err.message;
+  return err instanceof Error ? err.name : "unknown error";
+}
+
 export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): PaypalHttp {
   let cached: { token: string; refreshAt: number } | null = null;
 
