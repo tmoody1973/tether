@@ -7,6 +7,7 @@ import { getDb } from "@/db/client";
 import * as t from "@/db/schema";
 import { STAND_IN_LABEL } from "@/adapters/alpaca/broker";
 import { guardianHome } from "@/flows/home";
+import { allowedFunds } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
 import { INVEST_STATUS } from "@/ui/investWords";
 import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
@@ -28,7 +29,7 @@ async function Invest() {
   const db = await getDb();
   const [h, funds] = await Promise.all([
     guardianHome(db, familyId, await clockNow(db, familyId)), // expires stale asks first (M3), so the list below is current
-    db.select().from(t.fundAllowlist).where(eq(t.fundAllowlist.familyId, familyId)),
+    allowedFunds(db, familyId), // her signed rules plus the funds she approved since
   ]);
   const investments = await db.select().from(t.investments).where(eq(t.investments.familyId, familyId));
   const zoe = h.teenName;
@@ -50,10 +51,10 @@ async function Invest() {
               </p>
             ) : (
               <ul className="g-needs">
-                {funds.map((f) => (
-                  <li key={f.symbol} style={{ padding: "12px 2px" }}>
-                    <b>{f.symbol}</b>
-                    <FundFactsLine symbol={f.symbol} />
+                {funds.map((symbol) => (
+                  <li key={symbol} style={{ padding: "12px 2px" }}>
+                    <b>{symbol}</b>
+                    <FundFactsLine symbol={symbol} />
                   </li>
                 ))}
               </ul>

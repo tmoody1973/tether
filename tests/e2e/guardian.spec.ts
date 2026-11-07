@@ -188,8 +188,11 @@ test("approves pending request in one tap", async ({ page }) => {
   await expect(row).toContainText(/E2E-PAID-\d+/);
   await expect(row).toContainText("Rules v1, signed by you, and you approved it");
   await expect(row.locator("dd", { hasText: "Matches PayPal" })).toBeVisible();
-  await page.goto(`/g/requests/${E2E.approveApprovalId}`); // a decided request has closed
-  await expect(page.getByText("This request has closed.")).toBeVisible();
+  await page.goto(`/g/requests/${E2E.approveApprovalId}`); // a decided request says what happened
+  await expect(page.getByText("Already approved.")).toBeVisible();
+  await expect(page.getByRole("main")).toContainText(/\$8\.00 at Best Buy · approved/);
+  await expect(page.getByRole("main")).toContainText("Paid.");
+  await expect(page.getByRole("link", { name: "See activity" })).toHaveAttribute("href", "/g/activity");
   await expect(page.getByRole("button", { name: /Approve/ })).toHaveCount(0);
 });
 
