@@ -102,6 +102,17 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 .l-problem__body { display: grid; gap: 16px; }
 .l-problem__body p { color: var(--l-body); }
 .l-problem__body strong { color: var(--l-ink); }
+.l-numbers { list-style: none; margin: clamp(40px, 5vw, 64px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 36px 28px; }
+.l-numbers > li { grid-column: span 2; }
+.l-numbers > li:nth-child(n+4) { grid-column: span 3; }
+.l-numbers li { border-top: 2px solid var(--l-brand-deep); padding-top: 16px; display: grid; gap: 8px; align-content: start; font-size: 15px; color: var(--l-body); }
+.l-numbers__who { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--l-brand-deep); }
+.l-numbers__fig { font-size: clamp(32px, 3.4vw, 42px); line-height: 1; letter-spacing: -0.03em; font-weight: 800; color: var(--l-ink); }
+.l-numbers cite { display: block; margin-top: 4px; font-style: normal; font-size: 13.5px; color: var(--l-ink-3); }
+.l-numbers__answer { color: var(--l-ink-2); }
+.l-numbers__answer strong { color: var(--l-ink); }
+.l-numbers__src { margin-top: 20px; font-size: 14.5px; }
+.l-numbers__src a { color: var(--l-brand-deep); font-weight: 600; display: inline-block; padding: 12px 0; }
 
 /* ---------- how it works: swimlanes ---------- */
 .l-how { padding: clamp(56px, 7vw, 96px) 0; background: #fff; border-top: 1px solid var(--l-line); border-bottom: 1px solid var(--l-line); scroll-margin-top: 12px; }
@@ -317,7 +328,8 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 }
 @media (max-width: 860px) {
   .l-top nav a:not(.l-btn) { display: none; }
-  .l-problem__grid, .l-refuse .l-feat__in, .l-ai__grid, .l-try__in, .l-agents__pair, .l-checked__list { grid-template-columns: 1fr; }
+  .l-problem__grid, .l-numbers, .l-refuse .l-feat__in, .l-ai__grid, .l-try__in, .l-agents__pair, .l-checked__list { grid-template-columns: 1fr; }
+  .l-numbers > li, .l-numbers > li:nth-child(n+4) { grid-column: auto; }
   .l-refusal { justify-self: stretch; }
   .l-lanes { display: flex; flex-direction: column; }
   .l-lane-label, .l-cell--empty { display: none; }
