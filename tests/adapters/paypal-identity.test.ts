@@ -80,6 +80,19 @@ describe("cleanIdentity (untrusted userinfo)", () => {
       .toEqual({ sub: "S1", email: "a@b.co", verified: false, givenName: "Ana" });
   });
 
+  it("live sandbox paypalv1.1 shape (7 Nov): full name only ⇒ its first word is the given name; primary email from emails[]", () => {
+    expect(cleanIdentity({
+      user_id: "https://www.paypal.com/webapps/auth/identity/user/AbC123", sub: "https://www.paypal.com/webapps/auth/identity/user/AbC123",
+      name: "Amara Okafor", payer_id: "PAYER123", verified_account: "true",
+      emails: [{ value: "old@x.co", primary: false, confirmed: true }, { value: "Amara@Example.com", primary: true, confirmed: true }],
+    })).toMatchObject({ name: "Amara Okafor", givenName: "Amara", payerId: "PAYER123", email: "amara@example.com", verified: true });
+  });
+
+  it("given_name wins over the full name; a blank full name gives no given name", () => {
+    expect(cleanIdentity({ sub: "S1", given_name: "Ana", name: "Ana-Maria Lopez" }).givenName).toBe("Ana");
+    expect(cleanIdentity({ sub: "S1", name: "   " }).givenName).toBeUndefined();
+  });
+
   it("no identity id ⇒ throws: nothing to key the family on", () => {
     expect(() => cleanIdentity({ name: "Amara" })).toThrow();
     expect(() => cleanIdentity(null)).toThrow();
