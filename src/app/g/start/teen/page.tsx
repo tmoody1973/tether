@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { START_COOKIE, openStart } from "@/auth/start";
 import { GuardianLoading } from "@/ui/guardian";
 import { PaypalLoginButton } from "@/ui/PaypalLogin";
+import { SandboxLogin } from "@/ui/SandboxLogin";
 import { demoLinks } from "../../../demoLinks";
 import { StartForm } from "./StartForm";
 
@@ -48,7 +49,7 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
         <h1>Start your own family</h1>
         <p>First, log in with PayPal. Tether pays from your PayPal, and only for purchases that pass the rules you sign.</p>
         <div className="s-actions s-center"><PaypalLoginButton /></div>
-        <p className="g-note">Sandbox PayPal only: log in with a PayPal sandbox test account, never your real one.</p>
+        <SandboxLogin />
       </Gate>
     );
   }

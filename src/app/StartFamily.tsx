@@ -1,4 +1,5 @@
 import { PaypalLoginButton } from "@/ui/PaypalLogin";
+import { SandboxLogin } from "@/ui/SandboxLogin";
 import "./startFamily.css";
 
 /**
@@ -12,8 +13,9 @@ export function StartFamily() {
       <h2 id="start-h" className="l-start__h">Start your own family</h2>
       <p className="l-start__p">Log in with PayPal, add your teen, sign the first rules. About three minutes.</p>
       <PaypalLoginButton />
+      <SandboxLogin />
       <p className="l-start__note">
-        Sandbox PayPal only, no real money: log in with a PayPal sandbox test account, never your real one. New families are removed after 7 days.
+        Sandbox PayPal only: log in with the sandbox account above, never your real one. New families are removed after 7 days.
       </p>
     </section>
   );
