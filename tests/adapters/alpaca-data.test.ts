@@ -202,3 +202,73 @@ describe("R42: history states its real span", () => {
     expect((await m.changeOver("VTI", 1, asOf)).endCents).toBe(200);
   });
 });
+
+// ---- shares and holdings: the latest close and daily closes (real market dates) ----------------------------------
+
+/** Daily bars stamped as Alpaca stamps them: midnight New York (05:00Z in winter). */
+const daily = (days: [string, number][]): Dated[] => days.map(([d, c]) => ({ t: `${d}T05:00:00Z`, c }));
+const WEEK = daily([["2026-11-02", 350], ["2026-11-03", 352.25], ["2026-11-04", 355], ["2026-11-05", 360.5], ["2026-11-06", 362.1]]);
+const at = (iso: string) => () => Date.parse(iso);
+const marketAt = (now: () => number, bars: Bars = { VTI: [WEEK], SPY: [WEEK] }) => {
+  const { f, calls } = fakeFetch(bars);
+  return { m: alpacaMarket(alpacaBroker({ baseUrl: "https://b.test", key: "k", secret: "s", dataBaseUrl: DATA }, f), DATA, now), calls };
+};
+const barCalls = (calls: string[]) => calls.filter((u) => u.includes("/bars"));
+
+describe("latestClose", () => {
+  it("is the last session that has closed, dated by its market day", async () => {
+    const { m } = marketAt(at("2026-11-07T15:00:00Z")); // Saturday
+    expect(await m.latestClose("VTI")).toEqual({ cents: 36210, day: new Date("2026-11-06T05:00:00Z") });
+  });
+
+  it("while today's session is still open (or the free feed hasn't caught up), today's bar is not a close", async () => {
+    expect(await marketAt(at("2026-11-06T18:00:00Z")).m.latestClose("VTI")).toEqual({ cents: 36050, day: new Date("2026-11-05T05:00:00Z") }); // 1pm NY
+    expect((await marketAt(at("2026-11-06T21:10:00Z")).m.latestClose("VTI"))?.cents).toBe(36050); // 4:10pm NY: feed still 16 min behind
+    expect((await marketAt(at("2026-11-06T21:20:00Z")).m.latestClose("VTI"))?.cents).toBe(36210); // 4:20pm NY
+  });
+
+  it("null when there are no bars or the data call fails (the card hides)", async () => {
+    expect(await marketAt(at("2026-11-07T15:00:00Z"), { VTI: [[]] }).m.latestClose("VTI")).toBeNull();
+    const broken = (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch;
+    const m = alpacaMarket(alpacaBroker({ baseUrl: "https://b.test", key: "k", secret: "s", dataBaseUrl: DATA }, broken), DATA);
+    expect(await m.latestClose("VTI")).toBeNull();
+  });
+});
+
+describe("dailyCloses", () => {
+  it("the closed sessions from `from` to `to`, in cents, oldest first, from the one cached bar fetch", async () => {
+    const { m, calls } = marketAt(at("2026-11-06T18:00:00Z"));
+    const closes = await m.dailyCloses("VTI", new Date("2026-11-03T00:00:00Z"), new Date("2026-11-06T18:00:00Z"));
+    expect(closes).toEqual([
+      { day: new Date("2026-11-03T05:00:00Z"), cents: 35225 },
+      { day: new Date("2026-11-04T05:00:00Z"), cents: 35500 },
+      { day: new Date("2026-11-05T05:00:00Z"), cents: 36050 }, // the 6th is still trading
+    ]);
+    await m.latestClose("VTI");
+    expect(barCalls(calls)).toHaveLength(1);
+  });
+});
+
+describe("quote", () => {
+  it("the latest close plus whether the asset can be bought in slices", async () => {
+    const { m } = marketAt(at("2026-11-07T15:00:00Z"), { VTI: [WEEK], XYZ: [WEEK] });
+    expect(await m.quote("VTI")).toEqual({ cents: 36210, day: new Date("2026-11-06T05:00:00Z"), fractionable: true });
+    expect((await m.quote("XYZ"))?.fractionable).toBe(false);
+    expect(await m.quote("NOPE")).toBeNull();
+  });
+});
+
+describe("getOrder", () => {
+  const order = (body: unknown) => alpacaBroker({ baseUrl: "https://b.test", key: "k", secret: "s" }, (async (u: RequestInfo | URL) =>
+    String(u).includes("oauth2") ? new Response(JSON.stringify({ access_token: "t", expires_in: 900 })) : new Response(JSON.stringify(body))) as typeof fetch);
+
+  it("a filled order carries Alpaca's share count, average price and fill time", async () => {
+    const o = await order({ status: "filled", filled_qty: "0.013817", filled_avg_price: "361.86", filled_at: "2026-11-06T14:31:02.123Z" }).getOrder("a", "o");
+    expect(o).toEqual({ status: "filled", filledQty: 0.013817, filledAvgPrice: 361.86, filledAt: new Date("2026-11-06T14:31:02.123Z") });
+  });
+
+  it("an open order has no fill price or time", async () => {
+    const o = await order({ status: "accepted", filled_qty: "0", filled_avg_price: null, filled_at: null }).getOrder("a", "o");
+    expect(o).toEqual({ status: "accepted", filledQty: 0, filledAvgPrice: null, filledAt: null });
+  });
+});
