@@ -35,7 +35,7 @@ Tether is our answer to all five: a parent signs the rules, an agent proposes, p
 **For the teen (Zoe):**
 
 - **She shops with an AI agent** that searches only Amara's allowed shops (via Channel3) and proposes two or three options. It cannot buy anything.
-- **Refusals teach, at the moment she decides.** One sentence with her real numbers and two ways forward ("Ask Amara" or "It fits next week"). Amber, never red.
+- **Refusals teach, at the moment she decides.** One sentence with her real numbers and two ways forward ("Ask Amara", or wait the few days until it fits). Amber, never red.
 - **Saving, and freedom earned from it.** What she doesn't spend is her savings. She sets her own weekly savings promise (nothing is locked; it is scored when the week ends), names a goal, and sees one number: weeks to get there. Keeping her promise four weeks in a row moves her up a level: more money and more shops. At the month-end check-in Amara releases what Zoe saved plus a match.
 - **From Level 2 she can invest**, in funds and in single stocks. She searches the whole market and reads a facts-only page: "What's inside" for a fund (its biggest holdings), "About the company" for a stock (sector, industry, where it's based). Tether recommends nothing, and refuses leveraged and inverse products by their names. To propose, she answers three questions in her own words; Amara approves each one and Tether places the order.
 
@@ -43,7 +43,7 @@ Tether is our answer to all five: a parent signs the rules, an agent proposes, p
 
 **Anyone can start their own family.** On the landing page, a parent clicks **Log in with PayPal**, names their teen, and follows three steps on Home: save your PayPal, sign the first rules, send the teen the link (copy it or scan a QR code). Log in with PayPal is also how they get back in. Or open the shared demo family in one click, as Amara or as Zoe.
 
-**The landing page** explains all of this in one scroll, with the three problems and their sources, the four steps, the two agents and what they can't do, and what the sandbox stands in for.
+**The landing page** explains all of this in one scroll: the five problems and their sources, the four steps, the two agents and what they can't do, and what the sandbox stands in for.
 
 ## Why PayPal is central
 
@@ -110,7 +110,7 @@ Teen money apps today mostly hand the teen a card with limits on it, and the par
 
 ## What's next
 
-More than one teen per parent, a real custodial investing account, paying shops directly through PayPal's platform and agent-checkout programs, passkeys instead of private links, OneSignal identity verification and email notifications, and a gentler lock-screen wording option ("Zoe has a request for you").
+More than one teen per parent, a real custodial investing account, paying shops directly through PayPal's platform and agent-checkout programs, passkeys for the teen instead of a private link, OneSignal identity verification and email notifications, and a gentler lock-screen wording option ("Zoe has a request for you").
 
 ## Built with
 
