@@ -104,18 +104,18 @@ describe("familyHoldings", () => {
     expect(h.worthCents).toBe(Math.round(h.shares * VTI.at(-1)!.cents));
   });
 
-  it("only FILLED investments; a filled one whose order lookup fails is left to today's row", async () => {
+  it("only FILLED investments; a fund with any lot whose order lookup fails gets no card at all (never a partial count)", async () => {
     const s = await seed([
       { amountCents: 500, fill: fillOn("2026-10-01", 500) },
-      { amountCents: 700, fill: "fails" },
+      { amountCents: 700, fill: "fails" }, // the same fund: its card would understate what she owns
+      { symbol: "VOO", amountCents: 400, fill: fillOn("2026-10-01", 400) },
       { amountCents: 900, status: "queued", fill: fillOn("2026-10-02", 900) },
       { amountCents: 300, status: "proposed" },
     ]);
-    const hs = await familyHoldings(s.deps(), s.familyId);
-    expect(hs).toHaveLength(1);
-    expect(hs[0].investmentIds).toEqual([s.ids[0]]);
-    expect(hs[0].putInCents).toBe(500);
-    expect(s.order).toHaveBeenCalledTimes(2); // never asked about the queued or proposed rows
+    const hs = await familyHoldings(s.deps(market({ VTI, VOO: VTI, SPY })), s.familyId);
+    expect(hs.map((h) => h.symbol)).toEqual(["VOO"]); // VTI's rows all stay as today's rows
+    expect(hs[0].investmentIds).toEqual([s.ids[2]]);
+    expect(s.order).toHaveBeenCalledTimes(3); // never asked about the queued or proposed rows
   });
 
   it("no latest price: no card (her rows stay as they are); no market data: a card without a line", async () => {

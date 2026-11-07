@@ -49,25 +49,30 @@ const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const answer = (a: Record<string, unknown>, q: string) => (typeof a[q] === "string" && a[q].trim() ? a[q].trim() : null);
 
 /**
- * One holding per fund, from this family's FILLED investments only. Best effort: a lot whose order can't be read,
- * or a fund with no latest price, is left out (its rows keep today's wording, never a guessed number).
+ * One holding per fund, from this family's FILLED investments only. Best effort, and never a partial count: a fund
+ * with any lot whose order can't be read, or with no latest price, gets no card (its rows keep today's wording).
  */
 export async function familyHoldings(deps: HoldingsDeps, familyId: string): Promise<Holding[]> {
   const rows = await deps.db.select().from(t.investments)
     .where(and(eq(t.investments.familyId, familyId), eq(t.investments.status, "filled")));
-  const lots = (await Promise.all(rows.map(async (r): Promise<Lot | null> => {
-    if (!r.alpacaAccountId || !r.orderId) return null;
-    try {
-      const o = await deps.order(r.alpacaAccountId, r.orderId);
-      return { id: r.id, symbol: r.symbol, amountCents: r.amountCents, shares: o.qty, at: new Date(o.at), answers: r.answers };
-    } catch {
-      return null;
-    }
-  }))).filter((l): l is Lot => l !== null);
-  const bySymbol = Map.groupBy(lots, (l) => l.symbol);
+  const looked = await Promise.all(rows.map(async (r) => ({ symbol: r.symbol, lot: await lotOf(deps, r) })));
   const now = deps.realNow?.() ?? Date.now();
-  const held = await Promise.all([...bySymbol].map(([symbol, ls]) => holdingOf(deps, symbol, ls, now)));
+  const held = await Promise.all([...Map.groupBy(looked, (x) => x.symbol)].map(([symbol, xs]) => {
+    const lots = xs.flatMap((x) => (x.lot ? [x.lot] : []));
+    return lots.length === xs.length ? holdingOf(deps, symbol, lots, now) : null;
+  }));
   return held.filter((h): h is Holding => h !== null).sort((a, b) => a.since.getTime() - b.since.getTime());
+}
+
+/** Alpaca's fill for one filled investment, or null when it can't be read. */
+async function lotOf(deps: HoldingsDeps, r: typeof t.investments.$inferSelect): Promise<Lot | null> {
+  if (!r.alpacaAccountId || !r.orderId) return null;
+  try {
+    const o = await deps.order(r.alpacaAccountId, r.orderId);
+    return { id: r.id, symbol: r.symbol, amountCents: r.amountCents, shares: o.qty, at: new Date(o.at), answers: r.answers };
+  } catch {
+    return null;
+  }
 }
 
 async function holdingOf(deps: HoldingsDeps, symbol: string, lots: Lot[], now: number): Promise<Holding | null> {
