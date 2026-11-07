@@ -42,12 +42,17 @@ export async function consumeStartNonce(db: Db, nonce: string): Promise<boolean>
 const live = not(like(t.families.guardianToken, `${ARCHIVED_PREFIX}%`));
 
 /**
- * Is this the published shared sandbox login (review H1)? By its email, case-insensitive. When PayPal leaves the email
- * out: by a live family already stored with that email under this PayPal id or payer id.
+ * Is this the published shared sandbox login (reviews H1, R1)? Per-browser mode whenever ANY of: its email
+ * (case-insensitive); its payer id (only once a non-empty one is configured); PayPal sent no email at all, so it
+ * can't be told apart; or a family already stored with the shared email under this PayPal id or payer id (the account's
+ * email may have been changed since). When unsure, per browser is the safe side: it never opens another browser's family.
  */
-export async function isSharedLogin(db: Db, who: PaypalIdentity): Promise<boolean> {
-  const shared = SANDBOX_LOGIN.email.toLowerCase();
-  if (who.email) return who.email.toLowerCase() === shared;
+export async function isSharedLogin(
+  db: Db, who: PaypalIdentity, account: { email: string; payerId: string } = SANDBOX_LOGIN,
+): Promise<boolean> {
+  const shared = account.email.toLowerCase();
+  if (!who.email || who.email.toLowerCase() === shared) return true;
+  if (account.payerId !== "" && who.payerId === account.payerId) return true;
   const byId = who.payerId ? or(eq(t.families.paypalSub, who.sub), eq(t.families.paypalPayerId, who.payerId)) : eq(t.families.paypalSub, who.sub);
   const [hit] = await db.select({ id: t.families.id }).from(t.families).where(and(eq(t.families.paypalEmail, shared), byId)).limit(1);
   return hit !== undefined;

@@ -21,6 +21,7 @@ import { eq } from "drizzle-orm";
 import { GUARDIAN_COOKIE, verifyGuardianCookie } from "@/auth/guardian";
 import { BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, START_COOKIE, openBrowserFamily, openStart, sealBrowserFamily, sealStart } from "@/auth/start";
 import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
+import { isSharedLogin } from "@/flows/start";
 import { GET as login } from "@/app/g/login/paypal/route";
 import { GET as loginReturn } from "@/app/g/login/paypal/return/route";
 import { POST as choose } from "@/app/g/login/choose/open/route";
@@ -106,7 +107,7 @@ describe("GET /g/login/paypal/return", () => {
 
   it("one family ⇒ signed in to it", async () => {
     const f = await own("S-one", "Zoe");
-    who = { sub: "S-one", givenName: "Amara" };
+    who = { sub: "S-one", givenName: "Amara", email: "one@example.com" };
     const res = await roundTrip("good");
     expect(where(res)).toBe("/g");
     expect(verifyGuardianCookie(valueOf(res, GUARDIAN_COOKIE)!, new Date())).toBe(f.id);
@@ -116,7 +117,7 @@ describe("GET /g/login/paypal/return", () => {
     await own("S-two", "Zoe");
     await own("S-two", "Kai");
     await own("S-two", "Old", { guardianToken: `${repo.ARCHIVED_PREFIX}x1` });
-    who = { sub: "S-two" };
+    who = { sub: "S-two", email: "two@example.com" };
     const res = await roundTrip("good");
     expect(where(res)).toBe("/g/login/choose");
     expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
@@ -172,6 +173,29 @@ describe("H1: the published shared sandbox login works per browser", () => {
     expect(where(await roundTrip("good"))).toBe("/g/start/teen");
   });
 
+  it("R1: PayPal returning no email at all ⇒ per browser, even for a PayPal id that owns exactly one family", async () => {
+    await own("S-noemail", "Zoe"); // stored without any email
+    who = { sub: "S-noemail", givenName: "Ana" };
+    const res = await roundTrip("good");
+    expect(where(res)).toBe("/g/start/teen");
+    expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
+  });
+
+  it("R1: the shared account's payer id ⇒ per browser even if its email was changed; an empty payer id never matches", async () => {
+    const account = { email: SANDBOX_LOGIN.email, payerId: "SHAREDPAYER1" };
+    expect(await isSharedLogin(testDb, { sub: "S-r1", email: "changed@example.com", payerId: "SHAREDPAYER1" }, account)).toBe(true);
+    expect(await isSharedLogin(testDb, { sub: "S-r1", email: "changed@example.com", payerId: "SOMEONEELSE" }, account)).toBe(false);
+    const unset = { email: SANDBOX_LOGIN.email, payerId: "" }; // as published until Tarik adds the real one
+    expect(await isSharedLogin(testDb, { sub: "S-r2", email: "parent@example.com", payerId: "REALPAYER" }, unset)).toBe(false);
+    expect(await isSharedLogin(testDb, { sub: "S-r2", email: "parent@example.com", payerId: "" }, unset)).toBe(false);
+    expect(SANDBOX_LOGIN).toHaveProperty("payerId");
+  });
+
+  it("R1 keeps the fallback: an email that no longer matches, but this PayPal id already has a family stored with the shared email", async () => {
+    await own("S-renamed", "Zoe", { paypalEmail: SANDBOX_LOGIN.email });
+    expect(await isSharedLogin(testDb, { sub: "S-renamed", email: "renamed@example.com" })).toBe(true);
+  });
+
   it("any other PayPal account keeps today's flow: one family ⇒ signed in, with no browser cookie needed", async () => {
     const f = await own("S-ordinary", "Zoe", { paypalEmail: "parent@example.com" });
     who = { sub: "S-ordinary", email: "parent@example.com" };
@@ -201,7 +225,7 @@ describe("POST /g/login/choose/open", () => {
   const post = (familyId: string, sub: string | null, origin?: string) => {
     const body = new URLSearchParams({ familyId });
     const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
-    if (sub) headers.cookie = `${START_COOKIE}=${encodeURIComponent(sealStart({ sub }, new Date()))}`;
+    if (sub) headers.cookie = `${START_COOKIE}=${encodeURIComponent(sealStart({ sub, email: `${sub.toLowerCase()}@example.com` }, new Date()))}`;
     if (origin) headers.origin = origin;
     return choose(new Request("http://localhost/g/login/choose/open", { method: "POST", body, headers }));
   };
