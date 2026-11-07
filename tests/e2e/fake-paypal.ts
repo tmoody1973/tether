@@ -4,7 +4,8 @@
 // - Channel3: product `sku-<cents>` costs <cents>, at the shop it is asked about. Search returns the same three
 //   products whatever the words (the teen e2e agent proposes exactly these); lookup reads `sku-<cents>` from the URL.
 // - Alpaca (broker + market data): a few assets, deterministic daily bars, an account, an instant journal deposit,
-//   and orders that are always accepted but not filled (the market is "closed", so investments end up queued).
+//   and orders that are accepted when placed (the market is "closed", so an approval says queued), then filled the next
+//   time they're looked up, at the symbol's price today, with filled_qty, filled_avg_price and filled_at.
 // - Financial Datasets: VTI, SPY and VOO are covered; VTI's holdings are a trimmed copy of the real response.
 import { createServer } from "node:http";
 import { E2E } from "./fixtures";
@@ -44,6 +45,7 @@ const PATHS: Record<string, { today: number; years: number[] }> = {
   VTI: { today: 300, years: [0.1, 0.2, -0.2, 0.25, 0.18] },
 };
 const DEFAULT_PATH = { today: 100, years: [0.08, 0.1, -0.1, 0.15, 0.05] };
+const placed = new Map<string, { symbol: string; notional: number; filledAt?: string }>(); // Alpaca order id → order
 /** Listed this many days ago: bars start then (R42: shorter histories must say so). */
 const LISTED_DAYS: Record<string, number> = { NEWX: 120 };
 const DAY = 86_400_000;
@@ -132,8 +134,20 @@ createServer((req, res) => {
     if (req.method === "POST" && path === "/v1/accounts") return send(200, { id: `E2E-ALPACA-ACCT-${++n}` });
     if (req.method === "POST" && path === "/v1/journals") return send(200, { id: `E2E-ALPACA-JNL-${++n}` });
     if (req.method === "GET" && /^\/v1\/trading\/accounts\/[^/]+\/orders:by_client_order_id$/.test(path)) return send(404, { message: "order not found" });
-    if (req.method === "POST" && /^\/v1\/trading\/accounts\/[^/]+\/orders$/.test(path)) return send(200, { id: `E2E-ALPACA-ORD-${++n}`, status: "accepted" });
-    if (req.method === "GET" && /^\/v1\/trading\/accounts\/[^/]+\/orders\/[^/]+$/.test(path)) return send(200, { status: "accepted" });
+    if (req.method === "POST" && /^\/v1\/trading\/accounts\/[^/]+\/orders$/.test(path)) {
+      const id = `E2E-ALPACA-ORD-${++n}`;
+      const o = JSON.parse(raw || "{}") as { symbol?: string; notional?: string };
+      placed.set(id, { symbol: String(o.symbol), notional: Number(o.notional) });
+      return send(200, { id, status: "accepted" });
+    }
+    const orderGet = path.match(/^\/v1\/trading\/accounts\/[^/]+\/orders\/([^/]+)$/);
+    if (req.method === "GET" && orderGet) {
+      const o = placed.get(orderGet[1]);
+      if (!o) return send(200, { status: "accepted", filled_qty: "0", filled_avg_price: null, filled_at: null });
+      const price = (PATHS[o.symbol] ?? DEFAULT_PATH).today;
+      o.filledAt ??= new Date().toISOString();
+      return send(200, { status: "filled", filled_qty: (o.notional / price).toFixed(9), filled_avg_price: price.toFixed(2), filled_at: o.filledAt });
+    }
     // Financial Datasets (FINANCIALDATASETS_BASE_URL points here).
     if (req.method === "GET" && path === "/index-funds/tickers/") return send(200, { tickers: ["SPY", "VOO", "VTI"] });
     if (req.method === "GET" && path === "/index-funds/") {

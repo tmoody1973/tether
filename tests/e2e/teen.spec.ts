@@ -307,7 +307,7 @@ test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
   await expect(page.getByText("Nervous, but I'd wait")).toBeVisible();
 });
 
-test("queued order shows \"Queued for market open\"", async ({ page }) => {
+test("queued when Amara approves, then filled: both see how it's doing", async ({ page }) => {
   await propose(page, E2E.teenB.queued, "VTI", "25"); // she has $20 saved
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 available to invest, so at most that.");
   await expect(page.getByLabel("Why this one?")).toHaveValue("Lots of companies in one fund"); // her words are kept
@@ -342,10 +342,22 @@ test("queued order shows \"Queued for market open\"", async ({ page }) => {
   // VTI is on her signed rules (not the fund_allowlist table), and her fund list still shows it.
   await expect(page.getByRole("region", { name: "Your fund list" })).toContainText("VTI");
 
+  // The fake fills the order the next time it's looked up: Zoe's page resumes it, then reads Alpaca's fill.
   await open(page, E2E.teenB.queued, "/invest");
   const mine = page.getByRole("region", { name: "Your investments" });
-  await expect(mine).toContainText("VTI");
-  await expect(mine).toContainText("Queued for market open");
-  await expect(mine).toContainText("$5.00");
+  const card = mine.getByRole("region", { name: "VTI, how it's doing" });
+  await expect(card).toContainText(/\$[\d.]+ worth today/);
+  await expect(card).toContainText(/You own\s*0\.01\d{2} share/); // $5 at the fake's $300: Alpaca's own count
+  await expect(card).toContainText(/You put in\s*\$5\.00 on \d{1,2} [A-Z][a-z]{2}/);
+  await expect(card).toContainText("It's been 1 day. Too soon to tell: funds like this are for years, not days.");
+  await expect(card).toContainText("Why you picked it: “Lots of companies in one fund”");
+  await expect(card.locator("svg")).toHaveCount(0); // no line until there are 5 closes
+  await expect(mine).not.toContainText("Queued for market open"); // the row gave way to the card
   await expect(mine).toContainText("Sandbox stand-in for a custodial account.");
+
+  await page.goto(`/g/enter/${E2E.teenQueuedKey}`);
+  await page.goto("/g/invest");
+  const hers = page.getByRole("region", { name: "Zoe's investments" });
+  await expect(hers).toContainText(/Her \$5\.00 is worth \$[\d.]+\. She owns 0\.01\d{2} of a share\./);
+  await expect(hers).toContainText("It's been 1 day. Too soon to tell");
 });

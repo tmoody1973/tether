@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createElement, type FunctionComponent } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { toFundInside } from "@/adapters/financialdatasets/client";
-import { InsideCard, InsideLineCard, ShareCostCard } from "@/ui/InvestCards";
+import { HerHoldingCard, HoldingCard, InsideCard, InsideLineCard, ShareCostCard } from "@/ui/InvestCards";
+import type { Holding } from "@/flows/holdings";
 import VTI from "../fixtures/fd-vti-holdings.json";
 
 /** Visible text: tags dropped, entities decoded, whitespace collapsed. */
@@ -42,5 +43,60 @@ describe("Amara's request page", () => {
   });
   it("hidden when unavailable", () => {
     expect(render(InsideLineCard, { symbol: "VTI", inside: null })).toBe("");
+  });
+});
+
+const WHY = "I want a little bit of every company, not just one.";
+const DROP = "Nervous, but I'd leave it. It's for years from now.";
+const holding = (o: Partial<Holding> = {}): Holding => ({
+  symbol: "VTI", shares: 0.0138, putInCents: 500, worthCents: 500, since: new Date("2026-11-06T14:31:00Z"), daysHeld: 0,
+  marketCents: null, line: null, words: { why: WHY, drop: DROP }, investmentIds: ["i1"], ...o,
+});
+const year = holding({
+  shares: 0.0151, worthCents: 548, marketCents: 548, since: new Date("2025-11-10T14:31:00Z"), daysHeld: 362,
+  line: { mine: [500, 520, 490, 548], market: [500, 515, 495, 548] },
+});
+
+describe("Zoe's investments", () => {
+  it("too soon: what it's worth, what she owns and put in, the plain hint, and why she picked it; no line", () => {
+    const html = render(HoldingCard, { h: holding() });
+    expect(text(html)).toBe(
+      "VTI since 6 Nov 2026 $5.00 worth today You own 0.0138 share You put in $5.00 on 6 Nov " +
+      "It's been 1 day. Too soon to tell: funds like this are for years, not days. Why you picked it: “" + WHY + "”");
+    expect(html).not.toContain("<svg");
+  });
+
+  it("after a while: one line against the whole market, the sentence, and what she owns", () => {
+    const html = render(HoldingCard, { h: year });
+    const t = text(html);
+    expect(html).toContain('data-chart="since-bought"');
+    expect(html).toContain('class="t-chart__fund"');
+    expect(t).toContain("Your $5.00 in VTI");
+    expect(t).toContain("Same $5.00, whole market");
+    expect(t).toContain("Your $5.00 is worth $5.48. The same $5.00 in the whole market: $5.48.");
+    expect(t).toContain("You own 0.0151 share");
+    expect(t).not.toContain("You put in"); // the sentence says it
+    expect(t).not.toContain("Too soon"); // held a year
+  });
+
+  it("in a dip: her own answer read back, and the fact in whole percent; never advice", () => {
+    const t = text(render(HoldingCard, { h: holding({ worthCents: 474, marketCents: 473, daysHeld: 140, line: { mine: [500, 474], market: [500, 473] } }) }));
+    expect(t).toContain("You said, if it dropped by a third: “" + DROP + "” It's down 5%.");
+    expect(t).not.toContain("Why you picked it");
+    expect(t).not.toMatch(/\bhold\b|don't worry|should/i);
+  });
+});
+
+describe("Amara's Investing page", () => {
+  it("her card: the value, the line in Amara's colours, and the sentence with the share count; no quote", () => {
+    const html = render(HerHoldingCard, { h: year });
+    const t = text(html);
+    expect(t).toBe("VTI $5.48 Her $5.00 is worth $5.48. The same $5.00 in the whole market: $5.48. She owns 0.0151 of a share.");
+    expect(html).toContain('class="g-chart__fund"');
+  });
+
+  it("too soon on Amara's side: the sentence without a market, and the same hint", () => {
+    expect(text(render(HerHoldingCard, { h: holding({ daysHeld: 3 }) }))).toBe(
+      "VTI $5.00 Her $5.00 is worth $5.00. She owns 0.0138 of a share. It's been 3 days. Too soon to tell: funds like this are for years, not days.");
   });
 });
