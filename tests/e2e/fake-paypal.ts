@@ -6,7 +6,9 @@
 // - Alpaca (broker + market data): a few assets, deterministic daily bars, an account, an instant journal deposit,
 //   and orders that are accepted when placed (the market is "closed", so an approval says queued), then filled the next
 //   time they're looked up, at last week's close, with filled_qty, filled_avg_price and filled_at.
-// - Financial Datasets: VTI, SPY and VOO are covered; VTI's holdings are a trimmed copy of the real response.
+// - Financial Datasets: VTI, SPY and VOO are covered funds; VTI's holdings are a trimmed copy of the real response.
+//   Company facts cover AAPL (and, like the real list, some funds, which the app must never ask about).
+// - One leveraged product (AAPX) sits in the asset list so the search can show it isn't available.
 import { createServer } from "node:http";
 import { E2E } from "./fixtures";
 import VTI_HOLDINGS from "../fixtures/fd-vti-holdings.json";
@@ -35,6 +37,7 @@ const ASSETS = [
   { symbol: "VTI", name: "Vanguard Total Stock Market ETF", exchange: "ARCA", tradable: true, fractionable: true },
   { symbol: "VT", name: "Vanguard Total World Stock ETF", exchange: "ARCA", tradable: true, fractionable: true },
   { symbol: "AAPL", name: "Apple Inc. Common Stock", exchange: "NASDAQ", tradable: true, fractionable: true },
+  { symbol: "AAPX", name: "T-Rex 2X Long Apple Daily Target ETF", exchange: "BATS", tradable: true, fractionable: true },
   { symbol: "NEWX", name: "Newly Listed Example Fund", exchange: "ARCA", tradable: true, fractionable: true },
 ];
 // Price today and each past year's change, most recent first, so a 1-year and a 5-year window always agree.
@@ -45,6 +48,11 @@ const PATHS: Record<string, { today: number; years: number[] }> = {
   VTI: { today: 300, years: [0.1, 0.2, -0.2, 0.25, 0.18] },
 };
 const DEFAULT_PATH = { today: 100, years: [0.08, 0.1, -0.1, 0.15, 0.05] };
+// The documented /company/facts fields (no employee count in the schema).
+const AAPL_FACTS = {
+  ticker: "AAPL", name: "Apple Inc.", cik: "0000320193", industry: "Consumer Electronics", sector: "Technology", exchange: "NASDAQ",
+  is_active: true, location: "Cupertino, CA", sic_code: "3571", sic_industry: "Electronic Computers", sic_sector: "Manufacturing",
+};
 const placed = new Map<string, { symbol: string; notional: number; filledAt?: string }>(); // Alpaca order id → order
 /** Listed this many days ago: bars start then (R42: shorter histories must say so). */
 const LISTED_DAYS: Record<string, number> = { NEWX: 120 };
@@ -155,6 +163,10 @@ createServer((req, res) => {
     if (req.method === "GET" && path === "/index-funds/tickers/") return send(200, { tickers: ["SPY", "VOO", "VTI"] });
     if (req.method === "GET" && path === "/index-funds/") {
       return url.searchParams.get("ticker") === "VTI" ? send(200, VTI_HOLDINGS) : send(404, { error: "Not found" });
+    }
+    if (req.method === "GET" && path === "/company/facts/tickers/") return send(200, { resource: "company_facts", tickers: ["AAPL", "SPY", "VOO", "VTI"] });
+    if (req.method === "GET" && path === "/company/facts") {
+      return url.searchParams.get("ticker") === "AAPL" ? send(200, { company_facts: AAPL_FACTS }) : send(404, { error: "Not Found", message: "Ticker not found" });
     }
     if (req.method === "GET" && path === "/health") return send(200, { ok: true });
     send(404, { name: "NOT_FAKED", message: `${req.method} ${path}` });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeWords, requestShareWords, shareCount, shareLine, shareWords } from "@/ui/investWords";
+import { closeWords, companyLine, pennyLine, requestShareWords, shareCount, shareLine, shareWords } from "@/ui/investWords";
 
 describe("shareCount", () => {
   it("4 decimals under one share, 2 at or over one", () => {
@@ -39,5 +39,22 @@ describe("requestShareWords (under the request's title)", () => {
     expect(requestShareWords(500, { cents: 36186, fractionable: true }, "VTI")).toBe("About 0.0138 of a share at $361.86");
     expect(requestShareWords(50000, { cents: 36186, fractionable: true }, "VTI")).toBe("About 1.38 shares at $361.86");
     expect(requestShareWords(500, { cents: 36186, fractionable: false }, "VTI")).toBe("VTI can only be bought in whole shares, $361.86 each.");
+  });
+});
+
+describe("stocks: the penny line and the company line", () => {
+  it("a latest close under $1.00 gets the plain penny line; $1.00 and up get nothing", () => {
+    expect(pennyLine(99)).toBe("Under $1 a share: prices like this can swing a lot.");
+    expect(pennyLine(1)).toBe("Under $1 a share: prices like this can swing a lot.");
+    expect(pennyLine(100)).toBeNull();
+    expect(pennyLine(36186)).toBeNull();
+    expect(pennyLine(null)).toBeNull(); // no price, no line
+  });
+
+  it("company facts in one line, skipping what's missing", () => {
+    const apple = { name: "Apple", sector: "Technology", industry: "Consumer Electronics", location: "Cupertino, CA", employees: null };
+    expect(companyLine(apple)).toBe("Apple: Technology · Consumer Electronics · Cupertino, CA");
+    expect(companyLine({ ...apple, industry: null, location: null })).toBe("Apple: Technology");
+    expect(companyLine({ ...apple, sector: null, industry: null, location: null })).toBe("Apple");
   });
 });

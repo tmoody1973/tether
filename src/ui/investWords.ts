@@ -1,5 +1,6 @@
 import { CASH_HELD_LABEL, NEEDS_REVIEW_LABEL, QUEUED_LABEL } from "@/engine/invest";
 import type * as t from "@/db/schema";
+import type { CompanyFacts } from "@/adapters/financialdatasets/client";
 import { formatCents } from "@/ui/grantWords";
 import type { Holding } from "@/flows/holdings";
 
@@ -51,6 +52,18 @@ export function closeWords(day: Date): string {
 export function requestShareWords(amountCents: number, price: { cents: number; fractionable: boolean }, symbol: string): string {
   const w = shareWords(amountCents, price.cents, price.fractionable, symbol);
   return price.fractionable ? `${w[0].toUpperCase()}${w.slice(1)} at ${formatCents(price.cents)}` : w;
+}
+
+// ---- stocks (facts, never a verdict) -----------------------------------------------------------------------------
+
+/** Under $1.00 at the latest close: a plain fact. Neutral style, never red, and nothing is blocked. */
+export const pennyLine = (closeCents: number | null): string | null =>
+  closeCents !== null && closeCents < 100 ? "Under $1 a share: prices like this can swing a lot." : null;
+
+/** Amara's request page: "Apple: Technology · Consumer Electronics · Cupertino, CA", skipping what's missing. */
+export function companyLine(f: CompanyFacts): string {
+  const rest = [f.sector, f.industry, f.location].filter(Boolean).join(" · ");
+  return rest ? `${f.name}: ${rest}` : f.name;
 }
 
 // ---- how her investments are doing (code, not AI: facts, never a verdict) ----------------------------------------

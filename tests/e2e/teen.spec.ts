@@ -311,6 +311,37 @@ test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
   await expect(page.getByText("Nervous, but I'd wait")).toBeVisible();
 });
 
+test("stocks: a leveraged product isn't offered; a stock shows the company and reaches Amara's investing list", async ({ page }) => {
+  await open(page, E2E.teenB.stock, "/invest?q=apple");
+  const lev = page.getByRole("article", { name: "T-Rex 2X Long Apple Daily Target ETF (AAPX)" });
+  await expect(lev).toContainText("Not available on Tether", { timeout: 20_000 });
+  await expect(lev.getByRole("link")).toHaveCount(0); // no "Look closer"
+  // Reached by its URL anyway: the calm reason, and no way to propose it.
+  await open(page, E2E.teenB.stock, "/invest/AAPX");
+  await expect(page.getByText("Tether doesn't offer leveraged or inverse products: they're built to move two or three times as fast as the market, often for one day at a time.")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Propose to Amara" })).toHaveCount(0);
+
+  await open(page, E2E.teenB.stock, "/invest?q=apple");
+  await page.getByRole("article", { name: "Apple Inc. Common Stock (AAPL)" }).getByRole("link", { name: "Look closer" }).click();
+  const about = page.getByRole("region", { name: "About the company" });
+  await expect(about).toContainText("Apple", { timeout: 20_000 });
+  for (const fact of ["Technology", "Consumer Electronics", "Cupertino, CA", "From the company's SEC filings, via Financial Datasets."]) {
+    await expect(about).toContainText(fact);
+  }
+  await expect(about).not.toContainText(/market cap|P\/E|ratio/i);
+  await expect(page.getByRole("region", { name: "What's inside" })).toHaveCount(0); // a stock has no holdings
+  await expect(page.getByText("AAPL isn't on Amara's investing list yet. Proposing asks her to add it, with your answers.")).toBeVisible();
+  await expect(page.getByText(/Under \$1 a share/)).toHaveCount(0); // the fake's AAPL is about $100
+
+  await propose(page, E2E.teenB.stock, "AAPL", "5");
+  await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers. If she adds AAPL to her investing list, you can propose an amount.");
+  await page.goto(`/g/enter/${E2E.teenStockKey}`);
+  await page.getByRole("link", { name: /Zoe proposes adding AAPL to your investing list/ }).click();
+  await expect(page.getByText("Apple: Technology · Consumer Electronics · Cupertino, CA")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/to your investing list lets Zoe propose investing in it/)).toBeVisible();
+  await expect(page.getByRole("main")).not.toContainText(/fund list/i);
+});
+
 test("queued when Amara approves, then filled: both see how it's doing (a Level 2 teen)", async ({ page }) => {
   await open(page, E2E.teenB.queued); // Level 2: Invest is a tab, no Demo controls needed
   await page.getByRole("navigation").getByRole("link", { name: "Invest" }).click();
