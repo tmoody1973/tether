@@ -65,7 +65,7 @@ describe("teen words", () => {
     expect(levelProgress(1, 1)).toBe("Keep your savings promise 4 weeks running to reach Level 2. You're on 1.");
     expect(levelProgress(0, 1)).toBe("Keep your savings promise 4 weeks running to reach Level 2.");
     expect(levelProgress(5, 3)).toBe("You're at the top level.");
-    expect(whatChanged(1, 2, "Amara")).toBe("Your weekly limit is now $30.00, and only things over $20.00 need Amara's OK. A bookshop opens too.");
+    expect(whatChanged(1, 2, "Amara")).toBe("Your weekly limit is now $30.00, and only things over $20.00 need Amara's OK. A bookshop opens too. Investing opens too.");
     expect(whatChanged(2, 3, "Amara")).toBe("Your weekly limit is now $50.00, and nothing inside your shops needs asking. Clothes and sneaker shops open too.");
   });
 });

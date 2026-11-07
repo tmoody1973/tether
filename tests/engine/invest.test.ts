@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decideInvestment, QUEUED_LABEL } from "@/engine/invest";
+import { INVESTING_FROM } from "@/engine/ladder";
 import type { Grant } from "@/engine/types";
 
 const grant = (over: Partial<Grant> = {}): Grant => ({
@@ -8,10 +9,18 @@ const grant = (over: Partial<Grant> = {}): Grant => ({
 });
 
 describe("decideInvestment", () => {
-  it("L2 investing refused", () => {
-    const d = decideInvestment(grant({ level: 2 }), { symbol: "VTI", amountCents: 500 }, 5000);
+  it("investing opens at Level 2", () => expect(INVESTING_FROM).toBe(2));
+  it("L1 investing refused, and the refusal names Level 2", () => {
+    const d = decideInvestment(grant({ level: 1 }), { symbol: "VTI", amountCents: 500 }, 5000);
     expect(d.outcome).toBe("REFUSE");
-    expect(d.reasons.map((r) => r.constraint)).toContain("invest.level");
+    expect(d.reasons).toContainEqual({ constraint: "invest.level", detail: "Investing opens at Level 2" });
+  });
+  it("L2 may invest: same rules as L3", () => {
+    expect(decideInvestment(grant({ level: 2 }), { symbol: "VTI", amountCents: 500 }, 5000).outcome).toBe("NEEDS_APPROVAL");
+    expect(decideInvestment(grant({ level: 2 }), { symbol: "TSLA", amountCents: 500 }, 5000).outcome).toBe("REFUSE");
+  });
+  it("L3 unchanged", () => {
+    expect(decideInvestment(grant({ level: 3 }), { symbol: "VTI", amountCents: 500 }, 5000).outcome).toBe("NEEDS_APPROVAL");
   });
   it("symbol off allowlist refused", () => {
     expect(decideInvestment(grant(), { symbol: "TSLA", amountCents: 500 }, 5000).outcome).toBe("REFUSE");

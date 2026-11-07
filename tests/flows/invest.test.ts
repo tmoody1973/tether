@@ -72,7 +72,7 @@ describe("proposeInvestment / settleInvestment", () => {
   });
 
   it("refused proposal opens no approval", async () => {
-    const fam = await seed({ level: 2, allow: ["VTI"] });
+    const fam = await seed({ level: 1, allow: ["VTI"] });
     const r = await proposeInvestment(mk().d, fam, { symbol: "VTI", amountCents: 1000 }, {});
     expect(r.decision.outcome).toBe("REFUSE");
     expect(r.approvalId).toBeUndefined();

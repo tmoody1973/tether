@@ -100,7 +100,7 @@ async function main() {
   await teen(E2E.teenB.map, E2E.teenMapKey);
   await saved(await family(db, E2E.teenFundKey, E2E.teenB.fund, zoeNames, { level: 3 }), 2000);
   await saved(await family(db, "e2e-guardian-key-teen-look", E2E.teenB.look, zoeNames, { level: 3 }), 2000);
-  await saved(await family(db, E2E.teenQueuedKey, E2E.teenB.queued, zoeNames, { level: 3, fundAllowlist: ["VTI"] }), 2000);
+  await saved(await family(db, E2E.teenQueuedKey, E2E.teenB.queued, zoeNames, { level: 2, fundAllowlist: ["VTI"] }), 2000);
 
   const other = await family(db, E2E.otherGuardianKey, "e2e-teen-other", { guardianName: "Sam", teenName: "Kai" });
   await asking(db, other, E2E.otherApprovalId, cart("m_target", 1500, "Running shoes"), "the ones I have are falling apart");

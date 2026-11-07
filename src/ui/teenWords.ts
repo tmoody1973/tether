@@ -84,7 +84,7 @@ export function whatChanged(from: Level, to: Level, guardian: string): string {
     ? "nothing inside your shops needs asking"
     : `only things over ${formatCents(def.approvalOverCents)} need ${guardian}'s OK`;
   const added = def.merchantClasses.filter((c) => !LEVELS[from].merchantClasses.includes(c));
-  const opens = added.map((c) => OPENS[c]).filter(Boolean);
+  const opens = [...added.map((c) => OPENS[c]).filter(Boolean), ...(def.investing && !LEVELS[from].investing ? ["Investing opens too."] : [])];
   return [`Your weekly limit is now ${formatCents(def.weeklyCents)}, and ${ask}.`, ...opens].join(" ");
 }
 

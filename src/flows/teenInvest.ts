@@ -5,6 +5,7 @@ import * as t from "@/db/schema";
 import { getActiveGrant } from "@/db/repo";
 import { availableSavingsCents } from "@/ledger/ledger";
 import { MIN_INVEST_CENTS } from "@/engine/invest";
+import { LEVELS, type Level } from "@/engine/ladder";
 import { proposeFund, proposeInvestment } from "@/flows/invest";
 import type { Deps } from "@/flows/purchase";
 import { tellAmara } from "@/flows/notify";
@@ -43,12 +44,12 @@ export async function teenInvestments(db: Db, familyId: string): Promise<TeenInv
   });
 }
 
-/** Rules in force at Level 3: checked before anything else (and before any market call). */
+/** Rules in force at the investing level: checked before anything else (and before any market call). */
 export async function canPropose(deps: Pick<Deps, "db" | "now">, familyId: string): Promise<"level" | "rules" | null> {
   const now = await deps.now(familyId);
   const grant = await getActiveGrant(deps.db, familyId);
   if (!grant || grant.expiresAt <= now) return "rules";
-  return grant.level < 3 ? "level" : null;
+  return LEVELS[grant.level as Level].investing ? null : "level";
 }
 
 /** She already has an investment in this symbol waiting for Amara. */

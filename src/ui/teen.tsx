@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { LEVELS, type Level } from "@/engine/ladder";
 import type { CardKind } from "@/ui/teenWords";
 import { formatCents } from "@/ui/grantWords";
 
@@ -13,12 +14,12 @@ const TABS = [
 
 /**
  * Zoe's single column with the bottom tab bar. Every link carries her token (it is her only way in).
- * Invest is a tab only at Level 3 (below it the URL shows a calm "opens at Level 3" page).
+ * Invest is a tab only from the investing level up (below it the URL shows a calm "opens at Level N" page).
  */
 export function TeenShell({ token, active, level = null, center = false, children }: {
   token: string; active: (typeof TABS)[number]["key"] | null; level?: number | null; center?: boolean; children: ReactNode;
 }) {
-  const tabs = TABS.filter((tab) => tab.key !== "invest" || level === 3);
+  const tabs = TABS.filter((tab) => tab.key !== "invest" || level !== null && LEVELS[level as Level].investing);
   return (
     <div className="t-app">
       <main className={center ? "t-col t-col--center" : "t-col"}>{children}</main>

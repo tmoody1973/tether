@@ -8,7 +8,7 @@ import { guardianRecord, type RecordGrant, type RecordReceipt, type RecordView }
 import { monthReviewView, type ReviewView } from "@/flows/month";
 import { FLAG_WORDS, MONTH_RE, reconcileMonth, type Reconciliation } from "@/flows/reconcile";
 import { resumePayingPurchases } from "@/flows/purchase";
-import { LEVELS, type Level } from "@/engine/ladder";
+import { INVESTING_FROM, LEVELS, type Level } from "@/engine/ladder";
 import { TOKEN_TTL_MS } from "@/engine/token";
 import { checkWords, herReason, hiddenNote, monthEnd, shownReceipts } from "@/ui/activityWords";
 import { approvalWords, formatCents, formatDay, formatMonth, formatWhen } from "@/ui/grantWords";
@@ -252,7 +252,7 @@ function Investments({ r }: { r: RecordView }) {
             </li>
           ))}
         </ul>
-      ) : <p className="g-muted">{open ? "None yet." : `Opens at Level 3. ${r.home.teenName} proposes a fund, you approve, and the order goes to her investing account.`}</p>}
+      ) : <p className="g-muted">{open ? "None yet." : `Opens at Level ${INVESTING_FROM}. ${r.home.teenName} proposes a fund, you approve, and the order goes to her investing account.`}</p>}
       {open && <p className="g-more"><Link className="g-textlink" href="/g/invest">Investing</Link></p>}
     </section>
   );
@@ -268,7 +268,7 @@ function WhatChanged({ from, to }: { from: Level; to: Level }) {
     <div className="g-clause g-clause--gold" style={{ marginBottom: 10 }}>
       <span className="g-clause__lbl">What changed</span>
       Weekly limit {formatCents(LEVELS[from].weeklyCents)} → <b>{formatCents(LEVELS[to].weeklyCents)}</b>. {approvalWords(to)}
-      {LEVELS[to].investing && " She can now propose investing her savings; you approve each one."}
+      {LEVELS[to].investing && !LEVELS[from].investing && " She can now propose investing her savings; you approve each one."}
     </div>
   );
 }

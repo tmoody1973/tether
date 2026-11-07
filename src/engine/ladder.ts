@@ -9,9 +9,12 @@ export interface LevelDef {
 
 export const LEVELS: Record<Level, LevelDef> = {
   1: { level: 1, weeklyCents: 2000, approvalOverCents: 1000, firstTimeApproval: true, merchantClasses: ["general"], investing: false },
-  2: { level: 2, weeklyCents: 3000, approvalOverCents: 2000, firstTimeApproval: false, merchantClasses: ["general", "books"], investing: false },
+  2: { level: 2, weeklyCents: 3000, approvalOverCents: 2000, firstTimeApproval: false, merchantClasses: ["general", "books"], investing: true },
   3: { level: 3, weeklyCents: 5000, approvalOverCents: null, firstTimeApproval: false, merchantClasses: ["general", "books", "apparel", "sneakers"], investing: true },
 };
+
+/** The lowest level that can invest; every "Investing opens at Level N" line reads this. */
+export const INVESTING_FROM: Level = ([1, 2, 3] as const).find((l) => LEVELS[l].investing)!;
 
 export interface WeekRecord { weekKey: string; allowanceCents: Cents; spentCents: Cents; commitmentCents: Cents }
 
