@@ -75,6 +75,27 @@ sequenceDiagram
 Once the deposit lands, the money belongs to Zoe and Tether never takes it back (decision 010). An answered request opened
 later says what happened ("Already approved", with a link to Zoe's investments).
 
+#### Where the money moves: this demo vs production
+
+```mermaid
+flowchart LR
+  subgraph DEMO["In this demo (sandbox)"]
+    D1["Zoe's savings<br/>Tether ledger, money stays in Amara's PayPal"] -- "Amara approves" --> D2["Alpaca sandbox<br/>simulated deposit"]
+    D2 --> D3["Dollar-amount order<br/>in a stand-in account"]
+  end
+  subgraph PROD["In production"]
+    P1["Amara's PayPal"] -- "Amara withdraws" --> P2["Amara's bank"]
+    P2 -- "ACH transfer, started by Tether after her approval" --> P3["Zoe's custodial account at Alpaca<br/>Amara is the custodian"]
+    P3 --> P4["Dollar-amount order"]
+  end
+```
+
+PayPal is not in the investing money path, in the demo or in production: Alpaca funds accounts by bank transfer or wire,
+not PayPal. PayPal stays central where it already is: Amara's consent (PayPal Vault), Zoe's purchases (Orders v2 on the
+saved wallet) and the proof (every receipt checked against PayPal's own records). We looked at eToro, which does take
+PayPal deposits, and stayed on Alpaca: eToro has no accounts for under-18s and its personal API keys can't be used on
+someone else's behalf (decision 023, coming with the assistant PR).
+
 ## How PayPal and AI are used
 
 | What | How |
