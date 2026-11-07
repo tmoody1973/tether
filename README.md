@@ -43,7 +43,7 @@ The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home)
 6. **PayPal charges Amara's saved wallet**, using a single-use permission slip (a signed token, valid 120 seconds, bound to that exact cart).
 7. **Every week, what Zoe didn't spend becomes savings.** Four kept weeks in a row moves her up a level: more money, more shops, and from Level 2, investing.
 8. **Investing (from Level 2):** Zoe searches the whole market and proposes a fund or stock. Tether shows facts only and recommends nothing, and blocks products whose names say they're leveraged or inverse. Amara approves each one; Tether places the order through Alpaca.
-9. **Amara can ask about the month** ("How much at the bookshop in October?"). A read-only assistant answers from PayPal's transaction list and Tether's receipts. It cannot move money.
+9. **Amara can ask about the month** ("How much at the bookshop in October?", "How are Zoe's investments doing?"). A read-only assistant answers from PayPal's transaction list, Tether's receipts, Zoe's investments, what's inside her funds, and the news. News shows only here, only when Amara asks; never on Zoe's screens (decision 022). It cannot move money.
 
 ### Investing, from Zoe to Amara
 
@@ -56,19 +56,21 @@ sequenceDiagram
   participant A as Amara (phone)
   participant AL as Alpaca (sandbox)
   Z->>T: Searches the whole market, opens a fund ("Look closer")
-  T-->>Z: Facts only: what it is, one-year line, five years vs the whole market
-  Z->>T: Answers three questions and proposes a dollar amount
+  T-->>Z: Facts only: what it is, one-year line, five years vs the whole market, what's inside
+  Z->>T: Answers three questions and proposes $5.00 (about 0.0138 of a share)
   T->>T: Rule engine checks: Level 3, fund on Amara's list, enough savings
   Note over Z,T: Not on Amara's list yet? Proposing asks her to add it first.
   T-)A: One push: "Zoe proposes investing $5.00 in VTI"
-  A->>T: Taps it: the request page shows her savings, Zoe's answers, her recent weeks
+  A->>T: Taps it: the request page shows about 0.0138 of a share, what's inside VTI, her savings, Zoe's answers, her recent weeks
   alt Amara approves
     A->>T: Approve $5.00
     T->>T: Single-use permission slip, savings debited
     T->>AL: Deposit $5.00 into Zoe's investing account
     T->>AL: Dollar-amount order for VTI
     AL-->>T: Bought, or queued for market open
-    T-->>Z: Your investments: VTI, bought, $5.00
+    T-->>Z: Your investments: VTI, 0.0138 share, worth $5.00, too soon to tell
+    A->>T: Asks "How are Zoe's investments doing?"
+    T-->>A: A short answer and Zoe's investments card, from the same numbers
   else Not this time
     A->>T: Not this time
     T-->>Z: Amara's answer. Nothing moves.
@@ -98,7 +100,7 @@ PayPal is not in the investing money path, in the demo or in production: Alpaca 
 not PayPal. PayPal stays central where it already is: Amara's consent (PayPal Vault), Zoe's purchases (Orders v2 on the
 saved wallet) and the proof (every receipt checked against PayPal's own records). We looked at eToro, which does take
 PayPal deposits, and stayed on Alpaca: eToro has no accounts for under-18s and its personal API keys can't be used on
-someone else's behalf (decision 023, coming with the assistant PR).
+someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpaca-not-etoro.md)).
 
 ## How PayPal and AI are used
 
@@ -111,6 +113,7 @@ someone else's behalf (decision 023, coming with the assistant PR).
 | **Claude** (`claude-haiku-5-5` via the Vercel AI SDK, except the month assistant, which uses `claude-sonnet-5-5`) | The propose-only shopping agent, the "is it a book?" check, plain-English refusal sentences, fund descriptions, and the month assistant. Every model output is validated, with a code fallback. |
 | **Channel3** | Product search scoped to the parent's allowed shops; turns a pasted link into a real cart. |
 | **Alpaca Broker API** (sandbox) | Investing: account, deposit, dollar-amount orders; market search and price history. |
+| **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls (40 a family a day), and only for Zoe's funds and the companies inside them. |
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
 
@@ -219,7 +222,16 @@ sequenceDiagram
 ### 5. "Ask about the month" (agent) — `src/ai/monthAssistant.ts`
 
 - **What it's for:** Amara asks things like "How much at the bookshop in October?"
-- **What it can see:** two read-only tools — PayPal's transaction list (through the **PayPal Agent Toolkit**, configured with only `list_transactions`) and Tether's own receipts for the month. At most 5 steps.
+- **What it can see:** read-only tools, at most 5 steps:
+  - `tether_record`: Tether's own receipts for a month.
+  - `list_transactions`: PayPal's transaction list, through the **PayPal Agent Toolkit**, configured with only `list_transactions`.
+  - `paypal_check`: whether the month's receipts match PayPal (the Activity page's check).
+  - `month_checkin`: her level, this week, savings, and the next check-in.
+  - `zoe_investments`: each fund she holds (shares, what she put in, worth now, the same money in the whole market, too soon to tell) and investments still on their way. Same numbers as her Investing page.
+  - `fund_inside(symbol)`: what one of Zoe's funds owns. Only a fund on her list or one she holds; anything else is refused before any paid call.
+  - `news(ticker?)`: market headlines, or headlines about a company inside one of her funds (funds have no news of their own). Title, source, date and link only.
+- **Facts only:** it never advises, predicts, ranks or says what Amara or Zoe should do. For news it says what the headlines are about, never why a price moved.
+- **Cards:** the numbers under each answer (purchases, check-in, PayPal match, Zoe's investments, what's inside, headlines) are built by code from the tool results, never by the model (decision 019). Headline links open in a new tab, and only `http(s)` links are drawn.
 - **Family-only:** every family's charges land in Tether's one PayPal account, so the PayPal tool is wrapped: the server picks the dates, keeps only rows whose payment id matches this family's receipts, and passes only date, amount and status. The model never sees other families, balances or free-text notes.
 - **What it cannot do:** move money. No write tool exists in its toolset, and the toolkit can be imported only in this one file (enforced by lint). If the data isn't there it says "I can't see that."
 
@@ -235,7 +247,7 @@ sequenceDiagram
   participant PP as PayPal Transaction Search
   Amara->>App: "How much at the bookshop in October?"
   App->>App: check sign-in cookie, family id comes from it
-  App->>Model: question + 2 read-only tools
+  App->>Model: question + read-only tools
   loop at most 5 steps
     Model->>Rec: month "2026-10"
     Rec-->>Model: this family's receipts (shop, amount, rule version, how allowed)
@@ -263,6 +275,7 @@ sequenceDiagram
 | Payments | PayPal REST (Vault, Orders v2, Webhooks, Transaction Search), PayPal Agent Toolkit |
 | Commerce data | Channel3 SDK |
 | Investing | Alpaca Broker API + Market Data (sandbox) |
+| Fund holdings and news | Financial Datasets REST API (cached per family, capped per day) |
 | Tests | Vitest (unit, integration on PGlite), Playwright (end-to-end) |
 | Hosting | Vercel (production deploys from `main`), Neon Postgres |
 
@@ -351,6 +364,8 @@ To deploy your own copy: set the variables below in Vercel, run `DATABASE_URL=<n
 | `ALPACA_DATA_BASE_URL` | `https://data.sandbox.alpaca.markets` | No (this default) |
 | `ALPACA_FIRM_ACCOUNT_ID` | Funds deposits instantly by journal instead of a bank transfer | No |
 | `ALPACA_CUSTODIAL_ENABLED` | `true` sends the custodial account request | No (default `false`) |
+| `FINANCIALDATASETS_API_KEY` | Financial Datasets: what's inside a fund, and the assistant's headlines. Unset: no "What's inside" card, and the assistant says the news isn't available | For fund holdings and news |
+| `FINANCIALDATASETS_BASE_URL` | Only for the e2e suite's local fake (honoured only on localhost with `TETHER_E2E=1`); otherwise `https://api.financialdatasets.ai` | No |
 | `NEXT_PUBLIC_ONESIGNAL_APP_ID` | OneSignal app id (public). Shows Amara's "Turn on notifications" card; unset hides it | For push |
 | `ONESIGNAL_REST_API_KEY` | OneSignal REST key, server only, never sent to a browser. Unset means push is off: asks still work, nothing is sent | For push (production only) |
 | `DEMO_GUARDIAN_KEY` / `DEMO_TEEN_TOKEN` | Keys for the shared demo family (landing page buttons, Reset demo); leave both blank to hide the demo | For the public demo |
