@@ -205,6 +205,8 @@ Levels (Claude's proposal, not yet confirmed):
 | 2 | $30 | + bookshop | over $20 |
 | 3 | $50 | + clothing/sneakers; investing proposals (D13) | none inside her allowed shops |
 
+Investing moved to Level 2 on 2026-11-07, decision 024.
+
 ## 5. How it works, step by step
 
 **People:** Amara (parent, has a PayPal personal account). Zoe (15, has no PayPal account — PayPal and Venmo personal accounts require 18+; she exists only inside Tether).

@@ -21,8 +21,10 @@ describe("grant words (the consent clause — plain code, no model)", () => {
     expect(text).not.toMatch(/Venmo|invest/i);
   });
 
-  it("level 2 and 3 change the approval line; level 3 mentions investing", () => {
-    expect(clauseText(grantClause({ ...base, level: 2 }))).toContain("Anything over $20.00 comes to you first.");
+  it("level 2 and 3 change the approval line; both mention investing, level 1 does not", () => {
+    const l2 = clauseText(grantClause({ ...base, level: 2 }));
+    expect(l2).toContain("Anything over $20.00 comes to you first.");
+    expect(l2).toContain("propose investing her savings; you approve each one.");
     const l3 = clauseText(grantClause({ ...base, level: 3, shops: ["a.com", "b.com", "c.com"] }));
     expect(l3).toContain("$50.00 a week at a.com, b.com and c.com.");
     expect(l3).toContain("Nothing inside these shops needs your OK.");

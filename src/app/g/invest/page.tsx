@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { INVESTING_FROM } from "@/engine/ladder";
 import Link from "next/link";
 import { pageHoldings } from "@/app/g/flowDeps";
 import { HerInvestments } from "./HerInvestments";
@@ -81,7 +82,7 @@ async function Invest() {
 
         <section className="g-card" aria-labelledby="inv-h">
           <h2 className="g-label" id="inv-h">{zoe}&apos;s investments</h2>
-          {investments.length === 0 ? <p className="g-muted">None yet. Investing opens at Level 3, and each one needs your OK.</p> : (
+          {investments.length === 0 ? <p className="g-muted">None yet. Investing opens at Level {INVESTING_FROM}, and each one needs your OK.</p> : (
             <HerInvestments investments={investments} holdings={pageHoldings(db, familyId)} zoe={zoe} />
           )}
         </section>

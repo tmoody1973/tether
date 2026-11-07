@@ -226,16 +226,18 @@ test("suggest a shop ⇒ appears on Amara's home", async ({ page }) => {
   await expect(req).toContainText("art supplies for my portfolio");
 });
 
-test("invest page hidden below level 3", async ({ page }) => {
+test("invest page hidden below level 2", async ({ page }) => {
   await open(page, E2E.teenToken); // Level 1
   await expect(page.getByRole("navigation").getByRole("link", { name: "Goals" })).toBeVisible();
   await expect(page.getByRole("navigation").getByRole("link", { name: "Invest" })).toHaveCount(0);
   await open(page, E2E.teenToken, "/invest");
-  await expect(page.getByRole("heading", { name: "Investing opens at Level 3." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Investing opens at Level 2." })).toBeVisible();
   await expect(page.getByRole("search")).toHaveCount(0);
   await open(page, E2E.teenToken, "/invest/VTI");
-  await expect(page.getByRole("heading", { name: "Investing opens at Level 3." })).toBeVisible();
-  await open(page, E2E.teenB.look); // Level 3: the tab is there
+  await expect(page.getByRole("heading", { name: "Investing opens at Level 2." })).toBeVisible();
+  await open(page, E2E.teenB.queued); // Level 2: the tab is there
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Invest" })).toBeVisible();
+  await open(page, E2E.teenB.look); // Level 3: still there
   await expect(page.getByRole("navigation").getByRole("link", { name: "Invest" })).toBeVisible();
 });
 
@@ -309,7 +311,10 @@ test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
   await expect(page.getByText("Nervous, but I'd wait")).toBeVisible();
 });
 
-test("queued when Amara approves, then filled: both see how it's doing", async ({ page }) => {
+test("queued when Amara approves, then filled: both see how it's doing (a Level 2 teen)", async ({ page }) => {
+  await open(page, E2E.teenB.queued); // Level 2: Invest is a tab, no Demo controls needed
+  await page.getByRole("navigation").getByRole("link", { name: "Invest" }).click();
+  await expect(page.getByRole("search")).toBeVisible();
   await propose(page, E2E.teenB.queued, "VTI", "25"); // she has $20 saved
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 available to invest, so at most that.");
   await expect(page.getByLabel("Why this one?")).toHaveValue("Lots of companies in one fund"); // her words are kept

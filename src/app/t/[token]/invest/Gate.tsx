@@ -1,14 +1,15 @@
+import { INVESTING_FROM, LEVELS } from "@/engine/ladder";
 import type { TeenWeek } from "@/flows/teen";
 import { TeenShell } from "@/ui/teen";
 import { levelProgress } from "@/ui/teenWords";
 import { NotShopping } from "../NotShopping";
 
-/** Below Level 3, or rules not in force: a calm page instead of investing (the tab is hidden below Level 3). */
+/** Below the investing level, or rules not in force: a calm page instead of investing (the tab is hidden below it). */
 export function investGate(token: string, w: TeenWeek) {
-  if (w.level !== 3) {
+  if (!w.level || !LEVELS[w.level].investing) {
     return (
       <TeenShell token={token} active={null} level={w.level} center>
-        <h1 className="t-h2">Investing opens at Level 3.</h1>
+        <h1 className="t-h2">Investing opens at Level {INVESTING_FROM}.</h1>
         {w.level && <p className="t-small">{levelProgress(w.streak, w.level)}</p>}
       </TeenShell>
     );

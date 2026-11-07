@@ -2,7 +2,7 @@
 
 import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
+import { INVESTING_FROM, LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
 import { approvalShort, formatCents, formatDay, grantClause, matchWords } from "@/ui/grantWords";
 import { editDraft, type Draft } from "@/ui/rulesDraft";
 import { setLevelAction, signGrantAction, type LevelState, type SignState } from "../actions";
@@ -165,7 +165,7 @@ export function GrantEditor(p: GrantEditorProps) {
           <div className="g-section__head"><h2 id="bylevel-h">Set by the level</h2></div>
           <div>
             <Def k="Asks you first" v={approvalShort(level)} />
-            <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : "opens at Level 3"}
+            <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : `opens at Level ${INVESTING_FROM}`}
               sub={def.investing ? "her funds and your list" : "funds she proposes, you approve"} />
             <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href="/g/connect-paypal">save your PayPal</a>} sub="sandbox: no real money" />
           </div>

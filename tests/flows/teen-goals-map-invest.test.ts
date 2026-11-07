@@ -143,7 +143,7 @@ describe("shop map", () => {
 const ANSWERS: Answers = { why: "Lots of companies in one", sell: "If I needed it for college", drop: "Nervous, but I'd wait" };
 
 describe("investing from Zoe's side", () => {
-  it("below Level 3 nothing can be proposed", async () => {
+  it("below Level 2 nothing can be proposed", async () => {
     const s = await seed(1, { savedCents: 3000 });
     expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: false, error: "level" });
   });
@@ -249,8 +249,9 @@ describe("investing from Zoe's side", () => {
     expect((await proposeInvestment(deps(), s.familyId, { symbol: "VTI", amountCents: 500 }, {})).decision.outcome).toBe("REFUSE");
   });
 
-  it("canPropose: Level 3 with rules in force, checked before anything else", async () => {
+  it("canPropose: Level 2 with rules in force, checked before anything else", async () => {
     expect(await canPropose(deps(), (await seed(1)).familyId)).toBe("level");
+    expect(await canPropose(deps(), (await seed(2)).familyId)).toBeNull();
     const s = await seed(3);
     expect(await canPropose(deps(), s.familyId)).toBeNull();
     clock = new Date(NOW.getTime() + 8 * 86_400_000);
