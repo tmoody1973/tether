@@ -41,6 +41,40 @@ The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home)
 8. **Investing (Level 3):** Zoe searches the whole market and proposes a fund. Tether shows facts only and recommends nothing. Amara approves each one; Tether places the order through Alpaca.
 9. **Amara can ask about the month** ("How much at the bookshop in October?"). A read-only assistant answers from PayPal's transaction list and Tether's receipts. It cannot move money.
 
+### Investing, from Zoe to Amara
+
+Zoe proposes; Amara decides; code moves the money. No model is involved in any step that moves money.
+
+```mermaid
+sequenceDiagram
+  participant Z as Zoe (phone)
+  participant T as Tether (code)
+  participant A as Amara (phone)
+  participant AL as Alpaca (sandbox)
+  Z->>T: Searches the whole market, opens a fund ("Look closer")
+  T-->>Z: Facts only: what it is, one-year line, five years vs the whole market
+  Z->>T: Answers three questions and proposes a dollar amount
+  T->>T: Rule engine checks: Level 3, fund on Amara's list, enough savings
+  Note over Z,T: Not on Amara's list yet? Proposing asks her to add it first.
+  T-)A: One push: "Zoe proposes investing $5.00 in VTI"
+  A->>T: Taps it: the request page shows her savings, Zoe's answers, her recent weeks
+  alt Amara approves
+    A->>T: Approve $5.00
+    T->>T: Single-use permission slip, savings debited
+    T->>AL: Deposit $5.00 into Zoe's investing account
+    T->>AL: Dollar-amount order for VTI
+    AL-->>T: Bought, or queued for market open
+    T-->>Z: Your investments: VTI, bought, $5.00
+  else Not this time
+    A->>T: Not this time
+    T-->>Z: Amara's answer. Nothing moves.
+  end
+  Note over A,T: Missed the push? The request waits on Home under "Needs you" until it is answered or runs out of time.
+```
+
+Once the deposit lands, the money belongs to Zoe and Tether never takes it back (decision 010). An answered request opened
+later says what happened ("Already approved", with a link to Zoe's investments).
+
 ## How PayPal and AI are used
 
 | What | How |
@@ -49,11 +83,11 @@ The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home)
 | **PayPal Orders v2** | Each approved cart is one order, charged to the vaulted wallet. Completes in one call, no separate capture. |
 | **PayPal Webhooks** | Payment events reconcile Tether's ledger with PayPal. |
 | **PayPal Agent Toolkit** (`@paypal/agent-toolkit`) | Read-only: only `list_transactions` is exposed, wrapped so the model sees only this family's rows (date, amount, status). |
-
-Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
-| **Claude** (`claude-haiku-5-5` via the Vercel AI SDK) | The propose-only shopping agent, the "is it a book?" check, plain-English refusal sentences, fund descriptions, and the month assistant. Every model output is validated, with a code fallback. |
+| **Claude** (`claude-haiku-5-5` via the Vercel AI SDK, except the month assistant, which uses `claude-sonnet-5-5`) | The propose-only shopping agent, the "is it a book?" check, plain-English refusal sentences, fund descriptions, and the month assistant. Every model output is validated, with a code fallback. |
 | **Channel3** | Product search scoped to the parent's allowed shops; turns a pasted link into a real cart. |
 | **Alpaca Broker API** (sandbox) | Investing: account, deposit, dollar-amount orders; market search and price history. |
+
+Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
 
 ## The AI: two agents, three checked calls
 
