@@ -39,7 +39,8 @@ export function Agents() {
         <h2 id="agents-h">Meet the agents.</h2>
         <p className="l-lede">
           Two parts of Tether are agents: a model that loops, calling tools. Three more are single model calls whose answers code
-          checks. Each one has a plain code fallback, so the app still works with the model switched off.
+          checks. Each single call has a plain code fallback, and the rest of the app still works with the model switched off; the
+          month assistant says it can&apos;t see the answer right now.
         </p>
 
         <div className="l-agents__pair">
@@ -78,14 +79,14 @@ export function Agents() {
             <li>
               <b>&ldquo;Is it really a book?&rdquo;</b>
               <span>
-                Level 2&apos;s bookshop is for books only, and Barnes &amp; Noble also sells games. The model says how sure it is; code
+                The bookshop (from Level 2) is for books only, and Barnes &amp; Noble also sells games. The model says how sure it is; code
                 decides. 98% or surer, the cart goes through. From 70%, it needs Amara&apos;s OK. Below that, it&apos;s refused.
               </span>
               <span className="l-fallback">An error or no answer within 4 seconds counts as refused. It can only tighten the rules, never loosen them.</span>
             </li>
             <li>
               <b>Refusal sentences</b>
-              <span>The rule engine&apos;s reasons, turned into one sentence for Zoe with two ways forward. It may use only the dollar amounts the engine gave it, never say a purchase is approved, and stays under 240 characters.</span>
+              <span>The rule engine&apos;s reasons, turned into one sentence for Zoe with two ways forward. It may use only the dollar amounts the engine gave it, never say a purchase is approved, and is 240 characters at most.</span>
               <span className="l-fallback">Otherwise a fixed template: &ldquo;You&apos;ve got $13.02 left this week and this is $25.30.&rdquo;</span>
             </li>
             <li>

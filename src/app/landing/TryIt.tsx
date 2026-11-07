@@ -20,8 +20,8 @@ export function TryIt({ links }: { links: DemoLinks }) {
             {links && (
               <>
                 {/* Plain <a>, never prefetched: the doors start sessions. */}
-                <a className="l-btn l-btn--guard" href={links.amara}>Open Amara&apos;s view</a>
                 <a className="l-btn l-btn--teen" href={links.zoe}>Open Zoe&apos;s view</a>
+                <a className="l-btn l-btn--guard" href={links.amara}>Open Amara&apos;s view</a>
                 <p>Sandbox only; no real money moves. Anyone can use the demo family, and it resets itself.</p>
               </>
             )}

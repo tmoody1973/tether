@@ -1,6 +1,7 @@
 import { Phone } from "./bits";
 
 const ROWS = [
+  ["Sign-in", "Log in with PayPal", "A parent starts a family by logging in with PayPal. PayPal accounts are for adults; Zoe never signs in to PayPal."],
   ["Consent", "PayPal Vault", "Amara saves her PayPal once, on PayPal's own page. Tether never sees her password."],
   ["Payment", "Orders v2", "Each approved cart is one charge to that saved wallet, carrying a single-use permission slip: valid two minutes, bound to that exact cart."],
   ["Proof", "Transaction Search, webhooks", "The slip's id travels inside the PayPal order. Tether checks its receipts against PayPal's transaction list and signed webhooks."],
