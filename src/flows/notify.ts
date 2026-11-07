@@ -1,5 +1,5 @@
 import { pushAlias } from "@/auth/guardian";
-import { PUSH_TIMEOUT_MS, sendPush, type PushConfig, type PushResult } from "@/adapters/onesignal/push";
+import { sendPush, type PushConfig, type PushResult } from "@/adapters/onesignal/push";
 import type { Quote } from "@/adapters/alpaca/data";
 import type { Deps } from "@/flows/purchase";
 import { requestView, type RequestView } from "@/flows/request";
@@ -19,9 +19,12 @@ export function tellAmara(deps: { notify?: Notify }, familyId: string, approvalI
   }
 }
 
+/** The share count's price may hold the push this long, before the send's own 5 s: about 7 s at worst. */
+export const QUOTE_WAIT_MS = 2_000;
+
 export interface PushOpts {
   cfg: PushConfig | null; baseUrl: string; fetchImpl?: typeof fetch; realNow?: number;
-  /** The latest close for an investment's share count; without it, or slower than quoteTimeoutMs, the push is today's. */
+  /** The latest close for an investment's share count; without it, or slower than quoteTimeoutMs (default QUOTE_WAIT_MS), the push is today's. */
   quote?: (symbol: string) => Promise<Quote | null>; quoteTimeoutMs?: number;
 }
 
@@ -52,7 +55,7 @@ async function bodyOf(v: RequestView, o: PushOpts): Promise<string> {
   if (!v.investment || !o.quote) return title;
   const { symbol, amountCents } = v.investment;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), o.quoteTimeoutMs ?? PUSH_TIMEOUT_MS); });
+  const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), o.quoteTimeoutMs ?? QUOTE_WAIT_MS); });
   try {
     const q = await Promise.race([o.quote(symbol), late]);
     if (!q || !q.fractionable) return title; // whole-shares-only: the request page says so; the push stays today's

@@ -136,6 +136,18 @@ describe("pushRequest: an investment says how much of a share", () => {
     err.mockRestore();
   });
 
+  it("the price gets at most 2 s of its own, so the push still goes within about 7 s", async () => {
+    const after = (ms: number) => () => new Promise<Quote>((r) => setTimeout(() => r(VTI), ms));
+    const send = async (quote: (symbol: string) => Promise<Quote | null>) => {
+      const s = await familyWithInvestmentAsk();
+      const f = ok();
+      await pushRequest({ db, now: s.now }, s.familyId, s.approvalId, { ...opts(f as unknown as typeof fetch), quote }); // default budget
+      return JSON.parse(String(f.mock.calls[0][1]?.body)).contents.en as string;
+    };
+    expect(await send(after(1_900))).toContain("About 0.0138 of a share.");
+    expect(await send(after(2_100))).toBe("Zoe proposes investing $5.00 in VTI");
+  });
+
   it("a shop ask never looks up a price", async () => {
     const s = await familyWithShopAsk();
     const quote = vi.fn(async () => VTI);
