@@ -113,7 +113,7 @@ someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpa
 | **Claude** (`claude-haiku-5-5` via the Vercel AI SDK, except the month assistant, which uses `claude-sonnet-5-5`) | The propose-only shopping agent, the "is it a book?" check, plain-English refusal sentences, fund descriptions, and the month assistant. Every model output is validated, with a code fallback. |
 | **Channel3** | Product search scoped to the parent's allowed shops; turns a pasted link into a real cart. |
 | **Alpaca Broker API** (sandbox) | Investing: account, deposit, dollar-amount orders; market search and price history. |
-| **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls (40 a family a day), and only for Zoe's funds and the companies inside them. |
+| **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls: market headlines, or only Zoe's funds and the companies inside them. Fund holdings 40 a family a day, headlines 20 a day and at most two per question. |
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
 
