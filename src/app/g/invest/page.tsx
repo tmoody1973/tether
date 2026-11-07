@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { pageHoldings } from "@/app/g/flowDeps";
+import { HerInvestments } from "./HerInvestments";
 import { eq } from "drizzle-orm";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
@@ -9,8 +11,7 @@ import { STAND_IN_LABEL } from "@/adapters/alpaca/broker";
 import { guardianHome } from "@/flows/home";
 import { allowedFunds } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
-import { INVEST_STATUS } from "@/ui/investWords";
-import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
+import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "./FundFacts";
 import { Seam } from "@/ui/Seam";
 
@@ -81,15 +82,7 @@ async function Invest() {
         <section className="g-card" aria-labelledby="inv-h">
           <h2 className="g-label" id="inv-h">{zoe}&apos;s investments</h2>
           {investments.length === 0 ? <p className="g-muted">None yet. Investing opens at Level 3, and each one needs your OK.</p> : (
-            <ul className="g-needs">
-              {investments.map((i) => (
-                <li key={i.id} style={{ padding: "10px 2px" }}>
-                  <b><Money cents={i.amountCents} /> in {i.symbol}</b>
-                  <small style={{ display: "block", color: "var(--ink-2)" }}>{i.status === "expired" ? `Asked too long ago — ${zoe} can ask again.` : INVEST_STATUS[i.status]}</small>
-                  {i.receiptNote && <small style={{ display: "block", color: "var(--ink-3-text)" }}>{i.receiptNote}</small>}
-                </li>
-              ))}
-            </ul>
+            <HerInvestments investments={investments} holdings={pageHoldings(db, familyId)} zoe={zoe} />
           )}
         </section>
       </div>

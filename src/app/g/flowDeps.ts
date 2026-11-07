@@ -2,8 +2,10 @@ import { clockFor } from "@/clock/clock";
 import type { Db } from "@/db/client";
 import { paypalFromEnv, type PaypalHttp } from "@/adapters/paypal/http";
 import { createChannel3, type Channel3Adapter } from "@/adapters/channel3/client";
-import { brokerFromEnv } from "@/adapters/alpaca/broker";
+import { brokerFromEnv, filledOrder } from "@/adapters/alpaca/broker";
+import { marketFromEnv } from "@/adapters/alpaca/data";
 import type { ApproveDeps } from "@/flows/approve";
+import { familyHoldings, type Holding } from "@/flows/holdings";
 
 const unavailable = (what: string) => async (): Promise<never> => { throw new Error(`${what} is not configured here`); };
 
@@ -37,4 +39,14 @@ export function paymentDeps(db: Db): ApproveDeps {
     secret: process.env.TETHER_SIGNING_KEY ?? "",
     alpaca: () => brokerFromEnv(),
   };
+}
+
+/** Her holdings for a page: Alpaca's fills (cached for good) and closes. Any failure ⇒ none, and her rows stay as today. */
+export async function pageHoldings(db: Db, familyId: string): Promise<Holding[]> {
+  try {
+    return await familyHoldings({ db, order: filledOrder, market: marketFromEnv() }, familyId);
+  } catch (err) {
+    console.error("holdings unavailable", err instanceof Error ? err.message : err);
+    return [];
+  }
 }

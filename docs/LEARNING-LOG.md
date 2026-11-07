@@ -37,3 +37,15 @@ Dated entries. Each answers: what did we expect, what happened, what do we now b
 **Expected:** If PayPal's transaction list shows a negative row that points back at one of our payments, that payment was refunded. Tether's "checked against PayPal" panel was built on that rule.
 **What happened:** On the live site, every single payment showed "Refunded in PayPal", yet no code in Tether can refund. PayPal's list carried an event code (a T-code: PayPal's label for what kind of money movement a row is) on every row. The negative rows were all T2002, "withdraw funds to partner account": the sandbox merchant account automatically sweeps each payment's net amount out. Of 61 rows that month, 30 were payments, 30 were sweeps and none were refunds.
 **What we now believe:** A row's shape (negative, references a payment) is a guess; its label (the T-code) is the fact. When reconciling money, classify by what the provider says a row *is*, not by what it looks like. Tether now counts only reversal, refund and chargeback codes (T11xx, T12xx).
+
+## 2026-11-07 — News for a fund was the wrong question
+
+**Expected:** Financial Datasets would give Zoe the news for a fund she was looking at, next to what's inside it.
+**What happened:** It has no news for funds: asking for VTI's news returned "No news found for VTI." For a single company it does, but Apple's three latest headlines were political stories and clickbait, nothing a 15-year-old could use to decide anything.
+**What we now believe:** News belongs with the parent, on request (Amara asking her assistant), not pushed at the teen. A teen deciding on a fund needs to see what's inside it, not what happened today.
+
+## 2026-11-07 — The "missed" request was the test suite answering itself
+
+**Expected:** Amara had missed a request from Zoe to invest in VTI. Its page said only "This request has closed. It was already answered, or it ran out of time."
+**What happened:** Nobody missed it. The live test suite runs against the shared demo family, and its own test approved the VTI ask a few seconds after pushing it. The page couldn't say which of the two had happened, so it looked like a lost request.
+**What we now believe:** A closed request must say what happened to it (approved, declined, or ran out of time), because "closed" with no reason reads as a bug. And tests that write to the shared demo will be mistaken for people.

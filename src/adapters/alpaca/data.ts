@@ -33,13 +33,32 @@ export class NotEnoughHistoryError extends Error {
 const cents = (dollars: number): Cents => Math.round(dollars * 100);
 const CHART_POINTS = 61;
 
+/** At most CHART_POINTS evenly spaced points, first and last kept: a line reads the same at any length. */
+export function thin<T>(xs: T[]): T[] {
+  const step = Math.max(1, (xs.length - 1) / (CHART_POINTS - 1));
+  const picked: T[] = [];
+  for (let i = 0; i < xs.length - 1; i += step) picked.push(xs[Math.round(i)]);
+  if (xs.length > 0) picked.push(xs[xs.length - 1]);
+  return picked;
+}
+
 /** Closes as "what $100 became", thinned to at most CHART_POINTS (first and last kept). */
-export function hundredLine(closes: number[]): number[] {
-  const step = Math.max(1, (closes.length - 1) / (CHART_POINTS - 1));
-  const picked: number[] = [];
-  for (let i = 0; i < closes.length - 1; i += step) picked.push(closes[Math.round(i)]);
-  picked.push(closes[closes.length - 1]);
-  return picked.map((c) => (c / closes[0]) * 100);
+export const hundredLine = (closes: number[]): number[] => thin(closes).map((c) => (c / closes[0]) * 100);
+
+/** A daily close and the market day it closed on (Alpaca stamps daily bars at midnight New York). */
+export interface Close { cents: Cents; day: Date }
+export interface Quote extends Close { fractionable: boolean }
+
+const nyDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+const nyClock = new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+/** "2026-11-06": the New York market day a time falls on. */
+export const marketDay = (d: Date | number): string => nyDay.format(d);
+/** The session ends at 4pm New York and the free feed lags 16 minutes; until then today's bar is still moving. */
+const CLOSED_AT_MIN = 16 * 60 + 16;
+function isClosed(barT: number, nowMs: number): boolean {
+  if (marketDay(barT) !== marketDay(nowMs)) return true;
+  const [h, m] = nyClock.format(nowMs).split(":").map(Number);
+  return h * 60 + m >= CLOSED_AT_MIN;
 }
 const usd = (c: Cents) => `$${(c / 100).toFixed(2)}`;
 const monthYear = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -160,7 +179,31 @@ export function alpacaMarket(broker: AlpacaBroker, dataBaseUrl: string, now: () 
 
   const marketCompare = async (symbol: string, asOf: Date): Promise<MarketCompare> => (await fiveYear(symbol, asOf)).compare;
 
-  return { searchAssets, changeOver, marketCompare, fiveYear };
+  /** Closed sessions from `from` to `to`, oldest first. Throws when the data call fails. */
+  async function dailyCloses(symbol: string, from: Date, to: Date): Promise<Close[]> {
+    // Within the cached 5-year history (the fund page's) when it covers the window; else its own fetch.
+    const bars = from.getTime() >= to.getTime() - 5 * YEAR_MS ? await history(symbol, to) : await fetchBars(symbol, from, to);
+    return bars.filter((b) => b.t >= from.getTime() && b.t <= to.getTime() && isClosed(b.t, now()))
+      .map((b) => ({ cents: cents(b.c), day: new Date(b.t) }));
+  }
+
+  /** The last session that has closed, or null (no bars, or the data call failed). */
+  async function latestClose(symbol: string): Promise<Close | null> {
+    try {
+      const asOf = new Date(now());
+      return (await dailyCloses(symbol, new Date(asOf.getTime() - 5 * YEAR_MS), asOf)).at(-1) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** latestClose plus whether Alpaca sells it in slices; null when either is unknown. */
+  async function quote(symbol: string): Promise<Quote | null> {
+    const [close, hit] = await Promise.all([latestClose(symbol), assets().then((a) => a.find((x) => x.symbol === symbol), () => undefined)]);
+    return close && hit ? { ...close, fractionable: hit.fractionable } : null;
+  }
+
+  return { searchAssets, changeOver, marketCompare, fiveYear, latestClose, dailyCloses, quote };
 }
 
 export type AlpacaMarket = ReturnType<typeof alpacaMarket>;

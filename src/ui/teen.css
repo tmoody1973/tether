@@ -135,3 +135,15 @@ details.t-card > summary { cursor: pointer; font-weight: 650; min-height: 32px; 
 .t-legend i { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid var(--t-accent); vertical-align: middle; margin-right: 6px; }
 .t-legend i.t-legend--market { border-top: 2px dashed #8A8899; }
 .t-textarea { min-height: 84px; resize: vertical; }
+
+/* Investing (decision 020): the share price, what's inside a fund, and how her own investments are doing. */
+.t-big { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.t-big small { font-size: 15px; font-weight: 600; letter-spacing: 0; color: var(--ink-3-text); }
+.t-fine { font-size: 12.5px; }
+.t-hl { list-style: none; margin-top: 8px; }
+.t-hl li { display: grid; grid-template-columns: 1fr 70px 44px; gap: 8px; align-items: center; padding: 5px 0; font-size: 14px; }
+.t-hl__bar { height: 6px; background: #EEEDF5; border-radius: 99px; overflow: hidden; }
+.t-hl__bar i { display: block; height: 100%; background: var(--t-accent); border-radius: 99px; }
+.t-hl__pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--ink-2); }
+.t-quote { font-size: 14px; color: var(--ink-2); border-left: 3px solid #D9D5FF; padding-left: 10px; }
+.t-quote i { color: var(--ink); }

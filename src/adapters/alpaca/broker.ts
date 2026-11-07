@@ -1,4 +1,5 @@
 import type { Cents } from "@/engine/types";
+import { cacheLife } from "next/cache";
 import { isE2eLocal } from "@/adapters/paypal/http";
 
 /** Shown wherever a stand-in (non-custodial) sandbox account backs Zoe's investments. */
@@ -37,6 +38,14 @@ export interface AlpacaConfig {
 }
 
 export const dollars = (cents: Cents): string => (cents / 100).toFixed(2);
+
+export interface OrderState { status: string; filledQty: number | null; filledAvgPrice: number | null; filledAt: Date | null }
+/** A filled order, in Alpaca's numbers: shares bought, the average price per share (dollars), when it filled. */
+export interface FilledOrder { qty: number; avgPrice: number; at: Date }
+const num = (v: string | number | null | undefined): number | null => {
+  const n = v == null || v === "" ? NaN : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch) {
   let cached: { token: string; refreshAt: number } | null = null;
@@ -172,9 +181,12 @@ export function alpacaBroker(cfg: AlpacaConfig, fetchImpl: typeof fetch = fetch)
       return rows.map((r) => ({ transferId: r.id, amount: Number(r.amount), createdAt: Date.parse(r.created_at), incoming: r.direction === "INCOMING", status: r.status }));
     },
 
-    async getOrder(accountId: string, orderId: string): Promise<{ status: string }> {
-      const o = await call<{ status: string }>("GET", `/v1/trading/accounts/${accountId}/orders/${orderId}`);
-      return { status: o.status };
+    /** filledQty / filledAvgPrice / filledAt are Alpaca's own numbers once it fills (null or 0 before). */
+    async getOrder(accountId: string, orderId: string): Promise<OrderState> {
+      const o = await call<{ status: string; filled_qty?: string | null; filled_avg_price?: string | null; filled_at?: string | null }>(
+        "GET", `/v1/trading/accounts/${accountId}/orders/${orderId}`);
+      const at = o.filled_at ? new Date(o.filled_at) : null;
+      return { status: o.status, filledQty: num(o.filled_qty), filledAvgPrice: num(o.filled_avg_price), filledAt: at && !Number.isNaN(at.getTime()) ? at : null };
     },
   };
 }
@@ -208,4 +220,13 @@ let sharedBroker: AlpacaBroker | null = null;
 export function brokerFromEnv(): AlpacaBroker {
   sharedBroker ??= alpacaFromEnv();
   return sharedBroker;
+}
+
+/** A filled order never changes, so its lookup is cached for good. Throws unless filled, so a miss is never cached. */
+export async function filledOrder(accountId: string, orderId: string): Promise<FilledOrder> {
+  "use cache";
+  cacheLife("max");
+  const o = await brokerFromEnv().getOrder(accountId, orderId);
+  if (o.status !== "filled" || !o.filledQty || !o.filledAvgPrice || !o.filledAt) throw new Error(`order ${orderId} has no fill yet`);
+  return { qty: o.filledQty, avgPrice: o.filledAvgPrice, at: o.filledAt };
 }

@@ -5,17 +5,20 @@ import { teenSession } from "@/auth/teen";
 import { now as clockNow } from "@/clock/clock";
 import * as t from "@/db/schema";
 import { compareHeading, compareSentence, marketFromEnv, NotEnoughHistoryError, oneYearLine, type AssetHit, type FiveYear } from "@/adapters/alpaca/data";
+import { fundInside } from "@/adapters/financialdatasets/client";
 import { fundWords } from "@/ai/fundWords";
 import { takeDaily } from "@/flows/usage";
 import { teenWeek } from "@/flows/teen";
 import { fundStatus, isSymbol } from "@/flows/teenInvest";
 import { FiveYearLine } from "@/ui/FiveYearLine";
+import { InsideCard, ShareCostCard } from "@/ui/InvestCards";
 import { TeenLoading, TeenShell, LinkGone } from "@/ui/teen";
 import { explainLlm } from "../../../teenDeps";
 import { investGate, UNAVAILABLE } from "../Gate";
 import { ProposeForm } from "../ProposeForm";
 
-// D16 fund page: facts, the one-year line, ONE fixed 5-year line against the whole market, then her own answers.
+// D16 fund page: facts (what one share costs, what's inside), the one-year line, ONE fixed 5-year line against the
+// whole market, then her own answers.
 // No 1D/1W/1M controls, no daily moves, no "good fit" verdicts, no links out.
 export default function FundPage({ params, searchParams }: PageProps<"/t/[token]/invest/[symbol]">) {
   return (
@@ -54,7 +57,8 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
   if (!hit || !market) return calm("We couldn't find that one.");
 
   const asOf = new Date();
-  const [one, five, about, status] = await Promise.all([
+  const [close, one, five, about, status] = await Promise.all([
+    market.latestClose(symbol),
     market.changeOver(symbol, 1, asOf).then((c) => oneYearLine(c), () => null),
     // "young": under a year of trading, so there's no longer comparison to draw (R42).
     market.fiveYear(symbol, asOf).catch((e): FiveYear | "young" | null => (e instanceof NotEnoughHistoryError ? "young" : null)),
@@ -77,7 +81,10 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
       {sentFund && <p className="t-flash" role="status">Sent. {g} will see your answers. If she adds {symbol} to her list, you can propose an amount.</p>}
       {sentInvestment && <p className="t-flash" role="status">Sent. {g} will see your answers and decide.</p>}
 
+      <ShareCostCard close={close} />
       <section className="t-card" aria-label="What it is"><p className="t-small">{about}</p></section>
+      {/* Streams in on its own: Financial Datasets being slow, down or capped never holds up the page. */}
+      <Suspense fallback={null}><WhatsInside symbol={symbol} familyId={fam.id} /></Suspense>
 
       <section className="t-card" aria-labelledby="year-h">
         <h2 className="t-card__k" id="year-h">One year</h2>
@@ -106,12 +113,17 @@ async function Fund({ params, searchParams }: { params: Promise<{ token: string;
               ? `${symbol} is on ${g}'s list. Propose an amount and she decides.`
               : `${symbol} isn't on ${g}'s list yet. Proposing asks her to add it, with your answers.`}
           </p>
-          <ProposeForm token={token} symbol={symbol} guardian={g} />
+          <ProposeForm token={token} symbol={symbol} guardian={g} price={close?.cents ?? null} fractionable={hit.fractionable} />
         </>
       )}
       {back}
     </TeenShell>
   );
+}
+
+/** One paid Financial Datasets call per render at most (cached a week); companies and failures show nothing. */
+async function WhatsInside({ symbol, familyId }: { symbol: string; familyId: string }) {
+  return <InsideCard inside={await fundInside(symbol, familyId)} />;
 }
 
 /** Next has normally decoded the segment already; a stray "%" must never become a 500. */

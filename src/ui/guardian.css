@@ -320,3 +320,10 @@
 .g-notify__side { flex: 1 1 220px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .g-notify__h { font-size: 14.5px; font-weight: 700; margin: 0; }
 .g-notify__on { font-weight: 700; color: var(--g-accent); }
+
+/* Zoe's investments (decision 020): the same one-line chart as hers, in Amara's colours; never red or green. */
+.g-holding + .g-holding { border-top: 1px solid var(--g-line); margin-top: 10px; padding-top: 6px; }
+.g-chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+.g-chart__fund { fill: none; stroke: var(--g-accent); stroke-width: 2.5; stroke-linejoin: round; }
+.g-chart__market { fill: none; stroke: #8A8899; stroke-width: 2; stroke-dasharray: 5 4; stroke-linejoin: round; }
+.g-chart__base { stroke: #E3E1EE; stroke-width: 1; }

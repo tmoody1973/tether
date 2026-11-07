@@ -65,6 +65,8 @@ test("ask Amara ⇒ request appears on Amara's home", async ({ page }) => {
   await page.getByLabel("Search your shops").fill("earbuds");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await card(page, /Earbuds/).getByRole("link", { name: "Ask Amara" }).click();
+  // A client-side navigation to a page the dev server may still be compiling: wait for its heading first.
+  await expect(page.getByRole("heading", { name: "Ask Amara", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("She'll see that you have $14.00 left this week, and your reason.")).toBeVisible();
   await page.getByLabel("Why (optional)").fill("mine broke");
   await page.getByRole("button", { name: "Send" }).click();
@@ -253,6 +255,8 @@ test("fund page has no 1D/1W controls and one chart", async ({ page }) => {
 
   await results.nth(0).getByRole("link", { name: "Look closer" }).click();
   await expect(page.getByRole("heading", { name: "Vanguard S&P 500 ETF" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "One share costs" })).toContainText(/^One share costs\$[\d,.]+At [A-Z][a-z]+day's close \(\d{1,2} [A-Z][a-z]{2}\)\. You don't need a whole one: you buy in dollars\.$/);
+  await expect(page.getByRole("region", { name: "What's inside" })).toHaveCount(0); // covered, but no holdings came back: hidden
   await expect(page.locator("svg[data-chart]")).toHaveCount(1);
   await expect(page.getByRole("img", { name: /^Over 5 years, \$100 became: this \$\d+, the whole market \$\d+\.$/ })).toHaveCount(1);
   await expect(page.getByText(/^\$[\d.]+ today, \$[\d.]+ a year ago\.$/)).toBeVisible();
@@ -305,11 +309,18 @@ test("propose a fund ⇒ appears on Amara's home", async ({ page }) => {
   await expect(page.getByText("Nervous, but I'd wait")).toBeVisible();
 });
 
-test("queued order shows \"Queued for market open\"", async ({ page }) => {
+test("queued when Amara approves, then filled: both see how it's doing", async ({ page }) => {
   await propose(page, E2E.teenB.queued, "VTI", "25"); // she has $20 saved
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 available to invest, so at most that.");
   await expect(page.getByLabel("Why this one?")).toHaveValue("Lots of companies in one fund"); // her words are kept
+  const inside = page.getByRole("region", { name: "What's inside" });
+  await expect(inside).toContainText("NVIDIA");
+  await expect(inside).toContainText("These are 32% of the fund.");
+  await expect(inside).toContainText("From the fund's filing for 30 Jun 2026, via Financial Datasets.");
+  await expect(page.getByText(/^= about 0\.08\d{2} of one VTI share at \$[\d.]+\.$/)).toBeVisible(); // $25 at about $300
   await page.getByLabel("How much, in dollars?").fill("5");
+  await expect(page.getByText(/^= about 0\.01\d{2} of one VTI share at \$[\d.]+\.$/)).toBeVisible(); // updates as she types
+  await expect(page.getByText("The exact slice is set when the market fills the order.", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Propose to Amara" }).click();
   await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers and decide.");
 
@@ -317,6 +328,9 @@ test("queued order shows \"Queued for market open\"", async ({ page }) => {
   await page.getByRole("link", { name: /Zoe proposes investing \$5\.00 in VTI/ }).click();
   await expect(page).toHaveURL(/\/g\/requests\//); // the link is a client-side navigation: wait for it before reading the URL
   const requestUrl = page.url();
+  await expect(page.getByText(/^About 0\.01\d{2} of a share at \$[\d.]+$/)).toBeVisible(); // the same facts Zoe saw
+  await expect(page.getByRole("region", { name: "What's inside VTI" })).toContainText("NVIDIA 6.4%, Apple 5.9%, Alphabet 5.2%");
+  await expect(page.getByRole("region", { name: "What's inside VTI" })).toContainText("The top ten are 32% of the fund.");
   await page.getByRole("button", { name: "Approve $5.00" }).click();
   await expect(page.getByRole("main").getByRole("status").first()).toContainText("Queued for market open");
 
@@ -330,10 +344,22 @@ test("queued order shows \"Queued for market open\"", async ({ page }) => {
   // VTI is on her signed rules (not the fund_allowlist table), and her fund list still shows it.
   await expect(page.getByRole("region", { name: "Your fund list" })).toContainText("VTI");
 
+  // The fake fills the order the next time it's looked up: Zoe's page resumes it, then reads Alpaca's fill.
   await open(page, E2E.teenB.queued, "/invest");
   const mine = page.getByRole("region", { name: "Your investments" });
-  await expect(mine).toContainText("VTI");
-  await expect(mine).toContainText("Queued for market open");
-  await expect(mine).toContainText("$5.00");
+  const card = mine.getByRole("region", { name: "VTI, how it's doing" });
+  await expect(card).toContainText(/\$[\d.]+ worth today/);
+  await expect(card).toContainText(/You own\s*0\.01\d{2} share/); // $5 at the fake's $300: Alpaca's own count
+  await expect(card).toContainText(/You put in\s*\$5\.00 on \d{1,2} [A-Z][a-z]{2}/);
+  await expect(card).toContainText("It's been 1 day. Too soon to tell: funds like this are for years, not days.");
+  await expect(card).toContainText("Why you picked it: “Lots of companies in one fund”");
+  await expect(card.locator("svg")).toHaveCount(0); // no line until there are 5 closes
+  await expect(mine).not.toContainText("Queued for market open"); // the row gave way to the card
   await expect(mine).toContainText("Sandbox stand-in for a custodial account.");
+
+  await page.goto(`/g/enter/${E2E.teenQueuedKey}`);
+  await page.goto("/g/invest");
+  const hers = page.getByRole("region", { name: "Zoe's investments" });
+  await expect(hers).toContainText(/Her \$5\.00 is worth \$[\d.]+\. She owns 0\.01\d{2} of a share\./);
+  await expect(hers).toContainText("It's been 1 day. Too soon to tell");
 });
