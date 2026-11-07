@@ -11,7 +11,8 @@ does today and points at the code or the decision record (a short plain-English 
 [`docs/decisions/`](../decisions/)). Nothing below claims that Tether has been tested with real families or shown to
 change anyone's behaviour. It hasn't.
 
-There are three problems, one for each side of the table: the parent, the teen, and the payment itself.
+There are five problems: the parent's, the teen's, two about what happens to the money she doesn't spend (saving and
+investing), and the payment itself.
 
 ---
 
@@ -100,19 +101,115 @@ of a real decision, which is exactly when today's tools say nothing more than "d
   forward (for a budget refusal: "Ask Amara" or "It fits next week"). The sentence may only use dollar amounts the rule
   engine gave it, and it falls back to a fixed template if the AI is down. Code: `src/ai/explain.ts` (`routesFor`).
   This is our design reading of the "just in time" finding above. We have not measured whether it changes behaviour.
-- **Freedom grows from her own track record.** What she doesn't spend each week becomes savings. Keeping her own
-  savings promise four weeks in a row moves her up a level: more money, more shops.
-  [Decision 007](../decisions/007-level-ups-run-on-her-own-commitment.md).
-- **Investing from Level 2, with facts, her own reasons and her parent's approval.** Zoe can search the whole market
-  for a fund or a stock and read a facts-only page ("What's inside" for a fund, "About the company" for a stock).
-  Tether recommends nothing. To propose an investment she answers three questions in her own words, and her parent
-  approves each one. Leveraged and inverse products are refused by their names. Code: `src/flows/teenInvest.ts`,
-  `src/engine/invest.ts`; [decision 024](../decisions/024-investing-opens-at-level-2.md),
-  [decision 025](../decisions/025-stocks-alongside-funds.md).
+- **Freedom grows from her own track record**, not from a parent raising a limit: keeping her own savings promise
+  moves her up a level (see Saving, below).
 
 ---
 
-## 3. Payments and AI: nobody has settled how an agent proves it was allowed to buy
+## 3. Saving: most teens don't put money aside for later
+
+### What the data says
+
+**Only about a third of teens save for their future.** In a February 2025 survey of 1,000 US teens aged 13 to 18,
+"when they receive money, only 36% save a part for their future, 23% save for education, and 13% invest." (Junior
+Achievement USA and MissionSquare Foundation, *Teens & Personal Finance*, Wakefield Research, 3–10 Feb 2025,
+[JA press release](https://jausa.ja.org/news/press-releases/more-teens-are-participating-in-financial-literacy-courses-but-gaps-in-learning-evident-according-to-new-survey).
+Sponsor note: MissionSquare is a retirement-plan firm. Self-reported answers to one question, not measured saving.)
+
+**What the evidence says helps, and how close it is to teens.** None of these studies tested Tether's design or US
+teenagers; we cite them as the closest evidence, and say who was studied.
+
+- **Committing in advance works for adults.** In "Save More Tomorrow," employees committed ahead of time to save part
+  of future raises; "average saving rates rose from 3.5% to 13.6% over 40 months." (Thaler & Benartzi, *Journal of
+  Political Economy* 112(S1), 2004, [abstract](https://econpapers.repec.org/RePEc:ucp:jpolec:v:112:y:2004:i:s1:p:s164-s187).
+  US employees at one firm.)
+- **For children, a softer commitment beat a strict lock.** The only randomised trial of a savings commitment for
+  children we found, in Ugandan primary schools, found that children saved *more* under the weaker commitment (they
+  could take cash out) than under a strict account that locked the money. (Karlan & Linden, "Loose Knots," *Journal of
+  Development Economics* 174, 2025, [NBER working paper](https://www.nber.org/papers/w19863). Primary-school children,
+  not US teens; many other outcomes showed no effect.)
+- **A named goal makes reminders work.** In field experiments with new savers, reminders raised saving "especially when
+  they make a specific expense salient": reminders that named the saver's own goal helped, while the same reminder
+  without the goal did not. (Karlan, McConnell, Mullainathan & Zinman, "Getting to the Top of Mind," *Management
+  Science* 62(12), 2016, [NBER](https://www.nber.org/papers/w16205). Adults in Bolivia, Peru and the Philippines.)
+
+The shape of the problem: most teens don't save for later, and the tools they're given (a card, an allowance) don't
+ask them to commit to anything or show them what they're saving toward.
+
+### How Tether answers it
+
+- **What she doesn't spend becomes savings.** There is no separate savings account to move money into: the unspent part
+  of each week counts as saved, and the money stays in the parent's PayPal until she releases it.
+  [Decision 003](../decisions/003-savings-is-unspent-grant.md).
+- **A weekly savings promise she sets herself.** Zoe chooses how much she'll save each week, at or above a floor the
+  parent sets (10% of the allowance in the demo). Nothing is locked: she can still spend it, and the promise is only
+  scored when the week ends. Keeping it is what gets rewarded; a missed week pauses her progress and never demotes her.
+  This is a soft pledge, closer to the weaker commitment the Uganda trial above favoured than to a strict lock. Code:
+  `commitmentKept` in `src/engine/ladder.ts`, `setTeenCommitment` in `src/flows/teenGoals.ts`.
+- **Four kept weeks move her up a level.** Keeping her own promise four weeks in a row earns more money a week and more
+  shops: freedom earned from her own promise, not a parent's number.
+  [Decision 007](../decisions/007-level-ups-run-on-her-own-commitment.md).
+- **One number on the goal screen: weeks to her goal.** She names what she's saving for and its price; the goal screen
+  shows how many weeks her promise needs to get there (for example "12 weeks to noise-cancelling headphones"). Code:
+  `weeksToGoal` in `src/ui/teenWords.ts`, `src/app/t/[token]/goals/page.tsx`.
+- **Savings are released at month end.** At the monthly check-in the parent sees what Zoe saved plus the parent's
+  match, sends it to her (Venmo, PayPal or cash) and records that she has.
+  [Decision 003](../decisions/003-savings-is-unspent-grant.md).
+
+**What is design, not evidence.** The weeks-to-goal number and earned freedom are design hypotheses grounded in the
+studies above. We found no experiment that tests a weeks-to-goal number or earned freedom on teenagers, and Tether
+hasn't measured either.
+
+---
+
+## 4. Investing: teens are interested, but don't know much, and their first step is often crypto
+
+### What the data says
+
+**Interest is high, knowledge is low.** In Schwab's survey (1,000 teens aged 13 to 17, Logica Research, 13–27 Oct 2025),
+"seven in 10 teenagers (70%), ages 13-17, say they are very or extremely interested in investing," but "only 14% say they
+know a lot about investing." ([Schwab press release](https://pressroom.aboutschwab.com/press-releases/press-release/2026/Early-Start-Long-Term-Mindset-Teens-Increasingly-Interested-in-Investing/default.aspx).
+Sponsor note: Schwab sells a teen investing account.)
+
+**Young investors start early, and often with crypto.** In a 2023 study of 2,872 investors aged 18 to 25 in four
+countries, "82% of U.S. Gen Z investors began investing before 21," and 44% of US Gen Z investors started with crypto.
+(FINRA Investor Education Foundation and CFA Institute, May 2023,
+[FINRA release](https://www.finra.org/media-center/newsreleases/2023/finra-foundation-cfa-institute-research-focuses-gen-z-investors);
+figures from the CFA Institute's release.)
+
+**Investing as a child is becoming a federal default.** The US Treasury now opens a "Trump Account," an "individual
+retirement account (IRA) for eligible children," with a one-time $1,000 federal contribution for US citizens born from
+1 Jan 2025 through 31 Dec 2028. ([IRS](https://www.irs.gov/trumpaccounts), updated 21 Oct 2026.) It doesn't cover
+today's 13–17-year-olds, but it shows where this is heading.
+
+The shape of the problem: teens want to invest before they understand it, and the easiest first step on offer (crypto,
+a trading app, a daily-moving chart) teaches checking and reacting rather than understanding what you own.
+
+### How Tether answers it
+
+- **From Level 2, funds or stocks.** Investing opens at Level 2, for a fund or a single company's stock, under the
+  same rules. [Decision 024](../decisions/024-investing-opens-at-level-2.md),
+  [decision 025](../decisions/025-stocks-alongside-funds.md).
+- **Facts only.** A fund's page shows "What's inside" (its biggest holdings); a stock's shows "About the company"
+  (sector, industry, where it's based). Once she owns something she sees one line since she bought it next to the same
+  money in the whole market: no daily moves, no red or green, no advice, and every number is worked out by code, never
+  written by an AI. [Decision 020](../decisions/020-zoe-sees-how-her-investments-are-doing.md),
+  [decision 021](../decisions/021-financial-datasets-through-narrow-tools.md).
+- **Her own reasons travel with the proposal.** To propose an investment she answers three questions in her own words,
+  and the parent reads them on the request. Code: `proposeFromTeen` in `src/flows/teenInvest.ts`.
+- **The parent approves each one.** Nothing is bought without the parent's yes on that investment.
+- **Leveraged and inverse products are blocked** by their names, since they are built to move two or three times as
+  fast as the market. Code: `src/engine/invest.ts` (a name-based rule of thumb, not a full check).
+- **Invested money is hers.** On approval the parent is told the money "belongs to her and can't be taken back," and
+  once money reaches the broker Tether never shows it back in her savings.
+  [Decision 010](../decisions/010-investing-money-never-un-moves.md).
+- **Sandbox stand-in.** Orders go to an ordinary Alpaca sandbox account labelled on screen as a stand-in for the
+  custodial account (an account an adult manages for a minor) a real family would need.
+  [Decision 023](../decisions/023-investing-stays-on-alpaca-not-etoro.md) explains why Alpaca rather than eToro.
+
+---
+
+## 5. Payments and AI: nobody has settled how an agent proves it was allowed to buy
 
 ### What the data says
 
@@ -183,6 +280,12 @@ See the README's "Sandbox stand-ins (said plainly)".
    heard their parents argue about money" (2021; the best of these, but only with its year).
 4. **"US teens are below average in financial literacy."** The OECD's PISA 2022 test puts the US mean (505) level with
    the average of the countries tested (498); the difference isn't statistically significant.
+5. **Saving claims we leave out.** "Money habits are set by age 7" (the Cambridge report says basic concepts develop
+   by seven; it does not say habits are fixed, and the claim would undercut a teen product). "64% of teens don't save"
+   (the 36% comes from one question whose options overlap). "Allowances increase saving" (a UK study of 11–15-year-olds
+   found allowances linked to a *lower* chance of saving). The Philippines commitment-account result of "81 percentage
+   points" (we saw it only in an excerpt), and the Peru goal-reminder percentage (from a secondary summary; we describe
+   the finding without the number). And no adult study is presented here as evidence about teens.
 
 ## What we could not check
 
