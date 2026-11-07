@@ -33,6 +33,11 @@ export function parseTeenForm(form: FormData): { ok: true; teen: TeenInput } | {
   return { ok: true, teen: { teenName, age } };
 }
 
+/** Records a starting cookie's nonce. True only for the first caller: one atomic insert, so a replay or a race loses. */
+export async function consumeStartNonce(db: Db, nonce: string): Promise<boolean> {
+  return (await db.insert(t.usedStartNonces).values({ nonce }).onConflictDoNothing().returning()).length > 0;
+}
+
 /** The families this PayPal identity owns and can still open, oldest first: the "Which teen?" list. */
 export async function ownedFamilies(db: Db, sub: string): Promise<{ id: string; teenName: string }[]> {
   return db.select({ id: t.families.id, teenName: t.families.teenName }).from(t.families)
@@ -71,6 +76,8 @@ export async function retireStaleFamilies(deps: { db: Db; paypal: PaypalHttp }, 
   const { db } = deps;
   const stale = await db.select({ id: t.families.id }).from(t.families).where(and(
     isNotNull(t.families.paypalSub), isNull(t.families.demo), lt(t.families.createdAt, new Date(realNow - RETIRE_AFTER_MS))));
+  // Starting cookies live 30 minutes, so a nonce older than a day can never be presented again.
+  await db.delete(t.usedStartNonces).where(lt(t.usedStartNonces.usedAt, new Date(realNow - 86_400_000)));
   let retired = 0;
   for (const { id } of stale) {
     const gone = () => `${ARCHIVED_PREFIX}${randomBytes(24).toString("base64url")}`;

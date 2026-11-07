@@ -7,7 +7,7 @@ import { goTo, sameOrigin, signIn } from "../../login";
 // "Which teen?": signs in to the family she picked, only if the PayPal she just logged in with owns it.
 export async function POST(req: Request): Promise<Response> {
   if (!sameOrigin(req)) return goTo(req, "/g?login=failed");
-  const who = openStart(readCookie(req, START_COOKIE), new Date());
+  const who = openStart(readCookie(req, START_COOKIE), new Date())?.who;
   if (!who) return goTo(req, "/g?login=expired");
   const id = (await req.formData().catch(() => null))?.get("familyId");
   if (typeof id !== "string" || id.length > 100) return goTo(req, "/g?login=failed");

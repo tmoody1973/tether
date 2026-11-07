@@ -222,6 +222,12 @@ export const usage = pgTable("usage", {
   count: integer("count").notNull().default(0),
 }, (u) => [primaryKey({ columns: [u.familyId, u.kind, u.day] })]);
 
+/** Starting cookies already used to create a family (decision 026): each one makes at most one family. */
+export const usedStartNonces = pgTable("used_start_nonces", {
+  nonce: text("nonce").primaryKey(),
+  usedAt: createdAt("used_at"),
+});
+
 /**
  * Site-wide daily counters (real UTC day) for the public "start your own family" door: new families, new Alpaca
  * accounts, and the one shared pot of paid lookups every self-started family also draws from. Kind is free text.

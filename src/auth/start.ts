@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { openValue, sealValue } from "@/auth/guardian";
 import { cleanIdentity, type PaypalIdentity } from "@/adapters/paypal/identity";
 
@@ -14,18 +15,27 @@ export const loginStateCookieOptions = () => opts("/g/login/paypal", LOGIN_STATE
 export const sealLoginState = (state: string, now: Date) => sealValue("login-state", state, now, LOGIN_STATE_MS);
 export const openLoginState = (value: string | null, now: Date) => (value ? safely(() => openValue("login-state", value, now)) : null);
 
-/** Who PayPal said they are, between the PayPal return and the teen form (or the "Which teen?" chooser). */
+/**
+ * Who PayPal said they are, between the PayPal return and the teen form (or the "Which teen?" chooser), plus a one-time
+ * nonce: the server records it when the family is made, so one starting cookie makes at most one family (M1).
+ */
 export const START_COOKIE = "tether_start";
 const START_MS = 30 * 60_000;
 export const startCookieOptions = () => opts("/g", START_MS / 1000);
+export type StartTicket = { who: PaypalIdentity; nonce: string };
+const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 // Sealed in PayPal's own field names so opening it runs the same whitelist (cleanIdentity) as the userinfo reply did.
-export const sealStart = (who: PaypalIdentity, now: Date) => sealValue("start", JSON.stringify({
-  sub: who.sub, payer_id: who.payerId, given_name: who.givenName, name: who.name, email: who.email, verified_account: who.verified,
+export const sealStart = (who: PaypalIdentity, now: Date, nonce: string = randomBytes(18).toString("base64url")) => sealValue("start", JSON.stringify({
+  sub: who.sub, payer_id: who.payerId, given_name: who.givenName, name: who.name, email: who.email, verified_account: who.verified, nonce,
 }), now, START_MS);
-export function openStart(value: string | null | undefined, now: Date): PaypalIdentity | null {
+export function openStart(value: string | null | undefined, now: Date): StartTicket | null {
   const json = value ? safely(() => openValue("start", value, now)) : null;
   if (!json) return null;
-  try { return cleanIdentity(JSON.parse(json) as unknown); } catch { return null; }
+  try {
+    const raw = JSON.parse(json) as { nonce?: unknown };
+    if (typeof raw.nonce !== "string" || !NONCE.test(raw.nonce)) return null;
+    return { who: cleanIdentity(raw), nonce: raw.nonce };
+  } catch { return null; }
 }
 
 /** This browser started a family: one per browser per hour (public-demo limit). */

@@ -82,6 +82,24 @@ describe("POST /g/start/teen/create", () => {
     expect(cookieOf(res, STARTED_COOKIE)).toMatch(/HttpOnly/i);
   });
 
+  it("M1: a starting cookie makes one family; replaying it is refused calmly", async () => {
+    const ticket = sealStart({ sub: "S-replay", givenName: "Amara" }, new Date());
+    expect(where(await post(GOOD, { start: ticket }))).toBe("/g?started=1");
+    const before = (await testDb.select().from(t.families)).length;
+    const again = await post(GOOD, { start: ticket });
+    expect(where(again)).toBe("/g?login=used");
+    expect(cookieOf(again, GUARDIAN_COOKIE)).toBeUndefined();
+    expect((await testDb.select().from(t.families)).length).toBe(before);
+  });
+
+  it("M1: two creates at once with one starting cookie make exactly one family", async () => {
+    const ticket = sealStart({ sub: "S-race", givenName: "Amara" }, new Date());
+    const results = await Promise.all([post(GOOD, { start: ticket }), post(GOOD, { start: ticket }), post(GOOD, { start: ticket })]);
+    expect(results.filter((r) => where(r) === "/g?started=1")).toHaveLength(1);
+    expect(results.filter((r) => where(r) === "/g?login=used")).toHaveLength(2);
+    expect(await testDb.select().from(t.families).where(eq(t.families.paypalSub, "S-race"))).toHaveLength(1);
+  });
+
   it("no PayPal given name ⇒ 'Parent'", async () => {
     const res = await post(GOOD, { start: sealStart({ sub: "S-noname" }, new Date()) });
     const f = (await repo.getFamily(testDb, verifyGuardianCookie(valueOf(res, GUARDIAN_COOKIE)!, new Date())!))!;

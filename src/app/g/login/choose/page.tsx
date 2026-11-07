@@ -19,7 +19,7 @@ export default function ChoosePage() {
 
 async function Choose() {
   await connection();
-  const who = openStart((await cookies()).get(START_COOKIE)?.value, new Date());
+  const who = openStart((await cookies()).get(START_COOKIE)?.value, new Date())?.who;
   if (!who) return <SignedOut login="expired" />;
   const families = await ownedFamilies(await getDb(), who.sub);
   return (

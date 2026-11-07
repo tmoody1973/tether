@@ -98,7 +98,7 @@ describe("GET /g/login/paypal/return", () => {
     const c = cookieOf(res, START_COOKIE)!;
     expect(c).toMatch(/HttpOnly/i);
     expect(c).toMatch(/Path=\/g/);
-    expect(openStart(valueOf(res, START_COOKIE)!, new Date())).toEqual(who);
+    expect(openStart(valueOf(res, START_COOKIE)!, new Date())?.who).toEqual(who);
   });
 
   it("one family ⇒ signed in to it", async () => {
@@ -117,7 +117,7 @@ describe("GET /g/login/paypal/return", () => {
     const res = await roundTrip("good");
     expect(where(res)).toBe("/g/login/choose");
     expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
-    expect(openStart(valueOf(res, START_COOKIE)!, new Date())?.sub).toBe("S-two");
+    expect(openStart(valueOf(res, START_COOKIE)!, new Date())?.who.sub).toBe("S-two");
   });
 });
 

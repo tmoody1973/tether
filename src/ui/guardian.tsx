@@ -51,6 +51,7 @@ const LOGIN_TROUBLE: Record<string, string> = {
   failed: "PayPal didn't finish signing you in, so nothing changed.",
   cancelled: "You left PayPal before signing in. Nothing changed.",
   expired: "That took a while, so Tether lost track of who you are. Nothing was made.",
+  used: "That sign-in was already used to start a family. Log in with PayPal again to open it or start another.",
 };
 
 /**
