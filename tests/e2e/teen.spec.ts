@@ -253,6 +253,8 @@ test("fund page has no 1D/1W controls and one chart", async ({ page }) => {
 
   await results.nth(0).getByRole("link", { name: "Look closer" }).click();
   await expect(page.getByRole("heading", { name: "Vanguard S&P 500 ETF" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "One share costs" })).toContainText(/^One share costs\$[\d,.]+At [A-Z][a-z]+day's close \(\d{1,2} [A-Z][a-z]{2}\)\. You don't need a whole one: you buy in dollars\.$/);
+  await expect(page.getByRole("region", { name: "What's inside" })).toHaveCount(0); // covered, but no holdings came back: hidden
   await expect(page.locator("svg[data-chart]")).toHaveCount(1);
   await expect(page.getByRole("img", { name: /^Over 5 years, \$100 became: this \$\d+, the whole market \$\d+\.$/ })).toHaveCount(1);
   await expect(page.getByText(/^\$[\d.]+ today, \$[\d.]+ a year ago\.$/)).toBeVisible();
@@ -309,7 +311,14 @@ test("queued order shows \"Queued for market open\"", async ({ page }) => {
   await propose(page, E2E.teenB.queued, "VTI", "25"); // she has $20 saved
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("You have $20.00 available to invest, so at most that.");
   await expect(page.getByLabel("Why this one?")).toHaveValue("Lots of companies in one fund"); // her words are kept
+  const inside = page.getByRole("region", { name: "What's inside" });
+  await expect(inside).toContainText("NVIDIA");
+  await expect(inside).toContainText("These are 32% of the fund.");
+  await expect(inside).toContainText("From the fund's filing for 30 Jun 2026, via Financial Datasets.");
+  await expect(page.getByText(/^= about 0\.08\d{2} of one VTI share at \$[\d.]+\.$/)).toBeVisible(); // $25 at about $300
   await page.getByLabel("How much, in dollars?").fill("5");
+  await expect(page.getByText(/^= about 0\.01\d{2} of one VTI share at \$[\d.]+\.$/)).toBeVisible(); // updates as she types
+  await expect(page.getByText("The exact slice is set when the market fills the order.", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Propose to Amara" }).click();
   await expect(page.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your answers and decide.");
 

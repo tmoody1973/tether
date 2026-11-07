@@ -27,7 +27,7 @@ export default defineConfig({
       url: `${baseURL}/g`,
       reuseExistingServer: false,
       timeout: 180_000,
-      // PayPal, Channel3 and Alpaca = the local fakes. TETHER_E2E=1 is set ONLY here; without it (and outside production
+      // PayPal, Channel3, Alpaca and Financial Datasets = the local fakes. TETHER_E2E=1 is set ONLY here; without it (and outside production
       // only) paypalFromEnv / createChannel3 / alpacaFromEnv refuse a localhost address. e2e never calls PayPal, Channel3 or Alpaca.
       env: {
         DATABASE_URL: E2E.dbUrl, APP_BASE_URL: baseURL, TETHER_E2E: "1",
@@ -36,6 +36,7 @@ export default defineConfig({
         ALPACA_BROKER_BASE_URL: `http://localhost:${E2E.fakePort}`, ALPACA_DATA_BASE_URL: `http://localhost:${E2E.fakePort}`,
         ALPACA_AUTH_URL: `http://localhost:${E2E.fakePort}/v1/oauth2/token`, ALPACA_BROKER_KEY: "e2e-fake", ALPACA_BROKER_SECRET: "e2e-fake",
         ALPACA_FIRM_ACCOUNT_ID: "e2e-firm", ALPACA_CUSTODIAL_ENABLED: "false",
+        FINANCIALDATASETS_BASE_URL: `http://localhost:${E2E.fakePort}`, FINANCIALDATASETS_API_KEY: "e2e-fake",
         // The landing page's demo buttons point at the read-only Amara & Zoe e2e family.
         DEMO_GUARDIAN_KEY: E2E.guardianKey, DEMO_TEEN_TOKEN: E2E.teenToken,
         // Push: a fake app id so Amara's card renders; an empty REST key so no push is ever sent from e2e.

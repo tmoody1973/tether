@@ -5,8 +5,10 @@
 //   products whatever the words (the teen e2e agent proposes exactly these); lookup reads `sku-<cents>` from the URL.
 // - Alpaca (broker + market data): a few assets, deterministic daily bars, an account, an instant journal deposit,
 //   and orders that are always accepted but not filled (the market is "closed", so investments end up queued).
+// - Financial Datasets: VTI, SPY and VOO are covered; VTI's holdings are a trimmed copy of the real response.
 import { createServer } from "node:http";
 import { E2E } from "./fixtures";
+import VTI_HOLDINGS from "../fixtures/fd-vti-holdings.json";
 
 type Row = { transaction_info: Record<string, unknown> };
 const row = (id: string, value: string, custom?: string): Row =>
@@ -132,6 +134,11 @@ createServer((req, res) => {
     if (req.method === "GET" && /^\/v1\/trading\/accounts\/[^/]+\/orders:by_client_order_id$/.test(path)) return send(404, { message: "order not found" });
     if (req.method === "POST" && /^\/v1\/trading\/accounts\/[^/]+\/orders$/.test(path)) return send(200, { id: `E2E-ALPACA-ORD-${++n}`, status: "accepted" });
     if (req.method === "GET" && /^\/v1\/trading\/accounts\/[^/]+\/orders\/[^/]+$/.test(path)) return send(200, { status: "accepted" });
+    // Financial Datasets (FINANCIALDATASETS_BASE_URL points here).
+    if (req.method === "GET" && path === "/index-funds/tickers/") return send(200, { tickers: ["SPY", "VOO", "VTI"] });
+    if (req.method === "GET" && path === "/index-funds/") {
+      return url.searchParams.get("ticker") === "VTI" ? send(200, VTI_HOLDINGS) : send(404, { error: "Not found" });
+    }
     if (req.method === "GET" && path === "/health") return send(200, { ok: true });
     send(404, { name: "NOT_FAKED", message: `${req.method} ${path}` });
   });

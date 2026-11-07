@@ -120,11 +120,7 @@ export function weeksToGoal(targetCents: Cents, savedCents: Cents, commitmentCen
   return commitmentCents > 0 ? Math.ceil(short / commitmentCents) : null;
 }
 
-/** "$5", "5.5", "$1,250.00" → integer cents; anything else (negative, more than 2 decimals, words) → null. */
-export function parseDollars(input: string): Cents | null {
-  const m = input.trim().replace(/^\$/, "").replace(/,/g, "").match(/^(\d{1,7})(?:\.(\d{1,2}))?$/);
-  return m ? Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0")) : null;
-}
+export { parseDollars } from "@/ui/grantWords"; // pure, so the propose form can use it in the browser
 
 type InvestStatus = (typeof schema.investments.$inferSelect)["status"];
 

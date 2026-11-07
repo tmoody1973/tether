@@ -76,3 +76,9 @@ export const noShopsFound = (q: string) => `No shops found for "${q}". Try anoth
 export const SHOP_QUERY_MAX = 60; // a shop search is 1–60 characters, trimmed
 export const SHOP_QUERY_WORDS = "Type what you'd buy there, or the shop's name.";
 export const SHOP_SEARCH_DOWN = "Shop search isn't working right now. Try again in a bit.";
+
+/** "$5", "5.5", "$1,250.00" → integer cents; anything else (negative, more than 2 decimals, words) → null. */
+export function parseDollars(input: string): Cents | null {
+  const m = input.trim().replace(/^\$/, "").replace(/,/g, "").match(/^(\d{1,7})(?:\.(\d{1,2}))?$/);
+  return m ? Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0")) : null;
+}
