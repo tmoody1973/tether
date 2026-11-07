@@ -3,7 +3,7 @@ import { buildCards } from "@/ai/answerCards";
 
 const receipt = (date: string, shop: string, amount: string, extra: object = {}) => ({
   date, shop, items: [{ title: "Book", qty: 1 }], amount, status: "paid" as const, ruleVersion: 3,
-  allowedBy: "within the rules Amara signed", ...extra,
+  allowedBy: "within the rules the parent signed", ...extra,
 });
 const checkin = {
   month: "2026-10", level: 1 as const, rulesStopped: false, weeklyAllowance: "20.00", thisWeek: { spent: "1.50", left: "18.50" },
@@ -22,7 +22,7 @@ describe("buildCards (cards come from tool results, never from the model's text)
   it("purchases: receipts as rows (items on one line, approval in Amara's words), a total, and the set-aside count line", () => {
     const cards = buildCards({ tether_record: { month: "2026-10", setAsideNote: "1 payment from an earlier demo reset is hidden.", receipts: [
       receipt("2026-10-05", "The Bookshop", "12.50", { items: [{ title: "Crayola 64-pack", qty: 1 }, { title: "Sketchbook", qty: 2 }] }),
-      receipt("2026-10-20", "Target", "8.00", { allowedBy: "Amara approved this one" }),
+      receipt("2026-10-20", "Target", "8.00", { allowedBy: "the parent approved this one" }),
     ] } });
     expect(cards).toEqual([{
       kind: "purchases", month: "2026-10", totalCents: 2050, hiddenNote: "1 payment from an earlier demo reset is hidden.",
