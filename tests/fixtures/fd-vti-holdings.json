@@ -1,0 +1,72 @@
+{
+ "ticker": "VTI",
+ "fund": {
+  "name": "Vanguard Morningstar Total Stock Market ETF",
+  "as_of": "2026-06-30",
+  "filing_date": "2026-08-28",
+  "total_holdings": 3546,
+  "returned": 10
+ },
+ "holdings": [
+  {
+   "ticker": "NVDA",
+   "name": "NVIDIA Corp",
+   "weight": 6.355382492074,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "AAPL",
+   "name": "Apple Inc",
+   "weight": 5.871626660176,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "MSFT",
+   "name": "Microsoft Corp",
+   "weight": 3.828291798563,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "AMZN",
+   "name": "Amazon.com Inc",
+   "weight": 3.18794802164,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "GOOGL",
+   "name": "Alphabet Inc",
+   "weight": 2.895474860135,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "AVGO",
+   "name": "Broadcom Inc",
+   "weight": 2.470993225404,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "GOOG",
+   "name": "Alphabet Inc",
+   "weight": 2.280013198965,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "MU",
+   "name": "Micron Technology Inc",
+   "weight": 1.798448216659,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "META",
+   "name": "Meta Platforms Inc",
+   "weight": 1.709033332268,
+   "asset_class": "equity"
+  },
+  {
+   "ticker": "TSLA",
+   "name": "Tesla Inc",
+   "weight": 1.636813446695,
+   "asset_class": "equity"
+  }
+ ]
+}
