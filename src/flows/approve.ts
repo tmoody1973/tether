@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import type { AlpacaBroker } from "@/adapters/alpaca/broker";
-import { decideApproval } from "@/flows/approvals";
+import { isLeveragedProduct, LEVERAGED_TEXT } from "@/engine/invest";
+import { ApprovalError, decideApproval } from "@/flows/approvals";
 import { settleInvestment } from "@/flows/invest";
 import { settlePurchase, type Deps } from "@/flows/purchase";
 
@@ -17,7 +18,32 @@ export const APPROVE_CODES: readonly ApproveCode[] = [
   "inv-filled", "inv-queued", "inv-depositing", "inv-rejected", "inv-waiting", "inv-cash-held", "inv-review", "fund", "shop", "shop-later",
 ];
 
-export type ApproveDeps = Deps & { alpaca: () => AlpacaBroker };
+/** assetName: a symbol's name from Alpaca's asset list (null: not listed), for the leveraged check below. */
+export type ApproveDeps = Deps & { alpaca: () => AlpacaBroker; assetName?: (symbol: string) => Promise<string | null> };
+
+/** The symbol an add-to-list or investment approval is about; null for purchases and shops. */
+async function approvalSymbol(db: Db, approvalId: string): Promise<string | null> {
+  const [a] = await db.select({ subject: t.approvals.subject, id: t.approvals.subjectId }).from(t.approvals).where(eq(t.approvals.id, approvalId));
+  if (a?.subject === "investment") return (await db.select({ s: t.investments.symbol }).from(t.investments).where(eq(t.investments.id, a.id)))[0]?.s ?? null;
+  if (a?.subject === "fund") return (await db.select({ s: t.fundProposals.symbol }).from(t.fundProposals).where(eq(t.fundProposals.id, a.id)))[0]?.s ?? null;
+  return null;
+}
+
+/**
+ * Defence in depth: Zoe's propose already refuses leveraged and inverse products, so this only catches a proposal
+ * made before that rule. Nothing is recorded; the request stays open for her to decline.
+ * ponytail: a failed name lookup lets her yes through (logged), since the propose check is the gate; fail closed if that changes.
+ */
+async function refuseLeveraged(deps: ApproveDeps, approvalId: string): Promise<void> {
+  if (!deps.assetName) return;
+  const symbol = await approvalSymbol(deps.db, approvalId);
+  if (!symbol) return;
+  const name = await deps.assetName(symbol).catch((err: unknown) => {
+    console.error("approve: asset name unavailable", symbol, err instanceof Error ? err.message : err);
+    return null;
+  });
+  if (name && isLeveragedProduct(name)) throw new ApprovalError(LEVERAGED_TEXT);
+}
 
 /**
  * R36: approve settles in one tap. The decision is recorded first (and stands whatever happens next);
@@ -25,6 +51,7 @@ export type ApproveDeps = Deps & { alpaca: () => AlpacaBroker };
  * start is reported as "nothing was charged / nothing has moved yet".
  */
 export async function approveAndSettle(deps: ApproveDeps, familyId: string, approvalId: string): Promise<ApproveCode> {
+  await refuseLeveraged(deps, approvalId);
   const { subject, subjectId, shopApplied } = await decideApproval(deps, approvalId, "approved", familyId); // throws if not open / not hers
   if (subject === "shop") return shopApplied === false ? "shop-later" : "shop"; // no rules in force: recorded for next signing
   if (subject === "fund") return subject;

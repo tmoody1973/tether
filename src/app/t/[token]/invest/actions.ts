@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { teenFromForm } from "@/auth/teen";
 import { marketFromEnv } from "@/adapters/alpaca/data";
+import { LEVERAGED_TEXT } from "@/engine/invest";
 import { INVESTING_FROM } from "@/engine/ladder";
 import { ANSWER_MAX, canPropose, isSymbol, proposeFromTeen, type Answers } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
@@ -25,20 +26,23 @@ export async function proposeAction(_prev: ProposeState, form: FormData): Promis
   const deps = teenDeps(f.db);
   const blocked = await canPropose(deps, f.fam.id); // before any market call
   if (blocked) return { error: blocked === "level" ? `Investing opens at Level ${INVESTING_FROM}.` : "Your rules aren't in force right now, so nothing can be proposed.", values };
+  let name: string;
   try {
-    const hit = (await marketFromEnv().searchAssets(symbol)).some((a) => a.symbol === symbol);
+    const hit = (await marketFromEnv().searchAssets(symbol)).find((a) => a.symbol === symbol);
     if (!hit) return { error: "We couldn't find that one.", values };
+    name = hit.name; // the asset list's name, never the form's: the leveraged check runs on what Alpaca says it is
   } catch (err) {
     console.error("proposeAction: market unavailable", err instanceof Error ? err.message : err);
     return { error: "Prices aren't available right now. Try again in a bit.", values };
   }
   const cents = parseDollars(amount);
-  const r = cents === null ? { ok: false as const, error: "amount" as const } : await proposeFromTeen(deps, f.fam.id, symbol, cents, answers);
+  const r = cents === null ? { ok: false as const, error: "amount" as const } : await proposeFromTeen(deps, f.fam.id, symbol, cents, answers, name);
   if (r.ok) redirect(`/t/${f.token}/invest/${symbol}?sent=${r.sent}`);
   const words: Record<Exclude<typeof r.error, "savings">, string> = {
     level: `Investing opens at Level ${INVESTING_FROM}.`,
     rules: "Your rules aren't in force right now, so nothing can be proposed.",
     symbol: "We couldn't find that one.",
+    leveraged: LEVERAGED_TEXT,
     answers: "Answer all three questions in your own words.",
     amount: "Say an amount in dollars, at least $1.00.",
     asked: `You've already asked ${g} about ${symbol}.`,

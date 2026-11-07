@@ -38,6 +38,7 @@ export function paymentDeps(db: Db): ApproveDeps {
     // ponytail: the permission-slip HMAC shares the cookie signing key; split it if keys ever rotate separately
     secret: process.env.TETHER_SIGNING_KEY ?? "",
     alpaca: () => brokerFromEnv(),
+    assetName: async (symbol) => (await marketFromEnv().searchAssets(symbol)).find((a) => a.symbol === symbol)?.name ?? null,
   };
 }
 

@@ -140,28 +140,29 @@ describe("shop map", () => {
   });
 });
 
+const NAME = "Vanguard Total Stock Market ETF"; // what Alpaca calls it; only its words matter here
 const ANSWERS: Answers = { why: "Lots of companies in one", sell: "If I needed it for college", drop: "Nervous, but I'd wait" };
 
 describe("investing from Zoe's side", () => {
   it("below Level 2 nothing can be proposed", async () => {
     const s = await seed(1, { savedCents: 3000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: false, error: "level" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: false, error: "level" });
   });
 
   it("validates her answers, the amount and her savings", async () => {
     const s = await seed(3, { savedCents: 1000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, { ...ANSWERS, drop: " " })).toEqual({ ok: false, error: "answers" });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 50, ANSWERS)).toEqual({ ok: false, error: "amount" });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 1500, ANSWERS)).toEqual({ ok: false, error: "savings", savingsCents: 1000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "vti; drop", 500, ANSWERS)).toEqual({ ok: false, error: "symbol" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, { ...ANSWERS, drop: " " }, NAME)).toEqual({ ok: false, error: "answers" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 50, ANSWERS, NAME)).toEqual({ ok: false, error: "amount" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 1500, ANSWERS, NAME)).toEqual({ ok: false, error: "savings", savingsCents: 1000 });
+    expect(await proposeFromTeen(deps(), s.familyId, "vti; drop", 500, ANSWERS, NAME)).toEqual({ ok: false, error: "symbol" });
   });
 
   it("off her list ⇒ a fund proposal with her answers on Amara's home; asking twice is refused; approving adds it", async () => {
     const s = await seed(3, { savedCents: 1000 });
     expect(await fundStatus(db, s.familyId, "VOO", NOW)).toBe("new");
-    expect(await proposeFromTeen(deps(), s.familyId, "VOO", 500, ANSWERS)).toEqual({ ok: true, sent: "fund" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VOO", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "fund" });
     expect(await fundStatus(db, s.familyId, "VOO", NOW)).toBe("asked");
-    expect(await proposeFromTeen(deps(), s.familyId, "VOO", 500, ANSWERS)).toEqual({ ok: false, error: "asked" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VOO", 500, ANSWERS, NAME)).toEqual({ ok: false, error: "asked" });
     const [prop] = await db.select().from(t.fundProposals).where(eq(t.fundProposals.familyId, s.familyId));
     expect(prop.answers).toEqual({
       "Why this one?": ANSWERS.why, "What would make you sell it?": ANSWERS.sell,
@@ -176,7 +177,7 @@ describe("investing from Zoe's side", () => {
 
   it("on her list ⇒ an investment request waiting for Amara", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "investment" });
     expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ symbol: "VTI", amountCents: 500, status: "proposed" })]);
     const home = await guardianHome(db, s.familyId, NOW);
     expect(home.needsYou).toContainEqual(expect.objectContaining({ subject: "investment", symbol: "VTI", amountCents: 500 }));
@@ -186,38 +187,38 @@ describe("investing from Zoe's side", () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
     const r = recordNotify();
     const d = { ...deps(), notify: r.notify };
-    expect(await proposeFromTeen(d, s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(d, s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "investment" });
     expect(r.calls).toHaveLength(1);
     expect(await pushedBody(deps(), s.familyId, r.calls[0].approvalId)).toMatchObject({
       contents: { en: "Zoe proposes investing $5.00 in VTI" }, url: `https://tether.example/g/requests/${r.calls[0].approvalId}`,
     });
-    expect(await proposeFromTeen(d, s.familyId, "VOO", 500, ANSWERS)).toEqual({ ok: true, sent: "fund" });
+    expect(await proposeFromTeen(d, s.familyId, "VOO", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "fund" });
     expect(r.calls).toHaveLength(2);
     expect(await pushedBody(deps(), s.familyId, r.calls[1].approvalId)).toMatchObject({ contents: { en: "Zoe proposes adding VOO to your investing list" } });
-    expect(await proposeFromTeen(d, s.familyId, "VTI", 5000, ANSWERS)).toEqual({ ok: false, error: "savings", savingsCents: 1000 });
+    expect(await proposeFromTeen(d, s.familyId, "VTI", 5000, ANSWERS, NAME)).toEqual({ ok: false, error: "savings", savingsCents: 1000 });
     expect(r.calls).toHaveLength(2);
     const boom = () => { throw new Error("push down"); };
-    expect(await proposeFromTeen({ ...deps(), notify: boom }, s.familyId, "QQQ", 500, ANSWERS)).toEqual({ ok: true, sent: "fund" });
+    expect(await proposeFromTeen({ ...deps(), notify: boom }, s.familyId, "QQQ", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "fund" });
   });
 
   it("another family's investments are never listed", async () => {
     const a = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
-    await proposeFromTeen(deps(), a.familyId, "VTI", 500, ANSWERS);
+    await proposeFromTeen(deps(), a.familyId, "VTI", 500, ANSWERS, NAME);
     const b = await seed(3);
     expect(await teenInvestments(db, b.familyId)).toEqual([]);
   });
 
   it("a second proposal for a symbol already waiting for Amara is refused", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 300, ANSWERS)).toEqual({ ok: true, sent: "investment" });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 200, ANSWERS)).toEqual({ ok: false, error: "asked" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 300, ANSWERS, NAME)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 200, ANSWERS, NAME)).toEqual({ ok: false, error: "asked" });
   });
 
   it("an engine-refused row never reads as Amara's answer; her decline does", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
     await proposeInvestment(deps(), s.familyId, { symbol: "VTI", amountCents: 5000 }, {}); // over savings: the engine refuses
     expect(await teenInvestments(db, s.familyId)).toEqual([]);
-    await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS);
+    await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME);
     const [a] = await db.select().from(t.approvals).where(eq(t.approvals.familyId, s.familyId));
     await decideApproval(deps(), a.id, "declined", s.familyId);
     expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "rejected", declined: true })]);
@@ -225,18 +226,18 @@ describe("investing from Zoe's side", () => {
 
   it("an ask Amara never answered closes honestly when its approval runs out; Zoe can ask again (M3)", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "investment" });
     const [a] = await db.select().from(t.approvals).where(eq(t.approvals.familyId, s.familyId));
     clock = new Date(a.expiresAt.getTime() + 60_000);
     await expireStale(deps(), s.familyId);
     expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "expired" })]);
     expect(INVEST_STATUS.expired).toBe("Asked too long ago — she can ask again.");
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "investment" });
   });
 
   it("an ask a demo reset expired early also closes, even before its own expiry time (M3 after reset)", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: true, sent: "investment" });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: true, sent: "investment" });
     await db.update(t.approvals).set({ expiredAt: clock }).where(eq(t.approvals.familyId, s.familyId)); // what resetDemo does
     await expireStale(deps(), s.familyId);
     expect(await teenInvestments(db, s.familyId)).toEqual([expect.objectContaining({ status: "expired" })]);
@@ -245,7 +246,7 @@ describe("investing from Zoe's side", () => {
   it("an open release takes its savings off what she can invest (I1)", async () => {
     const s = await seed(3, { fundAllowlist: ["VTI"], savedCents: 1000 });
     await db.insert(t.releases).values({ id: crypto.randomUUID(), familyId: s.familyId, savedCents: 1000, matchCents: 1000 }); // a promotion's release
-    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS)).toEqual({ ok: false, error: "savings", savingsCents: 0 });
+    expect(await proposeFromTeen(deps(), s.familyId, "VTI", 500, ANSWERS, NAME)).toEqual({ ok: false, error: "savings", savingsCents: 0 });
     expect((await proposeInvestment(deps(), s.familyId, { symbol: "VTI", amountCents: 500 }, {})).decision.outcome).toBe("REFUSE");
   });
 
