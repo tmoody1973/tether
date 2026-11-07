@@ -25,6 +25,8 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 5. On Amara's **Home**, press **Turn on notifications**, then ask for something as Zoe (in another tab or on another device): Amara's browser gets one push, and tapping it opens that request. The demo family is shared, so anyone who turns this on gets the demo's asks (at most 200 a day).
 6. Open **Demo controls** at the bottom of Home and press **Advance to end of month**. Zoe kept her savings promise four weeks running, so the check-in in **Activity** moves her to Level 3 and offers the savings release. From Level 2 (where the demo starts) Zoe can search the whole market, read a facts-only page for a fund or stock and propose an investment; Amara approves and Tether places a sandbox Alpaca order.
 
+**Or start your own family.** Under the demo buttons, click **Log in with PayPal** and sign in with a PayPal *sandbox* test account (never a real one). Name your teen, then follow the three steps on Home: save your PayPal, sign the first rules, send the link (copy it, or scan the QR code with a phone). Next time, Log in with PayPal brings you back to the same family. New families are removed after 7 days, and at most 30 can start a day.
+
 The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home) puts it back, and it also resets itself when someone arrives more than 6 hours after the last reset. Dates are on a demo clock set to late December 2026 so a month fits in a few clicks; the screen says so.
 
 ---
@@ -266,7 +268,7 @@ sequenceDiagram
 
 Built, reviewed task by task, and running in production: the rule engine and permission slips, the AI gate, levels and the ledger, purchases, approvals (including Amara approving a one-off over budget, decision 013), weekly close and monthly level-ups, savings release, stopping the rules, investing, market search and fund facts, the month assistant, every parent and teen screen, the demo family with a month of real sandbox history, the installable app, and the deploy. 400+ unit and integration tests and a Playwright suite run in CI on every pull request; a separate live suite runs against the deployed site.
 
-**Limits on the public demo** (it's one shared family whose link is public): Zoe's shopping agent 150 runs a day, searches and pasted links 400 a day, the month assistant 60 questions a day, and up to 300 shop look-ups an hour. Over a limit, the screen says so and no AI or Channel3 call is made. "Stop Zoe's rules" on the demo family stops the rules but keeps the shared saved PayPal, so the next person can try it; for a real family it also removes Tether's saved wallet at PayPal.
+**Limits on the public demo** (it's one shared family whose link is public): Zoe's shopping agent 150 runs a day, searches and pasted links 400 a day, the month assistant 60 questions a day, and up to 300 shop look-ups an hour. Over a limit, the screen says so and no AI or Channel3 call is made. Families started with Log in with PayPal: at most 30 new ones a day across the site and one per browser an hour; their paid look-ups also share one daily pot the size of one family's limits; at most 30 new Alpaca sandbox accounts a day. "Stop Zoe's rules" on the demo family stops the rules but keeps the shared saved PayPal, so the next person can try it; for a real family it also removes Tether's saved wallet at PayPal.
 
 ## Sandbox stand-ins (said plainly)
 
@@ -276,7 +278,8 @@ Built, reviewed task by task, and running in production: the rule engine and per
 | Zoe's investments sit in an **ordinary Alpaca sandbox account**, labelled on screen as a stand-in. The sandbox refuses custodial accounts. One setting (`ALPACA_CUSTODIAL_ENABLED=true`) switches to the custodial request. | A custodial account Amara manages for Zoe. |
 | Savings release: Amara sends the money herself and taps "I've sent it". | Same. Tether never holds money. |
 | A demo clock moves time forward so a month fits in a video. | Real time. |
-| Sign-in is a private link (signed cookie). | Passkeys. |
+| Sign-in is Log in with PayPal for families you start, or a private link (signed cookie) for the shared demo. Everyone logs in to PayPal's **sandbox** with test accounts, often one shared test login, so "PayPal accounts are for adults" proves nothing here; the "I'm their parent or guardian" checkbox carries that claim. | Log in with PayPal against real accounts, or passkeys. |
+| A family you start is removed after 7 days: its links stop working and its saved PayPal is deleted at PayPal. Its money rows stay, because the record is append-only. | Families stay until the parent closes them. |
 | One shared demo family that resets itself. | One family per household. |
 
 ## Quick start
@@ -333,9 +336,9 @@ To deploy your own copy: set the variables below in Vercel, run `DATABASE_URL=<n
 | Variable | What it's for | Required |
 |---|---|---|
 | `DATABASE_URL` | Postgres URL (Neon), or `pglite:<folder>` locally | Yes |
-| `APP_BASE_URL` | Public address, used for PayPal's return link and Zoe's link | Yes in production |
+| `APP_BASE_URL` | Public address, used for PayPal's return links and Zoe's link. Log in with PayPal returns to `${APP_BASE_URL}/g/login/paypal/return`, which must match the Return URL registered in the PayPal app exactly | Yes in production |
 | `TETHER_SIGNING_KEY` | Signs permission slips and the parent's sign-in cookie (long random string) | Yes |
-| `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | PayPal sandbox app | Yes |
+| `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | PayPal sandbox app. "Start your own family" also needs **Log in with PayPal** switched on for this app (Apps & Credentials → the app → Other features), sharing Full name, Email, Account verification status and PayPal account ID | Yes |
 | `PAYPAL_BASE_URL` | `https://api-m.sandbox.paypal.com` (the app refuses anything else) | Yes |
 | `PAYPAL_WEBHOOK_ID` | Verifies PayPal webhook signatures; the webhook refuses requests without it | Yes in production |
 | `PAYPAL_DEMO_VAULT_ID` | Amara's saved sandbox PayPal, used by the demo seed | For the seed |

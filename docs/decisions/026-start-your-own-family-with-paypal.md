@@ -1,0 +1,23 @@
+# 026 — Anyone can start their own family, and Log in with PayPal is how they get back in
+
+**Decision** — The landing page gets a "Start your own family" card. A parent clicks Log in with PayPal, PayPal says who they are, they name their teen, and they land on a Home with a three-step checklist: save your PayPal, sign the first rules, send the teen the link. Next time, Log in with PayPal is their way back in; no private link to keep. The shared demo family stays first on the page, unchanged.
+
+**Why this came up** — Today every visitor shares one demo family. A judge can't see Tether from a parent's first click, and anything one judge does, the next one sees. Letting anyone make a family raises two questions at once: how does a parent get back in later, and how do we stop a public sign-up from running up the paid AI and data bills. Getting sign-in wrong on a money app is the expensive kind of wrong.
+
+**Options**
+1. **Option A: Log in with PayPal, then the existing "Save your PayPal" step (chosen).** "Log in with PayPal" is a separate PayPal product from saving a wallet: an OAuth sign-in (the parent approves on PayPal's page, PayPal sends back a one-time code, Tether swaps it for who they are). Cost: about a day of build, one more PayPal app setting (switch the product on and register one return URL), and two PayPal round trips for a new parent instead of one.
+2. **Option B: a private link only.** Keep today's model: the family's own link is the sign-in, shown on Home with "bookmark this". Cost: almost nothing to build, but a lost link is a lost family, anyone who sees the link can act as the parent, and "PayPal knows who you are" isn't part of the story.
+
+**What we chose and why** — Option A, Tarik's call on 7 Nov 2026. The parent's PayPal is already the money; making it the sign-in too means one account, no password for Tether to keep, and a way back in that survives a lost link. The public-demo limits came with it, also approved: at most 30 new families a day across the site and one per browser per hour; a self-started family's paid lookups also come out of one shared daily pot the size of one family's caps; at most 30 new Alpaca sandbox accounts a day; Reset demo stays with the shared family; and a self-started family is retired 7 days after it was made. The new screens use the teen's name, not "her", because the teen could be anyone's.
+
+"Retired" rather than "deleted": Tether's money journal is append-only, enforced by the database itself (a trigger refuses any delete). So after 7 days the family's links stop working, its PayPal identity and names are wiped, and its saved PayPal is deleted at PayPal; its money rows stay on the record, as with a demo reset (decision 014).
+
+**What we gave up**
+- A day of build in the last week before the deadline.
+- One more PayPal setting to get right, and a return URL that must match exactly (the production address only; preview deploys can't log in).
+- Honesty about what PayPal proves: real PayPal accounts are for adults, but every judge uses the same sandbox test login, so "PayPal proves you're the parent" is true in principle only on the demo. The "I'm Zoe's parent or guardian" checkbox carries that claim here.
+- Several PayPal details are unconfirmed until the live sandbox answers: the exact userinfo address, whether PayPal's login id and its wallet payer id are the same kind of id, and whether the sandbox fills in the wallet's payer details at all. Each is one constant or one branch in the code.
+
+**How we'll know if this was right** — On the deployed sandbox, a fresh browser can go from the landing page to Zoe's first screen in about three minutes, and logging in again with the same PayPal opens the same family. The usage_pool table never shows more than 30 family starts in a day, and the shared pot's counts stay at or under the per-family caps.
+
+**What actually happened** —
