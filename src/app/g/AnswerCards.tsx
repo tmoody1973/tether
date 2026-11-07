@@ -64,7 +64,9 @@ function CheckIn({ c }: { c: CheckinCard }) {
     <section className="g-card g-card--inset" aria-label={`${month} check-in`}>
       <h3 className="g-label">{month} check-in</h3>
       <div className="g-card__figure">{c.level ? `Level ${c.level}` : "No rules yet"}</div>
-      <p className="g-card__sub">This week: <Money cents={w.spentCents} /> spent · <Money cents={w.leftCents} /> left of <Money cents={w.allowanceCents} /></p>
+      {c.rulesStopped
+        ? <p className="g-card__sub">Spending is stopped. This week: <Money cents={w.spentCents} /> spent.</p>
+        : <p className="g-card__sub">This week: <Money cents={w.spentCents} /> spent · <Money cents={w.leftCents} /> left of <Money cents={w.allowanceCents} /></p>}
       <Bar value={w.spentCents} max={w.allowanceCents} label={`${formatCents(w.spentCents)} spent of ${formatCents(w.allowanceCents)} this week`} />
       {weeks.count === 0 ? <p className="g-muted">No weeks have closed yet.</p> : (
         <>

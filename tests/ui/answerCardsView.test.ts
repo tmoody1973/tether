@@ -17,7 +17,7 @@ const purchases: AnswerCard = {
 };
 const checkin: AnswerCard = {
   kind: "checkin", month: "2026-10", level: 1, week: { spentCents: 150, leftCents: 1850, allowanceCents: 2000 },
-  weeks: { covers: "the weeks counting toward her next review", count: 2, kept: 1, insideBudget: 1, savedCents: 1400 }, nextCheckin: "2026-10-31",
+  weeks: { covers: "the weeks counting toward her next review", count: 2, kept: 1, insideBudget: 1, savedCents: 1400 }, nextCheckin: "2026-10-31", rulesStopped: false,
 };
 const paypal: AnswerCard = {
   kind: "paypal", month: "2026-10", matched: 1, receiptsChecked: 3, note: "PayPal's list can lag a few hours.",
@@ -69,6 +69,11 @@ describe("AnswerCards (under the assistant's answer)", () => {
     expect(text([{ ...paypal, matched: 0, receiptsChecked: 0, flags: [], note: null, setAsideNote: null }])).toContain("No receipts to check in October 2026.");
   });
 
+  it("stopped rules: says spending is stopped, never shows money left (CodeRabbit)", () => {
+    const t = text([{ ...checkin, rulesStopped: true }]);
+    expect(t).toContain("Spending is stopped");
+    expect(t).not.toMatch(/left of/);
+  });
   it("no cards, or an unknown kind, renders nothing", () => {
     expect(html([])).toBe("");
     expect(html([{ kind: "dashboard", html: "<script>x</script>" }])).toBe("");

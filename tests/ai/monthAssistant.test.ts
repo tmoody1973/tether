@@ -186,6 +186,24 @@ describe("askAboutMonth", () => {
     const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "I can't see that." }]);
     expect(r).toEqual({ answer: CANT_SEE, toolsUsed: ["tether_record"], cards: [] });
   });
+  it("a curly apostrophe or missing period is still the refusal: no cards (CodeRabbit)", async () => {
+    for (const said of ["I can\u2019t see that.", "I can't see that"]) {
+      const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: said }]);
+      expect(r).toEqual({ answer: CANT_SEE, toolsUsed: ["tether_record"], cards: [] });
+    }
+  });
+  it("markdown the model writes never reaches the page", async () => {
+    const r = await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] },
+      { text: "In October 2026, **Zoe** bought two things.\n\n- **Target:** pens\n* Best Buy: a cable\n## Total" }]);
+    expect(r.answer).toBe("In October 2026, Zoe bought two things.\n\nTarget: pens\nBest Buy: a cable\nTotal");
+  });
+  it("the prompt keeps the sentence short, speaks to the parent, and leaves details to the cards", async () => {
+    await ask([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "ok" }]);
+    const system = JSON.stringify((lastModel.doGenerateCalls[0].prompt as { role: string }[]).filter((m) => m.role === "system"));
+    expect(system).toMatch(/no markdown/i);
+    expect(system).toMatch(/cards/i);
+    expect(system).toMatch(/\byou\b/);
+  });
   it("a bad month gives an empty result", async () => {
     await ask([{ calls: [{ name: "tether_record", input: { month: "October" } }] }, { text: "$99" }]);
     expect(toolOutputs(lastModel)).toEqual([{ month: null, receipts: [], setAsideNote: null }]);
