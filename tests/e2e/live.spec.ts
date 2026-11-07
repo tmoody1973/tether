@@ -17,7 +17,7 @@ async function openDemoControls(page: Page) {
 
 async function resetDemo(page: Page) {
   await page.goto("/");
-  await page.getByRole("link", { name: "Open Amara's view" }).click();
+  await page.getByRole("link", { name: "Open Amara's view" }).first().click();
   await expect(page).toHaveURL(/\/g$/);
   await openDemoControls(page);
   await page.getByRole("button", { name: "Reset demo" }).click();
@@ -29,7 +29,7 @@ test("landing → Zoe's view → shop agent cards → Amara approves the waiting
   await resetDemo(page);
 
   await page.goto("/");
-  await page.getByRole("link", { name: "Open Zoe's view" }).click();
+  await page.getByRole("link", { name: "Open Zoe's view" }).first().click();
   await expect(page).toHaveURL(/\/t\/[^/]+$/);
   await expect(page.getByText("left this week")).toBeVisible();
 
@@ -45,7 +45,7 @@ test("landing → Zoe's view → shop agent cards → Amara approves the waiting
 
   // Amara approves in one tap; the real sandbox PayPal charge is captured.
   await page.goto("/");
-  await page.getByRole("link", { name: "Open Amara's view" }).click();
+  await page.getByRole("link", { name: "Open Amara's view" }).first().click();
   await page.getByRole("link", { name: /Zoe is asking for/ }).first().click();
   await page.getByRole("button", { name: /^Approve \$/ }).click();
   await expect(page.getByRole("status").first()).toContainText(/Approved and paid/, { timeout: 60_000 });
@@ -98,7 +98,7 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
 
   // Zoe proposes $5 in VTI (already on Amara's investing list in the seeded grant).
   await page.goto("/");
-  await page.getByRole("link", { name: "Open Zoe's view" }).click();
+  await page.getByRole("link", { name: "Open Zoe's view" }).first().click();
   await expect(page).toHaveURL(/\/t\/([^/]+)$/);
   const teenHome = page.url();
   await page.goto(`${teenHome}/invest/VTI`);
@@ -111,7 +111,7 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
 
   // Amara approves; the sandbox Alpaca deposit and order go through.
   await page.goto("/");
-  await page.getByRole("link", { name: "Open Amara's view" }).click();
+  await page.getByRole("link", { name: "Open Amara's view" }).first().click();
   await page.getByRole("link", { name: /Zoe proposes investing \$5\.00 in VTI/ }).click();
   await page.getByRole("button", { name: "Approve $5.00" }).click();
   await expect(page.getByRole("main").getByRole("status").first()).toContainText(/Queued for market open|Bought|Filled/i, { timeout: 90_000 });
