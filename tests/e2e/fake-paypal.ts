@@ -204,6 +204,11 @@ createServer((req, res) => {
     if (req.method === "GET" && path === "/company/facts") {
       return url.searchParams.get("ticker") === "AAPL" ? send(200, { company_facts: AAPL_FACTS }) : send(404, { error: "Not Found", message: "Ticker not found" });
     }
+    if (req.method === "GET" && path === "/news") { // company news, or market news with no ticker; funds have none (as the real API)
+      const ticker = url.searchParams.get("ticker");
+      if (ticker && ["SPY", "VOO", "VTI"].includes(ticker)) return send(404, { error: "No data found", message: `No news found for ${ticker}` });
+      return send(200, { news: [{ ticker, title: `E2E headline${ticker ? ` about ${ticker}` : ""}`, source: "E2E Wire", date: new Date().toISOString(), url: "https://example.com/e2e-news" }] });
+    }
     if (req.method === "GET" && path === "/health") return send(200, { ok: true });
     send(404, { name: "NOT_FAKED", message: `${req.method} ${path}` });
   });

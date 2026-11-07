@@ -79,3 +79,56 @@ describe("AnswerCards (under the assistant's answer)", () => {
     expect(html([{ kind: "dashboard", html: "<script>x</script>" }])).toBe("");
   });
 });
+
+describe("AnswerCards: investing (decision 022)", () => {
+  const investments: AnswerCard = { kind: "investments", teen: "Zoe", rows: [
+    { symbol: "VTI", shares: 0.0138, putInCents: 500, worthCents: 500, marketCents: null },
+    { symbol: "VOO", shares: 1.5, putInCents: 80000, worthCents: 82000, marketCents: 81500 },
+  ] };
+  const inside: AnswerCard = { kind: "inside", symbol: "VTI", asOf: "2026-06-30", rows: [{ name: "NVIDIA", pct: 6.4 }, { name: "Apple", pct: 3.2 }] };
+  const news: AnswerCard = { kind: "news", ticker: "AAPL", articles: [
+    { title: "Apple's autocomplete restrictions - Reuters", source: "Reuters", date: "2026-11-06", url: "https://www.reuters.com/a" },
+    { title: "<img src=x onerror=alert(1)>", source: "Yahoo Finance", date: "2026-11-05", url: null },
+  ] };
+
+  it("investments: the teen's name, one row per fund with what it's worth, shares and what she put in, and the market line", () => {
+    const t = text([investments]);
+    expect(t).toContain("Zoe's investments");
+    expect(t).toContain("VTI $5.00");
+    expect(t).toContain("0.0138 share · put in $5.00");
+    expect(t).toContain("1.50 shares · put in $800.00");
+    expect(t).toContain("The same $800.00 in the whole market: $815.00.");
+    expect(t.match(/whole market/g)).toHaveLength(1); // no comparison until there is one
+    expect(html([investments])).toContain('aria-label="Zoe&#x27;s investments"');
+  });
+
+  it("inside: the fund, its rows with one thin bar each scaled to the largest, and the filing date", () => {
+    const t = text([inside]);
+    expect(t).toContain("What's inside VTI");
+    expect(t).toContain("NVIDIA 6.4%");
+    expect(t).toContain("Apple 3.2%");
+    expect(t).toContain("From the fund's filing for 30 Jun 2026, via Financial Datasets.");
+    const h = html([inside]);
+    expect(h.match(/class="g-hl__bar"/g)).toHaveLength(2);
+    expect(h).toContain("width:100%");
+    expect(h).toContain("width:50%");
+  });
+
+  it("news: titles link out safely in a new tab; a dropped link shows plain text; titles are escaped", () => {
+    const h = html([news]);
+    const t = text([news]);
+    expect(t).toContain("News about AAPL");
+    expect(t).toContain("Reuters · Fri 6 Nov");
+    expect(h).toMatch(/<a href="https:\/\/www\.reuters\.com\/a" target="_blank" rel="noopener noreferrer">Apple&#x27;s autocomplete restrictions - Reuters<\/a>/);
+    expect(h.match(/<a /g)).toHaveLength(1); // the null url has no link
+    expect(h).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(h).not.toContain("<img");
+    expect(text([{ ...news, ticker: null }])).toContain("Market news");
+  });
+
+  it("a link that isn't http(s) never renders as a link, even if a card arrives with one", () => {
+    const h = html([{ ...news, articles: [{ title: "x", source: "s", date: "2026-11-06", url: "javascript:alert(1)" }] }]);
+    expect(h).not.toContain("<a ");
+    expect(h).not.toContain("javascript:");
+  });
+});

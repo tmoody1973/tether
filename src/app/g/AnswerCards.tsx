@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
-import type { AnswerCard, CheckinCard, PaypalCard, PurchasesCard } from "@/ai/answerCards";
+import type { AnswerCard, CheckinCard, InsideCard, InvestmentsCard, NewsCard, PaypalCard, PurchasesCard } from "@/ai/answerCards";
 import { formatCents, formatDay, formatMonth } from "@/ui/grantWords";
+import { youOwnWords } from "@/ui/investWords";
 import { Bar, Money } from "@/ui/money";
 
 // Rendered inside the AskBox (a client component), so it imports only browser-safe modules: the card types are
 // erased at build time, and grantWords / money import nothing server-side.
 
-const KINDS = new Set<string>(["purchases", "checkin", "paypal"]);
+const KINDS = new Set<string>(["purchases", "checkin", "paypal", "investments", "inside", "news"]);
 const day = (iso: string) => formatDay(new Date(`${iso}T00:00:00Z`));
 const count = (n: number) => (n === 1 ? "1 payment" : `${n} payments`);
 
@@ -20,10 +21,20 @@ export function AnswerCards({ cards }: { cards: AnswerCard[] }) {
   if (known.length === 0) return null;
   return (
     <div className="g-ask__cards">
-      {known.map((c, i) => c.kind === "purchases" ? <Purchases key={i} c={c} />
-        : c.kind === "checkin" ? <CheckIn key={i} c={c} /> : <Paypal key={i} c={c} />)}
+      {known.map((c, i) => <Card key={i} c={c} />)}
     </div>
   );
+}
+
+function Card({ c }: { c: AnswerCard }) {
+  switch (c.kind) {
+    case "purchases": return <Purchases c={c} />;
+    case "checkin": return <CheckIn c={c} />;
+    case "paypal": return <Paypal c={c} />;
+    case "investments": return <Investments c={c} />;
+    case "inside": return <Inside c={c} />;
+    case "news": return <News c={c} />;
+  }
 }
 
 // ponytail: the same classes as PaymentRow (Activity's rows); PaymentRow itself imports server-only words, so it isn't reused here.
@@ -102,6 +113,69 @@ function Paypal({ c }: { c: PaypalCard }) {
       )}
       {c.note && <p className="g-note" style={{ marginTop: 6 }}>{c.note}</p>}
       {c.setAsideNote && <p className="g-note" style={{ marginTop: 6 }}>{c.setAsideNote}</p>}
+    </section>
+  );
+}
+
+function Investments({ c }: { c: InvestmentsCard }) {
+  const title = `${c.teen}'s investments`;
+  return (
+    <section className="g-card g-card--inset" aria-label={title}>
+      <h3 className="g-label">{title}</h3>
+      {c.rows.map((r) => (
+        <div key={r.symbol} className="g-holding">
+          <div className="g-def">
+            <span className="g-def__k">{r.symbol}</span><span className="g-def__lead" />
+            <span className="g-def__v"><Money cents={r.worthCents} /><small>{youOwnWords(r.shares)} · put in {formatCents(r.putInCents)}</small></span>
+          </div>
+          {r.marketCents !== null && (
+            <p className="g-note">The same {formatCents(r.putInCents)} in the whole market: {formatCents(r.marketCents)}.</p>
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+const pct1 = (p: number) => `${p.toFixed(1)}%`;
+const filingDay = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/** The same facts as Zoe's "What's inside" card, in Amara's colours: thin bars scaled to the largest holding. */
+function Inside({ c }: { c: InsideCard }) {
+  const max = c.rows[0]?.pct || 1;
+  return (
+    <section className="g-card g-card--inset" aria-label={`What's inside ${c.symbol}`}>
+      <h3 className="g-label">What&apos;s inside {c.symbol}</h3>
+      <ul className="g-hl">
+        {c.rows.map((r) => (
+          <li key={r.name}>
+            <span>{r.name}</span>
+            <span className="g-hl__bar" aria-hidden="true"><i style={{ width: `${(r.pct / max) * 100}%` }} /></span>
+            <span className="g-hl__pct">{pct1(r.pct)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="g-note">From the fund&apos;s filing for {filingDay.format(new Date(`${c.asOf}T00:00:00Z`))}, via Financial Datasets.</p>
+    </section>
+  );
+}
+
+// ponytail: buildCards already drops non-http(s) links; this second check guards the one place a link is drawn.
+const linkable = (url: string | null): url is string => !!url && /^https?:\/\//i.test(url);
+
+function News({ c }: { c: NewsCard }) {
+  const title = c.ticker ? `News about ${c.ticker}` : "Market news";
+  return (
+    <section className="g-card g-card--inset" aria-label={title}>
+      <h3 className="g-label">{title}</h3>
+      <ul className="g-news">
+        {c.articles.map((a, i) => (
+          <li key={i}>
+            {linkable(a.url) ? <a href={a.url} target="_blank" rel="noopener noreferrer">{a.title}</a> : <span>{a.title}</span>}
+            <span className="g-news__by">{a.source} · {day(a.date)}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
