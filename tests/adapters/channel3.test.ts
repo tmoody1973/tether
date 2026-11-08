@@ -58,7 +58,7 @@ describe("channel3 adapter", () => {
     const [p] = await createChannel3(fakeSdk().sdk).search("q", ["bestbuy.com"]);
     expect(p).toEqual({
       id: "p1", title: "Title p1", priceCents: 4999, domain: "bestbuy.com",
-      category: "over-ear-headphones", available: true,
+      category: "over-ear-headphones", available: true, condition: "unknown", // 030: no condition stated
     });
     expect(JSON.stringify(p)).not.toContain("aff.example");
   });

@@ -71,7 +71,7 @@ describe("teenWeek (what Zoe's week reads)", () => {
     const s = await seed();
     expect((await teenWeek(db, s.familyId, new Date(NOW.getTime() + 8 * DAY))).state).toBe("ended");
     await revoke({ db, now: async () => clock, paypal: deps().paypal }, s.familyId);
-    expect((await teenWeek(db, s.familyId, NOW)).state).toBe("paused");
+    expect((await teenWeek(db, s.familyId, NOW)).state).toBe("stopped"); // decision 030: "paused" now means a pause
   });
 
   it("release notice: Amara is sending, then sent", async () => {

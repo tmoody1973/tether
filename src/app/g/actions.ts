@@ -2,8 +2,6 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { guardianFamilyId, refuseStaleForm } from "@/auth/guardianSession";
-import { clockFor } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { ApprovalError, decideApproval } from "@/flows/approvals";
 import { approveAndSettle } from "@/flows/approve";
@@ -15,21 +13,16 @@ import { confirmRelease } from "@/flows/month";
 import { DemoResetError, resetDemo } from "@/flows/reset";
 import { SHOP_QUERY_MAX, addShop, removeShop, searchShopSites, type FoundSite } from "@/flows/shops";
 import { DAILY_CAP_MESSAGE } from "@/flows/usage";
-import { getFamily } from "@/db/repo";
+import { getFamily, getLatestGrant } from "@/db/repo";
+import { parseCosts, parseSpending } from "./rules/consentForm";
+import { DEMO_COSTS } from "@/engine/pricing";
 import { SHOP_QUERY_WORDS, SHOP_SEARCH_DOWN, noShopsFound, weekChangeWords } from "@/ui/grantWords";
 import type { Level } from "@/engine/ladder";
 import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
+import { guardianDeps } from "./guardianDeps";
 
 const SIGNED_OUT = "Open your Tether link to continue.";
 
-/** The signed-in guardian, refusing a form drawn for another teen (refuseStaleForm, review HIGH-1). */
-async function guardianDeps(form: FormData) {
-  const familyId = await guardianFamilyId();
-  if (!familyId) return null;
-  refuseStaleForm(form, familyId);
-  const db = await getDb();
-  return { familyId, deps: { db, now: clockFor(db) } };
-}
 
 const int = (v: FormDataEntryValue | null): number => (typeof v === "string" && /^\d{1,3}$/.test(v) ? Number(v) : NaN);
 
@@ -61,12 +54,30 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   if (![1, 2, 3].includes(level)) return { error: "Choose a level." };
   if (!(floorPct >= 10 && floorPct <= 100)) return { error: "Her savings floor must be between 10% and 100% of the allowance." };
   if (!(matchPct >= 0 && matchPct <= 200)) return { error: "Choose a match." };
+  // Decision 030: cost estimates are required to sign. A form without them (a savings-only re-sign) keeps the rules' own.
+  const hasCosts = form.has("salesTax");
+  const costs = hasCosts ? parseCosts(form) ?? undefined : undefined;
+  if (hasCosts && costs === undefined) return { error: "Enter the sales tax where you live (0% to 15%) and a shipping estimate ($0.00 to $50.00). Nothing changed." };
+  // Required when signing rules that aren't in force; a savings-only change to rules in force keeps whatever they have.
+  const latest = await getLatestGrant(g.deps.db, g.familyId);
+  const inForce = latest?.status === "active" && latest.expiresAt > await g.deps.now(g.familyId);
+  // The shared demo family falls back to its labelled demo estimates (review MEDIUM 4), so a judge who stopped can re-sign.
+  const demoCosts = !costs && !latest?.body.costs && !inForce && (await getFamily(g.deps.db, g.familyId))?.demo ? DEMO_COSTS : undefined;
+  if (!costs && !demoCosts && !latest?.body.costs && !inForce) {
+    return { error: "Set the sales tax where you live first, under Estimated costs. Nothing changed." };
+  }
+  const spending = form.has("spendingMode") ? parseSpending(form) : undefined;
+  if (spending === null) return { error: "Choose how she spends, and an amount in dollars and cents. Nothing changed." };
+  const investing = form.get("investing") === "off" ? false : form.get("investing") === "on" ? true : undefined;
   let version: number;
   try {
-    ({ version } = await signGrant(g.deps, g.familyId, { level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow: applyNowFrom(form) }));
+    ({ version } = await signGrant(g.deps, g.familyId, {
+      level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow: applyNowFrom(form), costs: costs ?? demoCosts, spending, investing,
+    }));
   } catch (err) {
     if (err instanceof WeekChangedError) return { error: await weekChanged(g.deps.db, g.familyId, err, nextMonday(await g.deps.now(g.familyId))) };
     if (err instanceof ReasonRequiredError) return { error: "Say why you're changing her level — it goes on the record." };
+    if (err instanceof GrantError && /spending amount/.test(err.message)) return { error: "The amount must be between $1.00 and her weekly money. Nothing changed." };
     if (err instanceof GrantError) return { error: "Those rules couldn't be signed. Nothing changed." };
     console.error("signGrant failed", err);
     return { error: "Those rules couldn't be signed. Nothing changed." };

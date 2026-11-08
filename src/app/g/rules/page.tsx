@@ -13,6 +13,8 @@ import { formatDay, stoppedWords, weekChangeWords } from "@/ui/grantWords";
 import { RetirementNotice } from "@/ui/RetirementNotice";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
 import { GrantEditor } from "./GrantEditor";
+import { SIGN_FORM } from "./consentForm";
+import { PauseControl } from "./PauseControl";
 import { StopRules } from "./RulesControls";
 import { ShopsSection } from "./ShopsSection";
 
@@ -81,9 +83,21 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
         paypalSaved={h.paypalSaved}
         week={{ thisWeekCents: thisWeek, spentCents: h.spentThisWeekCents, startsOn: startsOn.toISOString(), commitmentCents: fam?.commitmentCents ?? 0 }}
         shopsSlot={<ShopsSection teenName={zoe} inForce={shops.inForce} shops={shops.shops} />}
+        signed={{ spending: cur?.body.spending, investing: cur?.body.investing, costs: cur?.body.costs }}
+        consent={{
+          teenName: zoe, level: (cur?.level ?? 1) as Level, inForce: shops.inForce, signForm: SIGN_FORM,
+          spending: cur?.body.spending, investing: cur?.body.investing !== false, costs: cur?.body.costs, demo: h.isDemo,
+        }}
         sideSlot={
           // The teen's link and its reset moved to Settings (decision 028).
           <>
+            {!stopped && (
+              <section className="g-card g-section" aria-labelledby="pause-h">
+                <div className="g-section__head"><h2 id="pause-h">Pause spending</h2></div>
+                <p className="g-muted">Instant and reversible. Unlike Stop, her rules, your saved PayPal and her week stay as they are.</p>
+                <PauseControl key={fam?.pausedAt?.toISOString() ?? "on"} teenName={zoe} pausedAt={fam?.pausedAt?.toISOString() ?? null} />
+              </section>
+            )}
             <section className="g-card g-section g-stopcard" aria-labelledby="stop-h">
               <div className="g-section__head"><h2 id="stop-h">Stop {zoe}&apos;s rules</h2></div>
               {stopped ? (

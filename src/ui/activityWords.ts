@@ -1,5 +1,7 @@
 // Plain words for Amara's Activity page and nav. Deterministic code only.
 import { LAG_NOTE, type Reconciliation } from "@/flows/reconcile";
+import type { RefundSplit } from "@/flows/refunds";
+import { formatCents } from "@/ui/grantWords";
 
 const DAY_MS = 86_400_000;
 
@@ -16,14 +18,26 @@ export function lagWords(ms: number): string {
  * `waiting`: PayPal's list hasn't reached this payment's time yet: nothing is wrong, so it reads quiet, not amber.
  * Relative words only: the Proof box shows demo-clock times, PayPal's list runs on real time.
  */
+/** Decision 030: "Refunded in PayPal · $X back to Zoe's week" / "· $X added to what you've promised" (both when split). */
+export function refundedWords(refund: RefundSplit | undefined, teen: string): string {
+  const parts = [
+    ...(refund && refund.weekCents > 0 ? [`${formatCents(refund.weekCents)} back to ${teen}'s week`] : []),
+    ...(refund && refund.promisedCents > 0 ? [`${formatCents(refund.promisedCents)} added to what you've promised`] : []),
+    // Review MEDIUM 2: a refund of money that week had spent past its allowance (you approved it) adds nothing.
+    ...(refund && refund.grossCents > refund.weekCents + refund.promisedCents
+      ? [`${formatCents(refund.grossCents - refund.weekCents - refund.promisedCents)} covered spending past that week's money`] : []),
+  ];
+  return ["Refunded in PayPal", ...parts].join(" · "); // the FAQ quotes this label (tests/app/landing-faq.test.ts)
+}
+
 export function checkWords(
-  rec: Reconciliation | "checking" | "down", captureId: string, realNow: Date = new Date(),
+  rec: Reconciliation | "checking" | "down", captureId: string, realNow: Date = new Date(), teen = "her",
 ): { text: string; ok: boolean; waiting?: true } {
   if (rec === "checking") return { text: "Checking with PayPal…", ok: false };
   if (rec === "down") return { text: "Couldn't reach PayPal to check. Try again later.", ok: false };
   const flag = rec.flags.find((f) => f.captureId === captureId);
   if (!flag) return { text: "Matches PayPal", ok: true };
-  if (flag.kind === "refunded") return { text: "Refunded in PayPal", ok: false };
+  if (flag.kind === "refunded") return { text: refundedWords(flag.refund, teen), ok: false };
   const through = rec.refreshedThrough;
   if (flag.kind === "unconfirmed" && through) {
     if (flag.paidAt > through) {

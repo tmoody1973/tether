@@ -2,7 +2,8 @@ import { generateText, jsonSchema, Output, stepCountIs, tool, type LanguageModel
 import type { Channel3Adapter, Product } from "@/adapters/channel3/client";
 import { decide } from "@/engine/decide";
 import { cartHash } from "@/engine/hash";
-import type { Cart, Decision, Grant, LedgerView } from "@/engine/types";
+import type { Cart, CostTerms, Decision, Grant, LedgerView } from "@/engine/types";
+import { itemOf, pricedCart } from "@/engine/pricing";
 
 // Propose-only: this module can read the catalogue and run the rule engine. It never
 // buys, mints a permission slip, or touches PayPal (a test enforces the imports).
@@ -57,13 +58,12 @@ const outputSchema = jsonSchema<{ proposals: { productIds: string[]; reason: str
 
 const slim = (p: Product) => ({ id: p.id, title: p.title, priceCents: p.priceCents, domain: p.domain });
 
-function buildCart(products: Product[], merchantIdByDomain: Record<string, string>): Cart | null {
+function buildCart(products: Product[], merchantIdByDomain: Record<string, string>, costs?: CostTerms): Cart | null {
   const domains = new Set(products.map((p) => p.domain));
   if (products.length === 0 || domains.size !== 1) return null;
   const merchantId = merchantIdByDomain[products[0].domain];
   if (!merchantId) return null;
-  const items = products.map((p) => ({ sku: p.id, title: p.title, qty: 1, unitCents: p.priceCents }));
-  return { merchantId, items, totalCents: items.reduce((s, i) => s + i.unitCents, 0) };
+  return pricedCart(merchantId, products.map(itemOf), costs); // decision 030: the cost estimates the rules carry
 }
 
 const FALLBACK_REASON = "Matches what you asked for";
@@ -136,7 +136,7 @@ export async function runAgent(
     if (!Array.isArray(pick?.productIds) || !pick.productIds.every((id) => typeof id === "string")) continue;
     const products = [...new Set(pick.productIds)].map((id) => seen.get(id)); // qty stays 1
     if (products.some((p) => !p)) continue; // id no tool returned in this run
-    const cart = buildCart(products as Product[], input.merchantIdByDomain);
+    const cart = buildCart(products as Product[], input.merchantIdByDomain, input.grant.costs);
     if (!cart) continue;
     const hash = cartHash(cart);
     if (hashes.has(hash)) continue;

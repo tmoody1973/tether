@@ -9,10 +9,12 @@ import {
 } from "@/db/repo";
 import { ledgerView } from "@/ledger/ledger";
 import { budgetOverage, decide } from "@/engine/decide";
+import { withPause } from "@/engine/ladder";
+import { costSplit, pricedCart } from "@/engine/pricing";
 import { cartHash } from "@/engine/hash";
 import { mintToken, verifyToken, type AuthToken } from "@/engine/token";
 import { BOOKS_ONLY, bandOf, compose } from "@/engine/gate2";
-import type { ApprovalGrant, Cart, Decision, Grant, Outcome } from "@/engine/types";
+import type { ApprovalGrant, Cart, CostTerms, Decision, Grant, Outcome } from "@/engine/types";
 import type { PaypalHttp } from "@/adapters/paypal/http";
 import { chargeVaulted, resumeOrder, sendOrder, type ChargeArgs, type ChargeResult } from "@/adapters/paypal/orders";
 import { listTransactions } from "@/adapters/paypal/transactions";
@@ -56,13 +58,21 @@ const NO_GRANT: Decision = {
 
 // ---- propose ----------------------------------------------------------------
 
+/** Decision 030: Amara has paused spending. Read on the connection in use, so under the debit's lock it is current. */
+export async function isPaused(db: Db, familyId: string): Promise<boolean> {
+  const [f] = await db.select({ at: t.families.pausedAt }).from(t.families).where(eq(t.families.id, familyId));
+  return !!f?.at;
+}
+
 export async function proposePurchase(
   deps: Deps, familyId: string, cart: Cart,
 ): Promise<{ purchaseId: string; decision: StoredDecision }> {
   const now = await deps.now(familyId);
   const hash = cartHash(cart);
   const grant = await getActiveGrant(deps.db, familyId);
-  const gate1 = grant ? decide(grant.body, cart, await ledgerView(deps.db, familyId, now), now, undefined, hash) : NO_GRANT;
+  const gate1 = grant
+    ? decide(withPause(grant.body, await isPaused(deps.db, familyId)), cart, await ledgerView(deps.db, familyId, now), now, undefined, hash)
+    : NO_GRANT;
   // Gate 2 is consulted unless gate 1 already refused for good. A budget-only refusal can still be lifted by
   // Amara (R40), so it gets the real meaning check now: her yes must never stand in for "is it a book?".
   const askable = gate1.outcome !== "REFUSE" || budgetOverage(gate1.reasons) !== null;
@@ -99,16 +109,16 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   if (!(p.status === "proposed" || (approvable && approval))) return { status: p.status };
   const ctx: Ctx = { deps, p, now, approval };
 
-  // R12: price re-check against Channel3 before anything is minted or debited.
+  // R12: price re-check against Channel3 before anything is minted or debited, with the same cost estimates (030).
+  const grant = await getActiveGrant(db, p.familyId);
   const merchant = await getMerchant(db, p.cart.merchantId);
-  const fresh = merchant?.channel3WebsiteId ? await reprice(deps.channel3, p.cart, merchant.channel3WebsiteId) : null;
+  const fresh = merchant?.channel3WebsiteId ? await reprice(deps.channel3, p.cart, merchant.channel3WebsiteId, grant?.body.costs) : null;
   if (!merchant || !fresh) return refuse(ctx, "UNAVAILABLE");
   if (cartHash(fresh) !== p.cartHash) return refuse(ctx, "CART_MISMATCH");
   const vault = await getVault(db, p.familyId);
   if (!vault) return refuse(ctx, "NO_PAYMENT_METHOD");
   if (deps.paypal.configured === false) return refuse(ctx, "PAYPAL_UNAVAILABLE"); // nothing debited, nothing sent
 
-  const grant = await getActiveGrant(db, p.familyId);
   if (!grant) return refuse(ctx, "no_active_grant");
   const d = await gates(db, ctx, grant.body, fresh);
   if (d.outcome !== "ALLOW") return refuse(ctx, firstReason(d), STATUS[d.outcome]);
@@ -116,10 +126,12 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   const token = mintToken(d, grant.body, fresh, now, deps.secret);
   if (!(await consumeToken(db, token.tokenId, p.id))) return refuse(ctx, "REPLAY");
 
+  const split = costSplit(fresh); // decision 030: PayPal is told the items, tax and shipping, summing to the slip's amount
   const args: ChargeArgs = {
     vaultId: vault.paymentTokenId,
     payeeEmail: merchant.paypalPayeeEmail ?? undefined,
     description: `Tether: ${fresh.items.map((i) => i.title).join(", ")}`.slice(0, 127),
+    ...(split ? { breakdown: split } : {}),
   };
   const debited = await debit(ctx, grant.body, fresh, token, args);
   if ("status" in debited) return debited;
@@ -131,12 +143,18 @@ export async function settlePurchase(deps: Deps, purchaseId: string): Promise<Se
   return settleCharge(db, p.id, debited.intent, charge, now);
 }
 
-/** Fresh unit prices from Channel3 for every item; null if any item is no longer sold by the shop. */
-export async function reprice(c3: Channel3Adapter, cart: Cart, domain: string): Promise<Cart | null> {
+/**
+ * Fresh unit prices (and, where the cart recorded one, the offer's condition) from Channel3 for every item; null if
+ * any item is no longer sold by the shop. A cart priced with cost estimates is priced again with `costs`, the rules'
+ * current ones (decision 030); one priced without stays without. Any change shows up as a different fingerprint.
+ */
+export async function reprice(c3: Channel3Adapter, cart: Cart, domain: string, costs?: CostTerms): Promise<Cart | null> {
   const products = await Promise.all(cart.items.map((i) => c3.retrieve(i.sku, [domain])));
   if (products.some((x) => x === null)) return null;
-  const items = cart.items.map((i, k) => ({ ...i, unitCents: products[k]!.priceCents }));
-  return { ...cart, items, totalCents: items.reduce((s, i) => s + i.qty * i.unitCents, 0) };
+  const items = cart.items.map((i, k) => ({
+    ...i, unitCents: products[k]!.priceCents, ...(i.condition !== undefined ? { condition: products[k]!.condition ?? "unknown" } : {}),
+  }));
+  return pricedCart(cart.merchantId, items, cart.estTaxCents !== undefined ? costs : undefined, cart.sourceUrl);
 }
 
 /** Gate 1 recomputed now; gate 2 reuses the stored bands (R13). Approval lifts NEEDS_APPROVAL, never REFUSE. */
@@ -147,7 +165,8 @@ async function gates(db: Db, ctx: Ctx, grant: Grant, cart: Cart): Promise<Stored
       cartHash: approval.cartHash, expiresAt: approval.expiresAt.toISOString(),
       ...(approval.liftsBudget ? { liftsBudget: true, overCents: approval.overCents ?? 0 } : {}), // R40; capped again under the lock
     } : undefined;
-  const gate1 = decide(grant, cart, await ledgerView(db, p.familyId, now), now, grantApproval, p.cartHash);
+  // Decision 030: pause is re-read here, and under the debit's lock: pausing between Buy and payment stops it.
+  const gate1 = decide(withPause(grant, await isPaused(db, p.familyId)), cart, await ledgerView(db, p.familyId, now), now, grantApproval, p.cartHash);
   const stored = (p.decision as Partial<StoredDecision>).gate2 ?? [];
   // A semantic rule with no stored finding (rule added after propose) fails closed.
   const bands: Outcome[] = gate1.semanticRules.length > 0 && stored.length === 0 ? ["REFUSE"]

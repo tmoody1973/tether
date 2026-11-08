@@ -154,6 +154,8 @@ export interface MonthReceipt {
   paidAt: Date;
   /** Set aside by a demo reset: still a real PayPal charge on the record, but it counts in no total (R44). */
   setAside: boolean;
+  /** Decision 030: the estimates inside amountCents (absent for carts priced before estimates). */
+  split: { itemsCents?: number; estTaxCents?: number; estShippingCents?: number };
 }
 
 /** One family's receipts whose capture time falls in `month` ('YYYY-MM', UTC), oldest first. Family always comes from the caller. */
@@ -174,6 +176,7 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
       status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
       purchaseId: p.id, captureId: r.captureId, grantId: r.grantId, cartHash: r.cartHash, approvalId: r.approvalId,
       paidAt: r.createdAt, setAside: !counts,
+      split: { itemsCents: p.cart.itemsCents, estTaxCents: p.cart.estTaxCents, estShippingCents: p.cart.estShippingCents },
     }));
 }
 

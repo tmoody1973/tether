@@ -28,6 +28,17 @@ describe("landing FAQ", () => {
     expect(LEVELS[3].approvalOverCents).toBeNull();
   });
 
+  it("describes the parent's consent choices with the words the rules page uses", () => {
+    const cc = src("src/app/g/rules/ConsentControls.tsx");
+    expect(cc).toContain("Ask me before every purchase");
+    expect(cc).toContain("per purchase at approved shops without asking");
+    expect(text).toContain("“Ask me before every purchase”");
+    expect(text).toContain("Every purchase counts at its estimated full cost");
+    expect(src("src/ui/grantWords.ts")).toContain("Each purchase counts at its estimated full cost");
+    expect(src("src/app/g/rules/page.tsx")).toContain("Pause spending");
+    expect(src("src/engine/ladder.ts")).toContain("while Amara has paused spending, every purchase needs her yes");
+  });
+
   it("says savings is a promise, never money held", () => {
     expect(text).toContain("Savings is a promise Tether records, not money it holds.");
     expect(text).toContain("doesn't hold, reserve or move that money");
@@ -37,7 +48,10 @@ describe("landing FAQ", () => {
   it("describes declines, refunds and asks with the words the app really shows", () => {
     expect(src("src/ui/approveWords.ts")).toContain("PayPal declined the payment. Nothing was charged.");
     expect(src("src/ui/activityWords.ts")).toContain('"Refunded in PayPal"');
-    expect(text).toContain("marks the receipt “Refunded in PayPal”");
+    expect(text).toContain("back into this week if the week is still open, otherwise added to what you've promised");
+    const aw = src("src/ui/activityWords.ts");
+    expect(aw).toContain("back to ${teen}'s week");
+    expect(aw).toContain("added to what you've promised");
     expect(src("src/app/t/[token]/page.tsx")).toContain("Your rules can't pay for this one, so nothing will be charged.");
     expect(text).toContain("It only suggests items those shops list as in stock.");
     expect(src("src/adapters/channel3/client.ts")).toContain('o.availability === "InStock"');

@@ -48,7 +48,9 @@ export const families = pgTable("families", {
   paypalEmail: text("paypal_email"),
   parentGivenName: text("parent_given_name"),
   createdAt: createdAt(), // REAL time; a self-started family is retired 7 days after this
-  teenLinkSentAt: ts("teen_link_sent_at"), // Amara pressed Done on "Send Zoe the link": the first-run checklist's step 3
+  teenLinkSentAt: ts("teen_link_sent_at"),
+  // Decision 030: Amara paused spending (demo clock). Instant and reversible; the rules, PayPal and the week stay as they are.
+  pausedAt: ts("paused_at"), // Amara pressed Done on "Send Zoe the link": the first-run checklist's step 3
 }, (f) => [index("families_paypal_sub_idx").on(f.paypalSub)]);
 
 export const merchants = pgTable("merchants", {
@@ -137,7 +139,10 @@ export const receipts = pgTable("receipts", {
   createdAt: createdAt(),
 }, (r) => [uniqueIndex("receipts_capture_uq").on(r.captureId)]); // webhook + resume can never write two
 
-export const journalKinds = ["spend", "spend_reversal", "week_close", "release", "invest", "invest_reversal"] as const;
+// Decision 030: a PayPal refund of a purchase. refund: back into the purchase's week while it is open (at = the spend's
+// time, so it counts in that week). refund_promised: the week had closed, so it is added to what Amara has promised.
+// ref = "<captureId>#<refunded total so far, cents>": one row per new total, so replays write nothing (unique below).
+export const journalKinds = ["spend", "spend_reversal", "week_close", "release", "invest", "invest_reversal", "refund", "refund_promised"] as const;
 export const journal = pgTable("journal", {
   id: text("id").primaryKey(),
   familyId: text("family_id").notNull().references(() => families.id),
@@ -147,7 +152,10 @@ export const journal = pgTable("journal", {
   ref: text("ref"),
   note: text("note"),
   createdAt: createdAt(), // REAL time the row was written (`at` is the demo clock); a demo reset voids by this
-}, (j) => [uniqueIndex("journal_invest_ref_uq").on(j.kind, j.ref).where(sql`${j.kind} in ('invest', 'invest_reversal')`)]);
+}, (j) => [
+  uniqueIndex("journal_invest_ref_uq").on(j.kind, j.ref).where(sql`${j.kind} in ('invest', 'invest_reversal')`),
+  uniqueIndex("journal_refund_ref_uq").on(j.ref).where(sql`${j.kind} in ('refund', 'refund_promised')`), // 030: across both kinds
+]);
 
 export const weeks = pgTable("weeks", {
   familyId: text("family_id").notNull().references(() => families.id),

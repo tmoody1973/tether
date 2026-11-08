@@ -5,6 +5,7 @@ import { getFamily, getMerchant } from "@/db/repo";
 import { cartHash } from "@/engine/hash";
 import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { installGrant, withFamilyLock } from "@/flows/grant";
+import { DEMO_COSTS } from "@/engine/pricing";
 import { proposePurchase, reprice, type Deps } from "@/flows/purchase";
 import type { DemoKeys } from "@/flows/seed";
 
@@ -39,7 +40,10 @@ export async function resetDemo(
   if (!keys.guardianKey || !keys.teenToken || !fam || fam.guardianToken !== keys.guardianKey || !fam.demo) {
     throw new DemoResetError("only the demo family can be reset");
   }
-  const s = fam.demo;
+  // Review MEDIUM 4: a snapshot taken before decision 030 has no cost estimates. The reset gives it the demo's (8%, $5.99)
+  // and saves that back once, so the live demo shows tax and shipping without a production re-seed. The open ask keeps
+  // the cart it was asked with: reprice adds estimates only to carts that already carry them.
+  const s: DemoSnapshot = fam.demo.grant.costs ? fam.demo : { ...fam.demo, grant: { ...fam.demo.grant, costs: DEMO_COSTS } };
   const seeded = new Date(s.now);
   let claimedFrom: Date | null = null; // the claim's previous timestamp, put back if reopening fails (M8)
   const ran = await withFamilyLock(deps, familyId, async (tx) => {
@@ -77,6 +81,8 @@ export async function resetDemo(
       clockOffsetMs: seeded.getTime() - Date.now(), teenToken: keys.teenToken,
       commitmentCents: s.commitmentCents, pendingCommitmentCents: null,
       teenNudgeAt: null, teenNudgeNote: null, teenSeenLevelAt: null,
+      pausedAt: null, // decision 030: a judge's pause is theirs; the next judge starts unpaused
+      ...(s === fam.demo ? {} : { demo: s }), // heal an old snapshot once
       ledgerVoidTo: sql`now()`, // DB time, the same clock journal.created_at is written with
     }).where(eq(t.families.id, familyId));
     const expiresAt = new Date(seeded.getTime() + WEEK_MS).toISOString();
@@ -114,7 +120,7 @@ async function reopen(deps: Deps, familyId: string, s: DemoSnapshot): Promise<vo
   if (s.ask) {
     const merchant = await getMerchant(deps.db, s.ask.cart.merchantId);
     const fresh = merchant?.channel3WebsiteId
-      ? await reprice(deps.channel3, s.ask.cart, merchant.channel3WebsiteId).catch(() => null) : null;
+      ? await reprice(deps.channel3, s.ask.cart, merchant.channel3WebsiteId, s.grant.costs).catch(() => null) : null;
     const cart = fresh ?? s.ask.cart;
     const { purchaseId, decision } = await proposePurchase(deps, familyId, cart);
     if (decision.outcome === "REFUSE" && liftableOverage(decision) !== null) {

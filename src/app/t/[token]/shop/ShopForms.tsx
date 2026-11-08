@@ -5,6 +5,8 @@ import Link from "next/link";
 import { formatCents } from "@/ui/grantWords";
 import { PendingButton } from "@/ui/PendingButton";
 import { Chip } from "@/ui/teen";
+import { ProductPhoto } from "@/ui/ProductPhoto";
+import { TEEN_ESTIMATES } from "@/ui/teenWords";
 import { buyAction, shopAction, type ShopCard, type ShopState } from "../actions";
 
 /**
@@ -45,6 +47,7 @@ export function ShopForms({ token, guardian }: { token: string; guardian: string
         <ul className="t-results" style={{ listStyle: "none" }}>
           {state.cards.map((c) => <li key={c.purchaseId}><ResultCard card={c} token={token} guardian={guardian} /></li>)}
         </ul>
+        {state.cards.some((c) => c.cost.startsWith("Item ")) && <p className="t-hint">{TEEN_ESTIMATES}</p>}
       </section>
     </>
   );
@@ -54,11 +57,18 @@ export function ShopForms({ token, guardian }: { token: string; guardian: string
 function ResultCard({ card: c, token, guardian }: { card: ShopCard; token: string; guardian: string }) {
   return (
     <article className="t-card t-result" aria-label={`${c.title}, ${formatCents(c.priceCents)} at ${c.shop}: ${c.label}`}>
-      <div className="t-result__top">
-        <span className="t-result__title">{c.title}</span>
-        <span className="t-result__price money">{formatCents(c.priceCents)}</span>
+      <div className="t-result__row">
+        <ProductPhoto src={c.imageUrl} title={c.title} className="t-photo" />
+        <div className="t-result__main">
+          <div className="t-result__top">
+            <span className="t-result__title">{c.title}</span>
+            <span className="t-result__price money">{formatCents(c.priceCents)}</span>
+          </div>
+          <div className="t-result__shop">{c.shop}{c.reason ? ` · ${c.reason}` : ""}</div>
+          {c.condition && <span className="t-chip t-chip--note">{c.condition}</span>}
+        </div>
       </div>
-      <div className="t-result__shop">{c.shop}{c.reason ? ` · ${c.reason}` : ""}</div>
+      <p className="t-small t-result__cost">{c.cost}</p>
       <Chip kind={c.kind} label={c.label} />
       {c.kind === "fits" && (
         <form action={buyAction}>

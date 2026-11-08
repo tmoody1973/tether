@@ -6,13 +6,14 @@ import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getPurchase, type PurchaseRow } from "@/db/repo";
 import { counted, ledgerView, weekKey, weekRecords } from "@/ledger/ledger";
 import { asOf, commitmentFloorCents, streak, type Level, type WeekRecord } from "@/engine/ladder";
-import type { Cart, Decision, Grant } from "@/engine/types";
+import type { Cart, CostTerms, Decision, Grant, SpendingMode } from "@/engine/types";
+import { itemOf, pricedCart } from "@/engine/pricing";
 import type { Product } from "@/adapters/channel3/client";
 import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { monthReviewView, reviewWeeks } from "@/flows/month";
 import { proposePurchase, settlePurchase, type Deps, type SettleResult } from "@/flows/purchase";
 import { tellAmara } from "@/flows/notify";
-import { formatCents } from "@/ui/grantWords";
+import { conditionWords, costLine, formatCents } from "@/ui/grantWords";
 import { explainRefusal, type ExplainCtx, type Explanation } from "@/ai/explain";
 import type { Llm } from "@/ai/llm";
 
@@ -22,7 +23,8 @@ export class TeenError extends Error {
   constructor(message: string) { super(message); this.name = "TeenError"; }
 }
 
-export type TeenState = "active" | "ended" | "paused" | "none";
+/** stopped: Amara stopped her rules (revoked). Decision 030 renamed it from "paused": a pause is `pausedBy`, rules stay active. */
+export type TeenState = "active" | "ended" | "stopped" | "none";
 
 export interface TeenWeek {
   teenName: string; guardianName: string; state: TeenState; now: Date;
@@ -41,6 +43,12 @@ export interface TeenWeek {
   weeks: WeekRecord[];
   /** She already nudged Amara to renew these ended rules. */
   nudged: boolean;
+  /** Decision 030: Amara has paused spending (her name), else null. Asks still go to her; nothing is bought without her yes. */
+  pausedBy: string | null;
+  /** Decision 030: Amara turned investing off (her rules say so). Holdings stay viewable; no new proposals. */
+  investingOff: boolean;
+  /** Decision 030: Amara's spending mode on the rules in force, for "what needs her OK" on Zoe's screens. */
+  spending?: SpendingMode;
 }
 
 /** Read model for every teen page. `now` is the family's demo-clock time. */
@@ -51,7 +59,7 @@ export async function teenWeek(db: Db, familyId: string, now: Date): Promise<Tee
     getLatestGrant(db, familyId), getActiveGrant(db, familyId), ledgerView(db, familyId, now), weekRecords(db, familyId),
     reviewWeeks(db, familyId), db.select().from(t.goals).where(eq(t.goals.familyId, familyId)),
   ]);
-  const state: TeenState = !latest ? "none" : latest.status === "revoked" ? "paused"
+  const state: TeenState = !latest ? "none" : latest.status === "revoked" ? "stopped"
     : active && active.expiresAt > now ? "active" : "ended";
   const signed = (active ?? latest)?.body;
   const body: Grant | null = signed ? asOf(signed, now) : null; // this week's amount (029)
@@ -71,6 +79,9 @@ export async function teenWeek(db: Db, familyId: string, now: Date): Promise<Tee
     levelUp: await unseenLevelUp(db, familyId, fam.teenSeenLevelAt),
     weeks,
     nudged: state === "ended" && !!ended && fam.teenNudgeAt !== null && fam.teenNudgeNote === null && fam.teenNudgeAt >= ended.expiresAt,
+    pausedBy: fam.pausedAt ? fam.guardianName : null,
+    investingOff: signed?.investing === false,
+    ...(signed?.spending ? { spending: signed.spending } : {}),
   };
 }
 
@@ -82,6 +93,13 @@ async function shopNames(db: Db, carts: Cart[]): Promise<Map<string, string>> {
 }
 
 const titleOf = (c: Cart) => c.items.map((i) => i.title).join(" + ");
+
+/** Decision 030: the first photo, and the condition label of the first item that isn't new. */
+export function photoAndCondition(c: Cart): { imageUrl?: string; condition?: string } {
+  const imageUrl = c.items.find((i) => i.imageUrl)?.imageUrl;
+  const condition = conditionWords(c.items.find((i) => i.condition && i.condition !== "new")?.condition) ?? undefined;
+  return { ...(imageUrl ? { imageUrl } : {}), ...(condition ? { condition } : {}) };
+}
 
 /** Paid or still-confirming purchases whose spend landed in this ISO week. */
 async function thisWeeksPurchases(db: Db, familyId: string, now: Date): Promise<TeenWeek["purchases"]> {
@@ -156,14 +174,18 @@ export async function allowedShops(db: Db, familyId: string): Promise<{ domains:
   return { domains: Object.keys(merchantIdByDomain), merchantIdByDomain };
 }
 
-/** A one-item cart for a product from an allowed shop, or null if the shop isn't hers. */
-export function cartFor(p: Product, merchantIdByDomain: Record<string, string>): Cart | null {
+/** A one-item cart for a product from an allowed shop, priced with the rules' cost estimates (030); null if the shop isn't hers. */
+export function cartFor(p: Product, merchantIdByDomain: Record<string, string>, costs?: CostTerms): Cart | null {
   const merchantId = merchantIdByDomain[p.domain];
   if (!merchantId) return null;
-  return { merchantId, items: [{ sku: p.id, title: p.title, qty: 1, unitCents: p.priceCents }], totalCents: p.priceCents };
+  return pricedCart(merchantId, [itemOf(p)], costs);
 }
 
-export interface Proposed { purchaseId: string; title: string; shop: string; priceCents: number; decision: Decision; reason?: string }
+/** imageUrl/condition/cost (decision 030): the photo, a non-new condition, and "Item · est. tax · est. shipping · total". */
+export interface Proposed {
+  purchaseId: string; title: string; shop: string; priceCents: number; decision: Decision; reason?: string;
+  imageUrl?: string; condition?: string; cost: string;
+}
 
 /**
  * Every result is stored as a proposed purchase before she sees it (gate 1 + gate 2), so its label is the
@@ -174,7 +196,10 @@ export async function proposeCarts(deps: Deps, familyId: string, items: { cart: 
   const out: Proposed[] = [];
   for (const { cart, reason } of items) { // in order: the engine reads one ledger at a time
     const { purchaseId, decision } = await proposePurchase(deps, familyId, cart);
-    out.push({ purchaseId, title: titleOf(cart), shop: names.get(cart.merchantId) ?? "a shop", priceCents: cart.totalCents, decision, reason });
+    out.push({
+      purchaseId, title: titleOf(cart), shop: names.get(cart.merchantId) ?? "a shop", priceCents: cart.totalCents, decision, reason,
+      ...photoAndCondition(cart), cost: costLine(cart),
+    });
   }
   return out;
 }

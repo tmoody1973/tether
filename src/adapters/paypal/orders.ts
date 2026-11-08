@@ -11,7 +11,29 @@ export type ChargeResult =
   | { ok: true; orderId: string; captureId: string; status: "COMPLETED" | "PENDING" }
   | { ok: false; outcome: "declined" | "unknown"; error: string; orderId?: string };
 
-export interface ChargeArgs { vaultId: string; payeeEmail?: string; description: string }
+/**
+ * breakdown (decision 030): the items, estimated tax and estimated shipping, in cents, summing exactly to the slip's
+ * amount. Stored with the charge intent, so a resend carries the identical body. Absent: older carts, amount only.
+ */
+export interface ChargeArgs {
+  vaultId: string; payeeEmail?: string; description: string;
+  breakdown?: { itemCents: number; taxCents: number; shippingCents: number };
+}
+
+/** "12.34" from 1234 cents, by integer arithmetic only (PayPal rejects an amount whose breakdown doesn't add up). */
+export function usd(cents: number): string {
+  if (!Number.isSafeInteger(cents) || cents < 0) throw new Error(`bad amount ${cents}`);
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
+}
+
+/** Orders v2 `amount`: the value, and the breakdown when there is one. Null if the breakdown doesn't sum to the slip's amount. */
+export function orderAmount(amountCents: number, b?: ChargeArgs["breakdown"]): Record<string, unknown> | null {
+  const value = { currency_code: "USD", value: usd(amountCents) };
+  if (!b) return value;
+  if (b.itemCents + b.taxCents + b.shippingCents !== amountCents) return null;
+  const money = (c: number) => ({ currency_code: "USD", value: usd(c) });
+  return { ...value, breakdown: { item_total: money(b.itemCents), tax_total: money(b.taxCents), shipping: money(b.shippingCents) } };
+}
 
 interface Capture { id: string; status: string }
 interface OrderResponse {
@@ -59,11 +81,13 @@ export async function chargeVaulted(
 export async function sendOrder(
   token: AuthToken, p: PaypalHttp, args: ChargeArgs, onOrder?: (orderId: string) => Promise<void>,
 ): Promise<ChargeResult> {
+  const amount = orderAmount(token.amountCents, args.breakdown);
+  if (!amount) return { ok: false, outcome: "declined", error: "BREAKDOWN_MISMATCH" }; // nothing was sent
   const unit: Record<string, unknown> = {
     reference_id: token.cartHash.slice(0, 32),
     custom_id: token.tokenId,
     description: args.description,
-    amount: { currency_code: "USD", value: (token.amountCents / 100).toFixed(2) },
+    amount,
   };
   if (args.payeeEmail) unit.payee = { email_address: args.payeeEmail };
   let order: OrderResponse;

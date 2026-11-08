@@ -153,13 +153,13 @@ test("R40: Zoe asks $15 with $9.50 left ⇒ Amara approves ⇒ paid, and her wee
   await expect(page.getByRole("region", { name: "This week" })).toContainText("Running shoes · Amara approved this one");
 });
 
-test("paused rules: a calm page and no shopping", async ({ page }) => {
+test("stopped rules: a calm page and no shopping (030: \"paused\" now means a pause)", async ({ page }) => {
   test.setTimeout(90_000); // cold dev compile of several pages
   await open(page, E2E.teen.paused);
-  await expect(page.getByRole("heading", { name: "Amara paused your rules." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Amara stopped your rules." })).toBeVisible();
   await expect(page.locator(".t-hero")).toHaveCount(0);
   await open(page, E2E.teen.paused, "/shop");
-  await expect(page.getByRole("heading", { name: "Amara paused your rules." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Amara stopped your rules." })).toBeVisible();
   await expect(page.getByRole("button", { name: /Find options|Search|Check it/ })).toHaveCount(0);
 });
 

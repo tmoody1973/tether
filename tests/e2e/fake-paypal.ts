@@ -26,8 +26,13 @@ const search: Row[] = [
 ];
 const orders = new Map<string, unknown>(); // PayPal-Request-Id → order
 
-const c3 = (id: string, title: string, cents: number, domain: string) =>
-  ({ id, title, offers: [{ domain, price: { price: cents / 100, currency: "USD" }, availability: "InStock" }] });
+// Decision 030: a photo on a made-up https host (screenshots route it; tests never need it to load), and an offer
+// condition that search, lookup and retrieve all agree on, so a cart re-prices to itself at payment.
+const CONDITION: Record<string, "used"> = { "sku-1500": "used" };
+const c3 = (id: string, title: string, cents: number, domain: string) => ({
+  id, title, images: [{ url: `https://img.e2e.example/${id}.png`, is_main_image: true }],
+  offers: [{ domain, price: { price: cents / 100, currency: "USD" }, availability: "InStock", condition: CONDITION[id] ?? "new" }],
+});
 // Level 1 Zoe who has bought at Target: fits / needs Amara's OK (first time at Best Buy) / over budget.
 const SEARCH = [c3("sku-500", "Notebook", 500, "target.com"), c3("sku-800", "Earbuds", 800, "bestbuy.com"), c3("sku-1500", "Running shoes", 1500, "target.com")];
 let n = 0;
@@ -155,7 +160,8 @@ createServer((req, res) => {
     if (req.method === "GET" && product) {
       const w = url.searchParams.get("website_ids") ?? "";
       const domain = w.startsWith("[") ? (JSON.parse(w) as string[])[0] : w; // the SDK sends a JSON list
-      return send(200, { id: `sku-${product[1]}`, title: "Item", offers: [{ domain, price: { price: Number(product[1]) / 100, currency: "USD" }, availability: "InStock" }] });
+      const id = `sku-${product[1]}`;
+      return send(200, { id, title: "Item", offers: [{ domain, price: { price: Number(product[1]) / 100, currency: "USD" }, availability: "InStock", condition: CONDITION[id] ?? "new" }] });
     }
     if (req.method === "POST" && path === "/v1/search") {
       const body = JSON.parse(raw || "{}") as { query?: string; filters?: { website_ids?: string[] } | null };

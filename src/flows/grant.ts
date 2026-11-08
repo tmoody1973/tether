@@ -4,9 +4,10 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getVault, type GrantRow } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
-import { asOf, commitmentFloorCents, grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
+import { LEVELS, asOf, commitmentFloorCents, settingsToSign, grantForLevel, validSpending, validateCommitment, withSpending, type Level } from "@/engine/ladder";
+import { validCosts } from "@/engine/pricing";
 import { ledgerView } from "@/ledger/ledger";
-import type { Constraint, Grant } from "@/engine/types";
+import type { Constraint, CostTerms, Grant, SpendingMode } from "@/engine/types";
 import type { Deps } from "@/flows/purchase";
 
 const WEEK_MS = 7 * 86_400_000;
@@ -77,7 +78,7 @@ export class RulesStoppedError extends GrantError {
   constructor() { super("rules are stopped — sign new ones"); this.name = "RulesStoppedError"; }
 }
 
-type Settings = Pick<Grant, "commitmentFloorPct" | "matchPct" | "fundAllowlist">;
+type Settings = Pick<Grant, "commitmentFloorPct" | "matchPct" | "fundAllowlist"> & Pick<Grant, "spending" | "investing" | "costs">;
 
 /** Runs `fn` in one transaction holding the family-row lock (same lock as settlePurchase / decideApproval). */
 export async function withFamilyLock<T>(deps: Pick<Deps, "db" | "now">, familyId: string, fn: (tx: Db, now: Date) => Promise<T>): Promise<T> {
@@ -105,8 +106,10 @@ export async function buildForLevel(tx: Db, familyId: string, level: Level, vers
   const ms = (await tx.select().from(t.merchants)).filter((m) => m.opensAtLevel <= level && (m.addedByFamilyId === null || m.addedByFamilyId === familyId));
   const byClass: Record<string, string[]> = {};
   for (const m of ms) (byClass[m.class] ??= []).push(m.id);
-  const g = grantForLevel(level, { id: crypto.randomUUID(), familyId, version, ...s }, byClass, byClass.books ?? [], now);
-  return { ...g, constraints: await applyChoices(tx, familyId, g.constraints) };
+  const { spending, investing, costs, ...base } = s;
+  const g = grantForLevel(level, { id: crypto.randomUUID(), familyId, version, ...base }, byClass, byClass.books ?? [], now);
+  const constraints = await applyChoices(tx, familyId, spending ? withSpending(g.constraints, level, spending) : g.constraints);
+  return { ...g, constraints, ...(spending ? { spending } : {}), ...(investing === false ? { investing } : {}), ...(costs ? { costs } : {}) };
 }
 
 // ---- Amara's shop choices (levels are defaults, not gates) ----------------------------------------------------------
@@ -183,11 +186,18 @@ export async function installLevel(
   tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>, keep?: { latest: GrantRow | null; applyNow: ApplyNow },
 ): Promise<Grant> {
   const cur = (await getLatestGrant(tx, familyId))?.body;
+  // Decision 030: what she sends, else the latest rules' (spending carried across the level change, never looser, review
+  // HIGH 1). The same settingsToSign the rules page previews with (review NEW-1).
   const base: Settings = {
     commitmentFloorPct: s?.commitmentFloorPct ?? cur?.commitmentFloorPct ?? 10,
     matchPct: s?.matchPct ?? cur?.matchPct ?? 100,
     fundAllowlist: s?.fundAllowlist ?? cur?.fundAllowlist ?? [],
+    ...settingsToSign(level, { spending: s?.spending, investing: s?.investing, costs: s?.costs }, cur),
   };
+  if (base.spending && !validSpending(base.spending, LEVELS[level].weeklyCents)) {
+    throw new GrantError("spending amount must be between $1 and the weekly amount");
+  }
+  if (base.costs && !validCosts(base.costs)) throw new GrantError("cost estimates out of range");
   return installGrant(tx, familyId, async (version) => {
     const body = await buildForLevel(tx, familyId, level, version, base, now);
     if (!keep) return body; // an engine level-up applies now
@@ -212,6 +222,7 @@ export async function signGrant(
     if (changesLevel && !why) throw new ReasonRequiredError();
     const body = await installLevel(tx, familyId, draft.level, now, {
       commitmentFloorPct: draft.commitmentFloorPct, matchPct: draft.matchPct, fundAllowlist: draft.fundAllowlist,
+      spending: draft.spending, investing: draft.investing, costs: draft.costs,
     }, { latest: cur, applyNow: draft.applyNow ?? false });
     if (changesLevel) {
       await tx.insert(t.levelChanges).values({
@@ -251,6 +262,57 @@ export async function guardianSetLevel(
     });
     return body;
   });
+}
+
+// ---- Decision 030: Amara's consent controls on the rules in force ----------------------------------------------------
+
+/** No rules in force to change now; the setting goes in with her next signing. */
+export class RulesNotInForceError extends GrantError {
+  constructor() { super("no rules in force"); this.name = "RulesNotInForceError"; }
+}
+
+/** Changes the rules in force at once, as the next version with the same end date (like a shop change). */
+async function changeInForce(deps: Pick<Deps, "db" | "now">, familyId: string, change: (body: Grant) => Grant): Promise<Grant> {
+  return withFamilyLock(deps, familyId, async (tx, now) => {
+    const cur = await getActiveGrant(tx, familyId);
+    if (!cur || cur.expiresAt <= now) throw new RulesNotInForceError();
+    const next = change(cur.body);
+    return installGrant(tx, familyId, (version) => ({ ...next, id: crypto.randomUUID(), version, signedAt: now.toISOString() }), now);
+  });
+}
+
+/** "Ask me before every purchase" or "Up to $X without asking". Applies now; the AI has no path here. */
+export function setSpending(deps: Pick<Deps, "db" | "now">, familyId: string, spending: SpendingMode): Promise<Grant> {
+  return changeInForce(deps, familyId, (b) => {
+    if (!validSpending(spending, b.weeklyCents)) throw new GrantError("spending amount must be between $1 and the weekly amount");
+    return { ...b, spending, constraints: withSpending(b.constraints, b.level, spending) };
+  });
+}
+
+/** Investing on or off. Off refuses new proposals (engine/invest.ts); nothing already invested is touched. */
+export function setInvesting(deps: Pick<Deps, "db" | "now">, familyId: string, on: boolean): Promise<Grant> {
+  return changeInForce(deps, familyId, (b) => {
+    const next = { ...b, investing: false };
+    if (on) delete (next as Partial<Grant>).investing; // on is the default: absent
+    return next;
+  });
+}
+
+/** Sales tax and shipping estimates. New carts use them; carts already proposed keep theirs (re-checked at payment). */
+export function setCosts(deps: Pick<Deps, "db" | "now">, familyId: string, costs: CostTerms): Promise<Grant> {
+  return changeInForce(deps, familyId, (b) => {
+    if (!validCosts(costs)) throw new GrantError("cost estimates out of range");
+    return { ...b, costs };
+  });
+}
+
+/**
+ * Pause or resume spending, at once. While paused every purchase needs Amara's yes (approval.paused); the rules, the
+ * saved PayPal and the week are untouched. Not a new rules version: it's a switch, not a signing.
+ */
+export async function setPaused(deps: Pick<Deps, "db" | "now">, familyId: string, paused: boolean): Promise<void> {
+  await withFamilyLock(deps, familyId, (tx, now) =>
+    tx.update(t.families).set({ pausedAt: paused ? now : null }).where(eq(t.families.id, familyId)));
 }
 
 /** Stored now; takes effect at the next closeWeek. */

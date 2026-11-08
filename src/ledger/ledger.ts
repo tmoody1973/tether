@@ -33,8 +33,9 @@ const entries = (db: Db, familyId: string): Promise<Entry[]> =>
   db.select({ at: t.journal.at, kind: t.journal.kind, amountCents: t.journal.amountCents, ref: t.journal.ref })
     .from(t.journal).where(and(eq(t.journal.familyId, familyId), counted)).orderBy(asc(t.journal.at));
 
-const SPEND_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { spend: 1, spend_reversal: -1 };
-const SAVINGS_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { week_close: 1, release: -1, invest: -1, invest_reversal: 1 };
+// Decision 030: a refund in an open week gives the money back to that week; one after it closed adds to savings.
+const SPEND_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { spend: 1, spend_reversal: -1, refund: -1 };
+const SAVINGS_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { week_close: 1, release: -1, invest: -1, invest_reversal: 1, refund_promised: 1 };
 
 const sum = (rows: Entry[], signs: Partial<Record<Entry["kind"], 1 | -1>>): Cents =>
   rows.reduce((acc, r) => acc + (signs[r.kind] ?? 0) * r.amountCents, 0);
@@ -48,13 +49,15 @@ export async function savingsCents(db: Db, familyId: string): Promise<Cents> {
 
 /**
  * The savings figure in its parts, from the same counted journal rows and signs (decision 029's closing statement):
- * savingsCents = recordedCents − paidCents − investedCents, and is exactly what savingsCents() returns.
+ * savingsCents = recordedCents + refundedCents − paidCents − investedCents, exactly what savingsCents() returns.
  */
 export async function savingsParts(db: Db, familyId: string) {
   const rows = await entries(db, familyId);
   const of = (kind: Entry["kind"]) => rows.filter((r) => r.kind === kind).reduce((s, r) => s + r.amountCents, 0);
   return {
-    recordedCents: of("week_close"), paidCents: of("release"), investedCents: of("invest") - of("invest_reversal"),
+    recordedCents: of("week_close"), paidCents: of("release"),
+    /** Decision 030: refunds that came back after their week had closed, so they were added to what is promised. */
+    refundedCents: of("refund_promised"), investedCents: of("invest") - of("invest_reversal"),
     savingsCents: sum(rows, SAVINGS_SIGN),
     /** Payments to her that count (a demo reset sets earlier ones aside): release id and the saved amount that left savings. */
     releases: rows.filter((r) => r.kind === "release" && r.ref).map((r) => ({ releaseId: r.ref as string, savedCents: r.amountCents })),

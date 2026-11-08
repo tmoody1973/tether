@@ -2,16 +2,17 @@
 
 import { FamilyField, useFamilyId } from "@/ui/FamilyField";
 import { connectPaypalHref } from "@/ui/connectPaypalHref";
-import { useActionState, useState, type ReactNode } from "react";
+import { useActionState, useCallback, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { INVESTING_FROM, LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
-import { approvalShort, formatCents, formatDay, grantClause, matchWords, weekChangeWords } from "@/ui/grantWords";
+import { INVESTING_FROM, LEVELS, settingsToSign, type ConsentSettings, commitmentFloorCents, type Level } from "@/engine/ladder";
+import { spendingCarryWords, approvalShort, formatCents, formatDay, grantClause, matchWords, weekChangeWords } from "@/ui/grantWords";
 import { editDraft, type Draft } from "@/ui/rulesDraft";
 import { setLevelAction, signGrantAction, type LevelState, type SignState } from "../actions";
 
 const FLOORS = [10, 15, 20, 25, 50];
 const MATCHES = [0, 50, 100];
-const SIGN_FORM = "g-sign";
+import { SIGN_FORM } from "./consentForm";
+import { ConsentControls, type ConsentProps } from "./ConsentControls";
 
 export interface GrantEditorProps {
   teenName: string; currentLevel: Level | null; floorPct: number; matchPct: number;
@@ -25,6 +26,8 @@ export interface GrantEditorProps {
   week: { thisWeekCents: number | null; spentCents: number; startsOn: string; commitmentCents: number };
   /** Server-rendered sections placed in the layout: Shops (left, after the level), Stop + Zoe's link (right). */
   shopsSlot: ReactNode; sideSlot: ReactNode;
+  /** Decision 030: the consent controls' props (rendered after Saving), and the latest rules' values the clause starts from. */
+  consent?: Omit<ConsentProps, "onDraft">; signed?: ConsentSettings;
 }
 
 type Confirm = "sign" | "level" | "saving" | null;
@@ -40,6 +43,8 @@ export function GrantEditor(p: GrantEditorProps) {
   const [draft, setDraft] = useState<Draft>(signed);
   const [confirm, setConfirmState] = useState<Confirm>(null);
   const [applyNow, setApplyNow] = useState(false); // "Change this week too", chosen after reading its consequence
+  const [consentDraft, setConsentDraft] = useState<ConsentSettings>({}); // review NEW-1: what the consent fields would send
+  const reportDraft = useCallback((part: ConsentSettings) => setConsentDraft((d) => ({ ...d, ...part })), []);
   const setConfirm = (c: Confirm) => { setConfirmState(c); setApplyNow(false); };
   const [signState, signAction, signing] = useActionState<SignState, FormData>(signGrantAction, {});
   const [levelState, levelAction, moving] = useActionState<LevelState, FormData>(setLevelAction, {});
@@ -54,9 +59,13 @@ export function GrantEditor(p: GrantEditorProps) {
   const savingChanged = floorPct !== signed.floorPct || matchPct !== signed.matchPct;
   const expires = new Date(p.expiresAt);
   const unchanged = p.inForce && !levelChanged && !savingChanged;
+  // Review NEW-1: the settings this page would sign, by the server's own rule (with rules in force the consent controls
+  // apply on their own, so a level change or re-sign sends none of them).
+  const toSign = settingsToSign(level, p.inForce ? {} : consentDraft, p.signed);
   const clause = grantClause({
     teenName: zoe, level, shops: p.shops[level], floorPct, matchPct,
     expiresAt: unchanged && p.inForceUntil ? new Date(p.inForceUntil) : expires,
+    ...toSign,
   });
   const signForm = p.inForce ? undefined : SIGN_FORM; // with no rules in force, every control belongs to the one sign form
   const def = LEVELS[level];
@@ -152,6 +161,7 @@ export function GrantEditor(p: GrantEditorProps) {
                           ? <>Move {zoe} to Level {level}? Her shops and approvals follow the new level now, keeping the shops you added or removed.</>
                           : <>Move {zoe} to Level {level}? Her weekly money becomes {formatCents(def.weeklyCents)} and her shops follow the
                             new level, keeping the shops you added or removed. It applies now.</>}
+                        {p.signed?.spending && <> {spendingCarryWords(p.signed.spending, level)}</>}
                       </p>
                       {weekChoice()}
                       <div className="g-btnrow">
@@ -204,10 +214,12 @@ export function GrantEditor(p: GrantEditorProps) {
           ) : savingRows}
         </section>
 
+        {p.consent && <ConsentControls {...p.consent} onDraft={reportDraft} />}
+
         <section className="g-card g-section" aria-labelledby="bylevel-h">
           <div className="g-section__head"><h2 id="bylevel-h">Set by the level</h2></div>
           <div>
-            <Def k="Asks you first" v={approvalShort(level)} />
+            <Def k="Asks you first" v={approvalShort(level, toSign.spending)} />
             <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : `opens at Level ${INVESTING_FROM}`}
               sub={def.investing ? "her investments and your investing list" : "funds or stocks she proposes, you approve"} />
             <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href={connectPaypalHref(familyId)}>save your PayPal</a>} sub="sandbox: no real money" />

@@ -141,6 +141,13 @@
       "when": 1794144320879,
       "tag": "0019_savings_promise",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794152757231,
+      "tag": "0020_consent",
+      "breakpoints": true
     }
   ]
 }

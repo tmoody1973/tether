@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { pausedLine } from "@/ui/teenWords";
 import { teenSession } from "@/auth/teen";
 import { now as clockNow } from "@/clock/clock";
 import { teenWeek } from "@/flows/teen";
@@ -38,6 +39,7 @@ async function Shop({ params }: { params: Promise<{ token: string }> }) {
         <h1 className="t-eyebrow">Shop</h1>
         <p className="t-small" style={{ marginTop: 4 }}><b className="money">{formatCents(w.leftCents)}</b> left this week</p>
       </div>
+      {w.pausedBy && <p className="t-flash" role="status" data-testid="paused">{pausedLine(w.pausedBy)}</p>}
       <ShopForms token={token} guardian={w.guardianName} />
       <Seam center kinds={["sandbox", "merchant"]} />
     </TeenShell>

@@ -8,10 +8,13 @@ import { ledgerView } from "@/ledger/ledger";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, type Proposed } from "@/flows/teen";
 import { ApprovalError } from "@/flows/approvals";
-import { cardOutcome, type CardKind } from "@/ui/teenWords";
+import { cardOutcome, pausedWords, type CardKind } from "@/ui/teenWords";
 import { agentModel, teenDeps } from "../teenDeps";
 
-export interface ShopCard { purchaseId: string; title: string; shop: string; priceCents: number; kind: CardKind; label: string; reason?: string }
+export interface ShopCard {
+  purchaseId: string; title: string; shop: string; priceCents: number; kind: CardKind; label: string; reason?: string;
+  imageUrl?: string; condition?: string; cost: string; // decision 030
+}
 export type ShopState = { cards: ShopCard[]; error?: string; note?: string };
 
 const MAX_REQUEST = 200;
@@ -31,6 +34,7 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
   const shops = await allowedShops(db, fam.id);
   const week = await teenWeek(db, fam.id, now);
   if (!shops || week.state !== "active") return { cards: [], error: "Your rules aren't in force right now, so nothing can be bought." };
+  const costs = (await getActiveGrant(db, fam.id))?.body.costs; // decision 030: estimates in every card's total
 
   const mode = form.get("mode");
   if (mode !== "agent" && mode !== "link" && mode !== "search") return { cards: [] };
@@ -43,6 +47,7 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
       if (!request || request.length > MAX_REQUEST) return { cards: [], error: `Say what you're after in up to ${MAX_REQUEST} characters.` };
       const model = await agentModel(request);
       if (!model) return { cards: [], error: "The shopping helper isn't switched on here. Search or paste a link instead." };
+      if (week.pausedBy) return { cards: [], error: pausedWords(week.pausedBy) }; // decision 030: no agent shopping while paused
       if (!(await takeDaily(db, fam.id, "shop_agent"))) return { cards: [], error: DAILY_CAP_MESSAGE }; // only now: validated, configured, about to pay for the model
       const grant = (await getActiveGrant(db, fam.id))!.body;
       const { proposals } = await runAgent({ model, channel3: deps.channel3 }, {
@@ -57,14 +62,14 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
       if (r.kind === "shop_not_allowed") return { cards: [], error: "That shop isn't on your list." };
       if (r.kind === "not_a_product") return { cards: [], error: "That link doesn't look like a product page." };
       if (r.kind === "unavailable") return { cards: [], error: "That shop doesn't have it in stock right now." };
-      const cart = cartFor(r.product, shops.merchantIdByDomain);
+      const cart = cartFor(r.product, shops.merchantIdByDomain, costs);
       items = cart ? [{ cart }] : [];
     } else {
       const query = text(form.get("query"), 100);
       if (!query) return { cards: [], error: "Type what you're looking for." };
       if (!(await takeDaily(db, fam.id, "shop_lookup"))) return { cards: [], error: DAILY_CAP_MESSAGE };
       const found = await deps.channel3.search(query, shops.domains, 6);
-      items = found.flatMap((p) => { const cart = cartFor(p, shops.merchantIdByDomain); return cart ? [{ cart }] : []; });
+      items = found.flatMap((p) => { const cart = cartFor(p, shops.merchantIdByDomain, costs); return cart ? [{ cart }] : []; });
     }
     const cards = (await proposeCarts(deps, fam.id, items)).map((p) => toCard(p, fam.guardianName));
     return cards.length ? { cards } : { cards, note: "Nothing from your shops matched that. Try saying it another way." };
@@ -76,7 +81,10 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
 
 function toCard(p: Proposed, guardian: string): ShopCard {
   const { kind, label } = cardOutcome(p.decision, guardian);
-  return { purchaseId: p.purchaseId, title: p.title, shop: p.shop, priceCents: p.priceCents, kind, label, ...(p.reason ? { reason: p.reason } : {}) };
+  return {
+    purchaseId: p.purchaseId, title: p.title, shop: p.shop, priceCents: p.priceCents, kind, label, cost: p.cost,
+    ...(p.reason ? { reason: p.reason } : {}), ...(p.imageUrl ? { imageUrl: p.imageUrl } : {}), ...(p.condition ? { condition: p.condition } : {}),
+  };
 }
 
 const id = (form: FormData) => text(form.get("purchaseId"), 100);

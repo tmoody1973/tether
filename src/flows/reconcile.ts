@@ -3,23 +3,56 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { purchaseTokensForFamily, receiptsForMonth } from "@/db/repo";
 import type { PaypalHttp } from "@/adapters/paypal/http";
-import { searchTransactions } from "@/adapters/paypal/transactions";
+import { searchTransactions, type PaypalTx } from "@/adapters/paypal/transactions";
+import { clockFor } from "@/clock/clock";
+import { UNDO_CODE, applyRefunds, refundedByCapture, type RefundSplit } from "@/flows/refunds";
 
 const DAY_MS = 86_400_000;
 // ponytail: one 31-day search (Transaction Search's widest range) from the month's first slip; a month whose slips
 // span more than 31 real days would miss late rows — split into several searches if that ever happens.
 const MAX_WINDOW_MS = 31 * DAY_MS;
-/** PayPal T-code groups that give a payment back: T11 reversals and refunds, T12 chargebacks. */
-const UNDO_CODE = /^T1[12]\d\d$/;
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Review MEDIUM 3: a refund can land after the month's 31-day window (a purchase late in the month, refunded weeks
+ * later). Searched for: only this month's captures, from the window's end until now, at most 180 days after the window
+ * started (PayPal's usual refund limit), in 31-day searches, so at most 5 more searches, and none for the current month.
+ * Review NEW-2: they run in parallel, each with its own PayPal timeout, under one deadline. Whatever hasn't answered by
+ * then is left for the next check (refunds are written by running total, so a later check adds only what's new); the
+ * month's own result is shown either way, so Activity is never held up by more than the deadline.
+ */
+export const REFUND_HORIZON_MS = 180 * DAY_MS;
+export const LATER_SEARCH_TIMEOUT_MS = 4_000;
+async function laterUndoRows(
+  paypal: PaypalHttp, start: Date, from: Date, realNow: Date, captures: Set<string>, timeoutMs: number,
+): Promise<PaypalTx[]> {
+  const until = Math.min(realNow.getTime(), start.getTime() + REFUND_HORIZON_MS);
+  const windows: [Date, Date][] = [];
+  for (let s = from.getTime(); s < until && captures.size > 0; s += MAX_WINDOW_MS) {
+    windows.push([new Date(s), new Date(Math.min(until, s + MAX_WINDOW_MS))]);
+  }
+  if (windows.length === 0) return [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), timeoutMs); });
+  const found: PaypalTx[][] = windows.map(() => []);
+  const searches = Promise.allSettled(windows.map(async ([a, b], i) => {
+    found[i] = (await searchTransactions(paypal, a, b, timeoutMs)).rows
+      .filter((r) => r.amountCents < 0 && r.referenceId && captures.has(r.referenceId));
+  }));
+  const done = await Promise.race([searches, deadline]);
+  clearTimeout(timer);
+  if (done === "late") console.error("reconcile: later refund searches still running at the deadline; the next check retries");
+  else if (done.some((r) => r.status === "rejected")) console.error("reconcile: a later refund search failed; the next check retries");
+  return found.flat(); // what answered in time
+}
 
 export type ReconFlag =
   /** PayPal charged this family (custom_field = one of its tokens) but Tether holds no receipt for that capture. */
   | { kind: "paypal_only"; captureId: string; amountCents: number }
   /** A receipt whose capture PayPal's list doesn't show (yet: Transaction Search lags up to ~3 hours). */
   | { kind: "unconfirmed"; captureId: string; amountCents: number; shop: string; paidAt: Date }
-  /** A receipt PayPal shows as reversed or refunded. */
-  | { kind: "refunded"; captureId: string; amountCents: number; shop: string };
+  /** A receipt PayPal shows as reversed or refunded; `refund` is what Tether has given back for it (decision 030). */
+  | { kind: "refunded"; captureId: string; amountCents: number; shop: string; refund?: RefundSplit };
 
 export interface Reconciliation {
   receiptsChecked: number; flags: ReconFlag[];
@@ -72,14 +105,18 @@ export async function paypalWindowForMonth(
  * custom_field is one of this family's permission-slip token ids. Rows with no family link are ignored, never shown.
  */
 export async function reconcileMonth(
-  deps: { db: Db; paypal: PaypalHttp }, familyId: string, month: string, realNow: Date = new Date(),
+  deps: { db: Db; paypal: PaypalHttp; now?: (familyId: string, conn?: Db) => Promise<Date> }, familyId: string, month: string, realNow: Date = new Date(),
+  laterTimeoutMs = LATER_SEARCH_TIMEOUT_MS,
 ): Promise<Reconciliation> {
   if (!MONTH_RE.test(month)) throw new Error(`bad month ${month}`);
   const { db } = deps;
   const [receipts, monthTokens] = await Promise.all([receiptsForMonth(db, familyId, month), slipsForMonth(db, familyId, month)]);
   const window = windowFor(monthTokens, receipts.length > 0, realNow);
   if (!window) return { receiptsChecked: 0, flags: [] };
-  const { rows, refreshedThrough } = await searchTransactions(deps.paypal, window.start, window.end);
+  const first = await searchTransactions(deps.paypal, window.start, window.end);
+  const { refreshedThrough } = first;
+  const later = await laterUndoRows(deps.paypal, window.start, window.end, realNow, new Set(receipts.map((r) => r.captureId)), laterTimeoutMs);
+  const rows = [...new Map([...first.rows, ...later].map((r) => [r.id, r])).values()]; // one row per PayPal id, whatever window found it
 
   const mine = new Set(monthTokens.map((tk) => tk.tokenId));
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -91,13 +128,20 @@ export async function reconcileMonth(
     ...rows.filter((r) => r.amountCents < 0 && r.referenceId && UNDO_CODE.test(r.eventCode ?? "")).map((r) => r.referenceId as string),
   ]);
 
+  // Decision 030: a refund gives the money back (to her week while it's open, else to what's promised), written once.
+  const charged = new Map(receipts.filter((r) => !r.setAside).map((r) => [r.captureId, r.amountCents]));
+  const back = await applyRefunds({ db, now: deps.now ?? clockFor(db) }, familyId, refundedByCapture(rows, charged));
+
   const flags: ReconFlag[] = [
     // a reversed charge (status V) took no money in the end, so it isn't "charged without a receipt"
     ...rows.filter((r) => r.customField && mine.has(r.customField) && r.amountCents > 0 && r.status !== "V" && !captures.has(r.id))
       .map((r): ReconFlag => ({ kind: "paypal_only", captureId: r.id, amountCents: r.amountCents })),
     ...receipts.flatMap((r): ReconFlag[] => {
       const base = { captureId: r.captureId, amountCents: r.amountCents, shop: r.shop };
-      if (undone.has(r.captureId)) return [{ kind: "refunded", ...base }];
+      if (undone.has(r.captureId)) {
+        const refund = back.get(r.captureId);
+        return [{ kind: "refunded", ...base, ...(refund ? { refund } : {}) }];
+      }
       return byId.has(r.captureId) ? [] : [{ kind: "unconfirmed", ...base, paidAt: r.paidAt }];
     }),
   ];

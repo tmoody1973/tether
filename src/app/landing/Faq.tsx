@@ -16,21 +16,21 @@ export const FAQ: { q: string; lead: string; body: ReactNode }[] = [
   },
   {
     q: "Can my teen buy something without asking me?",
-    lead: "Yes, within the limits you sign. Anything over them comes to you.",
+    lead: "Yes, within the limits you choose. Anything over them comes to you.",
     body: (
       <>
-        <p>Signing the rules is standing permission. At Level 1 your teen can spend $20 a week, and anything over $10, or at a shop they haven&apos;t used, comes to you first. At Level 2 it&apos;s $30 a week, and anything over $20 comes to you. At Level 3 it&apos;s $50 a week, and nothing inside their shops needs your OK.</p>
-        <p>Every purchase gets a single-use permission slip, and code re-checks your rules before PayPal is charged. The AI can suggest; it can never approve. To stop all spending at once, use the Stop button on your teen&apos;s rules page.</p>
+        <p>You pick one of two ways: &ldquo;Ask me before every purchase&rdquo;, or &ldquo;Up to $___ per purchase at approved shops without asking&rdquo;. Each level starts with a default you can change: at Level 1 your teen can spend $20 a week, and anything over $10, or at a shop they haven&apos;t used, comes to you first. At Level 2 it&apos;s $30 a week, and anything over $20 comes to you. At Level 3 it&apos;s $50 a week, and nothing inside their shops needs your OK. A level change never loosens the limit you chose.</p>
+        <p>Every purchase counts at its estimated full cost: the price plus your sales tax and shipping estimate. It gets a single-use permission slip, and code re-checks your rules before PayPal is charged. The AI can suggest; it can never approve. Pause spending makes every purchase wait for your yes until you resume; Stop ends the rules entirely.</p>
       </>
     ),
   },
   {
     q: "What happens when an order is canceled or refunded?",
-    lead: "If PayPal declines, nothing is charged. A store refund shows on the receipt.",
+    lead: "If PayPal declines, nothing is charged. A store refund comes back to your teen.",
     body: (
       <>
-        <p>If PayPal declines a payment, nothing is charged and the money goes back into your teen&apos;s week. When a store refunds a purchase, Tether checks it against PayPal&apos;s own records and marks the receipt &ldquo;Refunded in PayPal&rdquo;. Returning that money to your teen&apos;s week or savings is being added now.</p>
-        <p>In this demo every purchase pays one stand-in shop, so there&apos;s no shipping and nothing to return. In a real launch, the store ships and handles returns under its own policy, and its refund comes back to your PayPal.</p>
+        <p>If PayPal declines a payment, nothing is charged and the money goes back into your teen&apos;s week. When a store refunds a purchase, Tether finds it in PayPal&apos;s own records and returns it once: back into this week if the week is still open, otherwise added to what you&apos;ve promised. The receipt says which, for example &ldquo;Refunded in PayPal · $15.00 back to Zoe&apos;s week&rdquo;.</p>
+        <p>In this demo every purchase pays one stand-in shop, so there&apos;s no real shipping and nothing to return; shipping and tax are estimates you set. In a real launch, the store ships and handles returns under its own policy, and its refund comes back to your PayPal.</p>
       </>
     ),
   },

@@ -5,6 +5,8 @@ import { getActiveGrant, getFamily, getPurchase } from "@/db/repo";
 import { availableSavingsCents, ledgerView, weekRecords } from "@/ledger/ledger";
 import { asOf, commitmentKept } from "@/engine/ladder";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
+import { photoAndCondition } from "@/flows/teen";
+import { costLine } from "@/ui/grantWords";
 
 export interface RequestView {
   id: string; subject: PendingApproval["subject"]; teenName: string; expiresAt: Date;
@@ -13,7 +15,11 @@ export interface RequestView {
   /** Her last (up to) 4 closed weeks. */
   lastWeeks: { count: number; insideBudget: number; kept: number };
   /** liftsBudget (R40): approving lets this one cart go past her week; that week then doesn't count toward a level. */
-  purchase?: { amountCents: number; shop: string; items: { title: string; qty: number }[]; leftCents: number; overCents: number; liftsBudget: boolean };
+  purchase?: {
+    amountCents: number; shop: string; items: { title: string; qty: number }[]; leftCents: number; overCents: number; liftsBudget: boolean;
+    /** Decision 030: "Item · est. tax · est. shipping · total", the photo, and a non-new condition. */
+    cost: string; imageUrl?: string; condition?: string;
+  };
   investment?: { symbol: string; amountCents: number; savingsCents: number };
   fund?: { symbol: string };
   shop?: { domain: string };
@@ -48,6 +54,7 @@ export async function requestView(db: Db, familyId: string, approvalId: string, 
       purchase: {
         amountCents: a.cart.totalCents, shop: m?.name ?? "a shop", items: a.cart.items.map((i) => ({ title: i.title, qty: i.qty })),
         leftCents, overCents: Math.max(0, a.cart.totalCents - leftCents), liftsBudget: a.liftsBudget,
+        cost: costLine(a.cart), ...photoAndCondition(a.cart),
       },
     };
   }

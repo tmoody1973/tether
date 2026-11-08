@@ -31,6 +31,7 @@ test("start your own family with Log in with PayPal, through to the teen's first
   await checklist.getByRole("link", { name: "Sign the rules" }).click();
   await expect(page).toHaveURL(/\/g\/rules$/, { timeout: 60_000 });
   await expect(page.getByLabel(/Level 1/)).toBeChecked();
+  await page.getByLabel(/Sales tax where you live/).fill("8"); // decision 030: required to sign
   await page.getByRole("button", { name: "Sign and send" }).click();
   await page.getByRole("button", { name: "Yes, sign" }).click();
   await expect(page).toHaveURL(/\/g\?signed=1$/, { timeout: 60_000 });
@@ -123,6 +124,7 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   await checklist.getByRole("link", { name: "Save your PayPal" }).click();
   await expect(page).toHaveURL(/\/g\?paypal=connected$/, { timeout: 60_000 });
   await checklist.getByRole("link", { name: "Sign the rules" }).click();
+  await page.getByLabel(/Sales tax where you live/).fill("8"); // decision 030: required to sign
   await page.getByRole("button", { name: "Sign and send" }).click();
   await page.getByRole("button", { name: "Yes, sign" }).click();
   await expect(page).toHaveURL(/\/g\?signed=1$/, { timeout: 60_000 });

@@ -6,7 +6,8 @@ export interface PaypalHttp {
   request<T = unknown>(
     method: "GET" | "POST" | "DELETE",
     path: string,
-    opts?: { body?: unknown; headers?: Record<string, string> },
+    /** timeoutMs: a shorter limit than REQUEST_TIMEOUT_MS for this call (review NEW-2: background refund searches). */
+    opts?: { body?: unknown; headers?: Record<string, string>; timeoutMs?: number },
   ): Promise<{ status: number; headers: Headers; data: T }>;
 }
 
@@ -40,9 +41,9 @@ export function safeErrorText(err: unknown): string {
 export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): PaypalHttp {
   let cached: { token: string; refreshAt: number } | null = null;
 
-  async function send(url: string, init: RequestInit) {
+  async function send(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetchImpl(url, { ...init, signal: ctrl.signal });
       const text = await res.text();
@@ -61,7 +62,7 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
     } catch (err) {
       if (err instanceof PaypalError) throw err;
       if (ctrl.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
-        throw new PaypalError(0, "TIMEOUT", `request timed out after ${REQUEST_TIMEOUT_MS} ms`);
+        throw new PaypalError(0, "TIMEOUT", `request timed out after ${timeoutMs} ms`);
       }
       throw new PaypalError(0, "NETWORK_ERROR", err instanceof Error ? err.message : "network failure");
     } finally {
@@ -84,13 +85,13 @@ export function paypalHttp(cfg: PaypalConfig, fetchImpl: typeof fetch = fetch): 
   }
 
   return {
-    async request<T>(method: "GET" | "POST" | "DELETE", path: string, opts: { body?: unknown; headers?: Record<string, string> } = {}) {
+    async request<T>(method: "GET" | "POST" | "DELETE", path: string, opts: { body?: unknown; headers?: Record<string, string>; timeoutMs?: number } = {}) {
       const token = await accessToken();
       const res = await send(`${cfg.baseUrl}${path}`, {
         method,
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts.headers },
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-      });
+      }, opts.timeoutMs);
       return { ...res, data: res.data as T };
     },
   };
