@@ -22,7 +22,7 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 |---|---|---|
 | **Parents:** kids spend their money without real permission | The FTC made Epic Games refund **$245M** for children's charges made "without any parental involvement"; Epic "ignored more than one million user complaints" (FTC, Dec 2022). | No card changes hands. The parent signs weekly rules, code checks every cart before PayPal is called, and each payment uses a single-use permission slip bound to that one cart. |
 | **Teens:** they want autonomy, and classes barely change behaviour | Across 201 studies, financial-education classes explained **0.1%** of the differences in money behaviour, with negligible effects 20 months on; the authors point to "just in time" teaching (Fernandes, Lynch & Netemeyer, 2014). | She shops herself inside the rules. A refusal explains itself at the moment of decision, with her real numbers and two ways forward, and her freedom grows from her own track record. |
-| **Saving:** most teens don't put money aside for later | Only **36%** of US teens aged 13–18 say they save part of the money they receive for their future (Junior Achievement and MissionSquare, Feb 2025, 1,000 teens). | What she doesn't spend becomes savings. She sets her own weekly savings promise (nothing is locked; keeping it is rewarded), sees one number, weeks to her goal, and four kept weeks move her up a level. A design grounded in commitment and goal research, not yet tested on teens. |
+| **Saving:** most teens don't put money aside for later | Only **36%** of US teens aged 13–18 say they save part of the money they receive for their future (Junior Achievement and MissionSquare, Feb 2025, 1,000 teens). | What she doesn't spend is recorded as savings: an amount the parent promises her. Tether tracks the promise; it doesn't hold or set aside money. She sets her own weekly savings promise (nothing is locked; keeping it is rewarded), sees one number, weeks to her goal, and four kept weeks move her up a level. A design grounded in commitment and goal research, not yet tested on teens. |
 | **Investing:** teens are interested, but don't know much | **70%** of teens aged 13–17 are very or extremely interested in investing; only **14%** say they know a lot (Schwab, Oct 2025, 1,000 teens; Schwab sells teen accounts). | From Level 2, funds or stocks, with facts only: what's inside, about the company, one line against the whole market, no daily moves or red and green. She gives her reasons in her own words, the parent approves each one, and leveraged products are blocked. |
 | **Payments and AI:** nobody has settled how an agent proves it was allowed to buy | Google's AP2, with PayPal as a named partner, lists "proving that a user gave an agent the specific authority to make a particular purchase" as an open question (Sept 2025). | The parent's signed rules are the mandate. The agent only proposes, code decides, a model can only add friction, and every payment's proof can be checked against PayPal's own records. |
 
@@ -53,7 +53,7 @@ The demo is one shared family. **Reset demo** (in Demo controls on Amara's Home)
 4. **Gate 1, code:** a deterministic rule engine checks the cart against the signed rules. Allowed, needs Amara's OK, or refused with one plain sentence saying which rule and what would change it.
 5. **Gate 2, AI, can only tighten:** a model checks things code can't (is this item actually a book?). It can add friction; it can never remove it. *"A model may add friction. Only code may remove it."*
 6. **PayPal charges Amara's saved wallet**, using a single-use permission slip (a signed token, valid 120 seconds, bound to that exact cart).
-7. **Every week, what Zoe didn't spend becomes savings.** Four kept weeks in a row moves her up a level: more money, more shops, and from Level 2, investing.
+7. **Every week, what Zoe didn't spend counts as savings.** Four kept weeks in a row moves her up a level: more money, more shops, and from Level 2, investing. Tether tracks allowance and savings promises. It doesn't hold or set aside money. Purchases charge the parent's saved PayPal when they happen. So Zoe's savings is an amount Amara has promised her, paid when Amara sends it herself and records it. If Amara's balance runs low, nothing was reserved, so the promise doesn't change; a purchase PayPal declines charges nothing. Money Zoe invests is different: with Amara's OK it does move, into Zoe's own investing account (a simulated sandbox deposit in this build).
 8. **Investing (from Level 2):** Zoe searches the whole market and proposes a fund or stock. Tether shows facts only and recommends nothing, and blocks products whose names say they're leveraged or inverse. Amara approves each one; Tether places the order through Alpaca.
 9. **Amara can ask about the month** ("How much at the bookshop in October?", "How are Zoe's investments doing?"). A read-only assistant answers from PayPal's transaction list, Tether's receipts, Zoe's investments, what's inside her funds, and the news. News shows only here, only when Amara asks; never on Zoe's screens (decision 022). It cannot move money.
 
@@ -98,7 +98,7 @@ later says what happened ("Already approved", with a link to Zoe's investments).
 ```mermaid
 flowchart LR
   subgraph DEMO["In this demo (sandbox)"]
-    D1["Zoe's savings<br/>Tether ledger, money stays in Amara's PayPal"] -- "Amara approves" --> D2["Alpaca sandbox<br/>simulated deposit"]
+    D1["Zoe's savings<br/>Tether ledger: Amara's promise, no money held"] -- "Amara approves" --> D2["Alpaca sandbox<br/>simulated deposit"]
     D2 --> D3["Dollar-amount order<br/>in a stand-in account"]
   end
   subgraph PROD["In production"]
@@ -128,6 +128,19 @@ someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpa
 | **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls: market headlines, or only what's on Zoe's list and the companies inside her funds. Fund holdings 40 a family a day, headlines 20 a day and at most two per question. |
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
+
+## How Channel3 is used
+
+Channel3 is the shopping agent's only source of products, and the parent's signed rules decide what Channel3 may return (`src/adapters/channel3/client.ts`).
+
+| When | Channel3 call | What Tether does with it |
+|---|---|---|
+| Zoe asks for something | Product search, with `website_ids` set to the shops Amara allowed | The agent only ever sees Zoe's shops. Out-of-stock offers are dropped. |
+| Zoe pastes a product link | Lookup | Turns the link into a Channel3 product, then keeps it only if one of her shops sells it. |
+| Amara adds a shop | Website search | Finds the store, whose domain then becomes a search filter. |
+| Right before PayPal is charged | Product details (free) | Fetches every item's price at that shop again (`src/flows/purchase.ts`, `reprice`). Gone: refused. Price changed: the cart no longer matches its single-use permission slip, so nothing is charged. |
+
+Channel3's buy links are affiliate-tracked, and Tether never shows them to Zoe: every purchase has to pass the rules and be paid from Amara's PayPal.
 
 ## The AI: two agents, three checked calls
 
@@ -302,6 +315,7 @@ Built, reviewed task by task, and running in production: the rule engine and per
 | In this build | In production |
 |---|---|
 | Every purchase pays **one Tether sandbox business account**; the receipt records which shop it was for. A saved PayPal wallet can only be charged by the business that saved it (verified: `BILLING_AGREEMENT_NOT_FOUND`). | Tether pays shops as a PayPal platform partner, or through shops' own agent checkouts. |
+| Prices are the item price Channel3's search returns; shipping and tax aren't in the total yet, because Channel3 gives neither. | [Channel3 checkout](https://channel3.ai/docs/checkout) (announced, "coming soon" as of 8 Nov 2026) gives each store's real total and places the order at the store. The permission slip and the rules check stay the same; only where the money goes changes. |
 | Zoe's investments sit in an **ordinary Alpaca sandbox account**, labelled on screen as a stand-in. The sandbox refuses custodial accounts. One setting (`ALPACA_CUSTODIAL_ENABLED=true`) switches to the custodial request. | A custodial account Amara manages for Zoe. |
 | Savings release: Amara sends the money herself and taps "I've sent it". | Same. Tether never holds money. |
 | A demo clock moves time forward so a month fits in a video. | Real time. |
