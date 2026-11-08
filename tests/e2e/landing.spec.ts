@@ -64,3 +64,62 @@ test("landing: the problem in numbers, each with Tether's answer, and a link to 
   await expect(page.getByRole("link", { name: "Sources and sample sizes" }))
     .toHaveAttribute("href", "https://github.com/tmoody1973/tether/blob/main/docs/research/problem.md");
 });
+
+test("landing: the two animated stories show their payoff as the still under reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  // Client-only stages, loaded after hydration; under reduced motion each shows its poster and never plays.
+  const shop = page.locator("figure.l-story--shop");
+  await shop.scrollIntoViewIfNeeded();
+  await expect(shop).toHaveAttribute("aria-label", /Zoe is asking for \$25\.30 at Best Buy/);
+  await expect(shop.getByText("Approved and paid — $25.30 at Best Buy. The receipt is in the record.")).toBeVisible();
+  await expect(shop.getByText("Matches PayPal")).toBeVisible();
+  await expect(shop.getByText("Over-ear headphones · Amara approved this one")).toBeVisible(); // Zoe's week agrees with the payoff
+
+  const invest = page.locator("figure.l-story--invest");
+  await invest.scrollIntoViewIfNeeded();
+  await expect(invest).toHaveAttribute("aria-label", /Zoe proposes investing \$5\.00 in VTI/);
+  await expect(invest.getByText("0.0138 share")).toBeVisible();
+  await expect(invest.getByText("Bought.")).toBeVisible();
+  await expect(invest.getByText(/Too soon to tell: investments like this are for years, not days\./).first()).toBeVisible();
+});
+
+test("landing at 390 wide: both stories load their compact design, with no horizontal overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  for (const [kind, payoff] of [["shop", "Approved and paid — $25.30 at Best Buy. The receipt is in the record."], ["invest", "0.0138 share"]] as const) {
+    const figure = page.locator(`figure.l-story--${kind}`);
+    await figure.scrollIntoViewIfNeeded();
+    await expect(figure.locator('.ss-stage[data-layout="compact"]')).toBeVisible(); // loaded near the viewport, laid out for the phone
+    await expect(figure.getByText(payoff)).toBeInViewport();
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const offenders = await page.evaluate(() => {
+    const w = document.documentElement.clientWidth;
+    const cropped = (el: Element) => {
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (["hidden", "clip"].includes(getComputedStyle(p).overflowX)) return true;
+      }
+      return false;
+    };
+    return [...document.querySelectorAll(".l-story-wrap *")]
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.right > w + 1 || r.left < -1) && !cropped(el); })
+      .map((el) => `${el.tagName.toLowerCase()}.${el.className}`).slice(0, 5);
+  });
+  expect(offenders).toEqual([]);
+});
+
+test("landing: each story has a keyboard pause button outside the animation", async ({ page }) => {
+  await page.goto("/");
+  const pause = page.getByRole("button", { name: "Pause the shopping animation" });
+  await pause.scrollIntoViewIfNeeded();
+  await expect(page.locator("figure.l-story--shop .ss-stage")).toBeVisible();
+  await pause.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Play the shopping animation" })).toBeFocused();
+  await expect(page.locator("figure.l-story--shop .ss-stage")).toHaveAttribute("data-paused", "");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("figure.l-story--shop .ss-stage")).not.toHaveAttribute("data-paused", "");
+  await expect(page.getByRole("button", { name: "Pause the investing animation" })).toHaveCount(1);
+});

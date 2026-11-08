@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { ShopStoryFigure } from "./stories/Stories";
 
 const lane = (c: string) => ({ "--c": c }) as CSSProperties;
 
@@ -12,6 +13,8 @@ export function HowItWorks() {
           <h2 id="how-h">Four steps. The AI proposes; it never decides.</h2>
           <p className="l-rule">&ldquo;A model may add friction. Only code may remove it.&rdquo;</p>
         </div>
+
+        <ShopStoryFigure />
 
         <div className="l-lanes">
           <div className="l-lane-label l-lane--guard"><span className="l-dot" />Amara</div>

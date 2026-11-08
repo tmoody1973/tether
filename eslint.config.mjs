@@ -46,6 +46,9 @@ const eslintConfig = defineConfig([
     ".superpowers/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored, unmodified Stageshow kit (MIT): its frame-exact measuring reads refs during render and sets state in
+    // layout effects on purpose, which the React Compiler rules flag. Our code that uses it is linted as usual.
+    "src/ui/stageshow/kit/**",
   ]),
 ]);
 

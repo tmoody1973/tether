@@ -1,0 +1,374 @@
+/* Tether's two app looks inside a stage: Zoe's indigo scoreboard and Amara's
+   deep-teal document. Values from src/ui/tokens.css, teen.css and guardian.css,
+   restated here so the stage carries its own look. Scoped under .tt. */
+
+.tt {
+  --tt-ink: #14121F;
+  --tt-ink-2: #4B4A5A;
+  --tt-ink-3: #6E6C80;
+  --tt-line: #E6E4EF;
+  --tt-t-canvas: #F6F5FB;
+  --tt-t-accent: #5B4BFF;
+  --tt-t-accent-soft: #EEEBFF;
+  --tt-warn-soft: #FFF4E6;
+  --tt-warn-deep: #9A5B00;
+  --tt-g-canvas: #F4F5F7;
+  --tt-g-accent: #0B6B5B;
+  --tt-g-accent-soft: #E8F2EF;
+  --tt-g-accent-deep: #08483E;
+  --tt-g-line: #E3E6EA;
+  --tt-g-ink: #1A1D21;
+  --tt-shadow-rest: 0 1px 2px rgba(20, 18, 31, 0.05), 0 0 0 1px rgba(20, 18, 31, 0.045);
+  --tt-ui: cubic-bezier(0.3, 0.75, 0.1, 1);
+}
+
+.tt .ss-stage {
+  overflow: hidden;
+  font-family: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One shadow for both phones, the page's hero shadow */
+.tt .tt-phone {
+  position: absolute;
+  box-shadow: var(--ss-shadow-hero);
+}
+
+/* An app screen: fills the phone's content area under the status bar */
+.tt .tt-app {
+  position: absolute;
+  inset: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--tt-ink);
+}
+
+.tt .tt-app--teen { background: var(--tt-t-canvas); }
+.tt .tt-app--guard { background: var(--tt-g-canvas); color: var(--tt-g-ink); }
+
+.tt .tt-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 72px 20px 40px;
+}
+
+/* A page that swaps inside one app: the body crossfades with an 8px rise */
+.tt .tt-page {
+  position: absolute;
+  inset: 0;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s 160ms;
+  opacity: 0;
+  transform: translateY(8px);
+  visibility: hidden;
+}
+
+.tt .tt-page[data-on] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition: opacity 280ms ease 130ms, transform 280ms ease-out 130ms, visibility 0s;
+}
+
+/* ---------- Zoe ---------- */
+
+.tt .t-eyebrow { font-size: 12px; line-height: 1.3; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tt-ink-3); font-weight: 700; }
+.tt .t-small { font-size: 14px; line-height: 1.5; color: var(--tt-ink-2); }
+.tt .t-muted { font-size: 14px; line-height: 1.4; color: var(--tt-ink-3); }
+.tt .t-left { font-size: 16px; line-height: 1.4; color: var(--tt-ink-2); margin-top: 6px; }
+.tt .t-left b { color: var(--tt-ink); font-weight: 700; }
+.tt .money { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
+
+.tt .t-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 16px 17px;
+  box-shadow: var(--tt-shadow-rest);
+}
+
+.tt .t-card--quiet { background: #FAF9FE; box-shadow: none; border: 1px solid #EAE8F5; }
+.tt .t-form { display: flex; flex-direction: column; gap: 11px; }
+.tt .t-label { font-size: 14px; line-height: 1.3; font-weight: 650; color: var(--tt-ink-2); }
+
+/* The kit Field, in Tether's input */
+.tt .t-field .ss-field__box {
+  min-height: 48px;
+  border: 1.5px solid #DCDAE7;
+  border-radius: 13px;
+  padding: 0 14px;
+  background: #fff;
+  font-size: 16px;
+  color: var(--tt-ink);
+}
+
+.tt .t-field[data-focused] .ss-field__box,
+.tt .t-field .ss-field__box[data-focused] { border-color: var(--tt-t-accent); }
+
+/* The kit Button, in Tether's full-width buttons */
+.tt .t-btn.ss-button {
+  display: flex;
+  width: 100%;
+  height: 48px;
+  border-radius: 15px;
+  font-size: 16px;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.tt .t-btn--primary.ss-button { background: var(--tt-t-accent); color: #fff; box-shadow: none; }
+.tt .t-btn--primary.ss-button[data-pressed] { background: #4B3BF0; }
+.tt .t-btn--ghost.ss-button { background: #fff; color: var(--tt-ink); box-shadow: inset 0 0 0 1.5px #DCDAE7; }
+
+/* Result cards */
+.tt .t-results { display: flex; flex-direction: column; }
+.tt .t-results > .ss-collapse { margin-top: 12px; }
+.tt .t-results > .ss-collapse:first-child { margin-top: 0; }
+.tt .t-result { display: flex; flex-direction: column; gap: 11px; }
+.tt .t-result__top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.tt .t-result__title { font-weight: 650; font-size: 16px; line-height: 1.35; }
+.tt .t-result__price { font-size: 24px; line-height: 1.2; font-weight: 800; }
+.tt .t-result__shop { color: var(--tt-ink-3); font-size: 14px; line-height: 1.4; }
+.tt .t-result .ss-bar { align-self: center; }
+
+/* The engine's label: colour, icon and words, always all three */
+.tt .t-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  border-radius: 99px;
+  padding: 4px 10px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 650;
+}
+
+.tt .t-chip svg { width: 14px; height: 14px; flex: none; }
+.tt .t-chip--fits { background: #E7F7EF; color: #0B7A47; }
+.tt .t-chip--needs { background: var(--tt-warn-soft); color: #8A4E00; }
+.tt .t-chip--over { background: var(--tt-warn-soft); color: var(--tt-warn-deep); }
+
+.tt .t-flash {
+  background: var(--tt-t-accent-soft);
+  color: #241C7A;
+  border-radius: 15px;
+  padding: 13px 15px;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.tt .t-hint {
+  background: var(--tt-t-accent-soft);
+  border-radius: 15px;
+  padding: 13px 15px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #372C9E;
+}
+
+.tt .t-card__k { font-size: 12px; line-height: 1.3; font-weight: 650; color: var(--tt-ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.tt .t-big { font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 3px; }
+
+/* The refusal sheet: a bottom sheet over a scrim */
+.tt .t-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 18, 31, 0.42);
+  opacity: 0;
+  transition: opacity 360ms ease;
+}
+
+.tt .t-scrim[data-on] { opacity: 1; }
+
+.tt .t-sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 14px 22px 34px;
+  background: #fff;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -14px 34px rgba(20, 18, 31, 0.2);
+  transform: translateY(102%);
+  transition: transform 520ms var(--tt-ui);
+}
+
+.tt .t-sheet[data-on] { transform: none; }
+.tt .t-grabber { width: 38px; height: 4.5px; border-radius: 99px; background: #D8D6E3; margin: 0 auto; }
+.tt .t-h2 { font-size: 21px; line-height: 1.25; font-weight: 750; letter-spacing: -0.01em; }
+.tt .t-routes { display: grid; gap: 11px; }
+
+/* ---------- Amara ---------- */
+
+.tt .g-col { display: flex; flex-direction: column; gap: 14px; padding: 70px 20px 40px; font-size: 14px; }
+.tt .g-back { color: var(--tt-ink-3); font-weight: 600; font-size: 14px; line-height: 1.3; }
+.tt .g-eyebrow { font-size: 12px; line-height: 1.3; letter-spacing: 0.09em; text-transform: uppercase; color: var(--tt-ink-3); font-weight: 700; }
+.tt .g-title { font-size: 25px; line-height: 1.22; font-weight: 750; letter-spacing: -0.02em; margin-top: 4px; }
+.tt .g-card { background: #fff; border: 1px solid var(--tt-g-line); border-radius: 14px; padding: 16px 18px; }
+.tt .g-card--quiet { background: #FAFAFA; }
+.tt .g-card p { font-size: 15px; line-height: 1.5; color: var(--tt-ink-2); }
+.tt .g-card b { color: var(--tt-g-ink); }
+.tt .g-bar { height: 7px; border-radius: 99px; background: #E7EAEC; overflow: hidden; margin: 10px 0 5px; }
+.tt .g-bar > span { display: block; height: 100%; border-radius: 99px; background: var(--tt-g-accent); }
+.tt .g-barlabels { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; color: var(--tt-ink-3); }
+.tt .g-over { color: var(--tt-warn-deep); }
+.tt .g-note { font-size: 13px; line-height: 1.5; color: var(--tt-ink-3); margin-top: 6px; }
+.tt .g-decide { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.tt .g-btn.ss-button {
+  display: flex;
+  height: 46px;
+  border-radius: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  justify-content: center;
+  background: var(--tt-g-accent);
+  color: #fff;
+  box-shadow: none;
+}
+
+.tt .g-btn.ss-button[data-pressed] { background: #095A4C; }
+.tt .g-btn--ghost.ss-button { background: #fff; color: var(--tt-g-ink); box-shadow: inset 0 0 0 1.5px #CBD2D9; }
+
+.tt .g-flash {
+  background: var(--tt-g-accent-soft);
+  color: var(--tt-g-accent-deep);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.tt .g-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.tt .g-row__shop { font-weight: 700; font-size: 16px; line-height: 1.35; }
+.tt .g-row__amt { font-weight: 700; font-size: 16px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.tt .g-row__sub { font-size: 14px; line-height: 1.4; color: var(--tt-ink-3); margin-top: 2px; }
+
+/* Proof, one tap from any payment: a quiet box of definitions */
+.tt .g-proofbox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  background: #F8F9FA;
+  border: 1px solid var(--tt-g-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.tt .g-proofbox dt { font-size: 13px; line-height: 1.3; color: var(--tt-ink-3); }
+.tt .g-proofbox dd { margin: 2px 0 0; font-size: 14px; line-height: 1.4; color: var(--tt-g-ink); }
+.tt .g-proofbox code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.tt .g-ok { display: inline-flex; align-items: center; gap: 6px; color: #067647; font-weight: 650; }
+.tt .g-ok svg { width: 14px; height: 14px; flex: none; }
+
+/* The lock screen: the app icon in the notification */
+.tt .tt-appicon { display: block; width: 100%; height: 100%; border-radius: 8px; }
+
+/* ---------- the scene ---------- */
+
+/* Compact pans one phone to the next; wide never moves it */
+.tt .tt-track {
+  position: absolute;
+  inset: 0;
+  transition: transform 760ms cubic-bezier(0.45, 0, 0.1, 1);
+  will-change: transform;
+}
+
+/* The push arrives whole from just above, as iOS drops it into the stack */
+.tt .tt-note {
+  opacity: 0;
+  transform: translateY(-14px) scale(0.96);
+  transition: opacity 240ms ease, transform 420ms var(--tt-ui);
+}
+
+.tt .tt-note[data-on] {
+  opacity: 1;
+  transform: none;
+  transition: opacity 320ms ease, transform 560ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* The app layer: under the status bar and island, hidden until the launch.
+   Leaving, it fades as the phone locks */
+.tt .tt-launch {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 240ms ease, visibility 0s 240ms;
+}
+
+.tt .tt-launch[data-on] {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0s, visibility 0s;
+}
+
+.tt .tt-expand { --ss-expand-bg: var(--tt-g-canvas); }
+
+/* Zoe's week page */
+.tt .t-hero { font-size: 60px; line-height: 1; font-weight: 800; letter-spacing: -0.035em; margin-top: 6px; }
+.tt .t-hero-sub { font-size: 16px; line-height: 1.4; color: var(--tt-ink-2); font-weight: 500; margin-top: 4px; }
+.tt .t-bar { height: 11px; border-radius: 99px; background: #E9E7F2; overflow: hidden; margin: 2px 0 7px; }
+.tt .t-bar > span { display: block; height: 100%; border-radius: 99px; background: var(--tt-t-accent); }
+.tt .t-barlabels { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; color: var(--tt-ink-3); font-weight: 600; }
+.tt .t-card--tight { padding: 4px 15px; }
+.tt .t-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--tt-line); font-size: 15px; line-height: 1.4; }
+.tt .t-row:last-child { border-bottom: none; }
+.tt .t-row__who { display: flex; flex-direction: column; font-weight: 600; }
+.tt .t-row__who small { font-weight: 400; color: var(--tt-ink-3); font-size: 13px; line-height: 1.4; margin-top: 2px; }
+.tt .t-row__amt { font-weight: 700; color: var(--tt-ink-2); }
+
+/* Content scrolling under the status bar fades out before the island */
+.tt .tt-statusbg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 64px;
+  background: linear-gradient(var(--tt-t-canvas) 78%, rgba(246, 245, 251, 0));
+  pointer-events: none;
+}
+
+/* Landed surfaces keep their layer, so text never hops as a transform ends */
+.tt .tt-page, .tt .t-sheet, .tt .tt-note { will-change: transform, opacity; }
+.tt .t-pill { display: inline-flex; align-self: flex-start; align-items: center; background: var(--tt-t-accent-soft); color: #3A2FCB; padding: 7px 12px; border-radius: 99px; font-size: 13px; line-height: 1.3; font-weight: 700; }
+
+.tt p, .tt dl, .tt dd { margin: 0; }
+.tt .g-seam { font-size: 13px; line-height: 1.5; color: var(--tt-ink-3); text-align: center; }
+
+/* Compact draws the phone at 0.76: its smallest labels step up to stay over 10px */
+.tt .ss-stage[data-layout='compact'] :is(.t-eyebrow, .g-eyebrow, .t-card__k, .t-chip, .t-barlabels, .t-pill, .g-barlabels, .g-note, .g-seam, .g-proofbox dt, .t-row__who small) { font-size: 13.5px; }
+
+/* Compact: the phone fills the column, so a wide hero shadow would be clipped
+   at the stage's sides into a faint box; it takes the tight ground shadow */
+.tt .ss-stage[data-layout='compact'] .tt-phone { box-shadow: var(--ss-shadow-ground); }
+
+/* A record list's filler rows: one card, rows divided by hairlines */
+.tt .g-rows { display: flex; flex-direction: column; padding-block: 4px; }
+.tt .g-rowitem { display: grid; gap: 9px; padding: 12px 0; border-bottom: 1px solid var(--tt-g-line); }
+.tt .g-rowitem:last-child { border-bottom: none; }
+
+/* A flicked page is thrown on: UIKit's deceleration, as a swipe in motion.md */
+.tt .tt-col { transition: transform 700ms cubic-bezier(0.25, 1, 0.5, 1); }
+
+/* The payoff leads: Amara's phone steps forward, Zoe's screen quiets under a veil of its own canvas. Depth by
+   position, shadow and contrast; the app's own type is untouched */
+.tt .tt-phone { transition: transform 700ms cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 700ms ease; }
+.tt .ss-stage[data-layout='wide'] .tt-phone[data-front] { transform: translateY(-10px); box-shadow: 0 2px 6px rgba(20, 18, 31, 0.08), 0 30px 70px -18px rgba(20, 18, 31, 0.38); }
+.tt .ss-stage[data-layout='wide'] .tt-phone[data-back] { box-shadow: var(--ss-shadow-window); }
+.tt .tt-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(246, 245, 251, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+.tt .tt-veil[data-on] { opacity: 1; }

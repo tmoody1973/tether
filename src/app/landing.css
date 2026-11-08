@@ -374,3 +374,38 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
   .l-tether path { animation: none; }
   .l-btn, .l-btn:hover { transition: none; transform: none; }
 }
+
+/* ---------- animated stories (src/app/landing/stories) ---------- */
+/* Each stage scales itself to its column and never past 1:1 (stage.tsx caps the scale at 1). Until it loads, this
+   box holds the same height: shopping is 1000×680, or 358×640 in a column under 720px; investing is 880×660, or
+   358×640 under 620px. 640/358 = 178.771cqw. */
+.l-story-wrap { display: flex; flex-direction: column; container-type: inline-size; }
+.l-story-wrap--shop { margin-bottom: 44px; border-bottom: 1px solid var(--l-line); } /* the crop sits on a shelf, not in mid-air */
+.l-story { margin: 0; container-type: inline-size; }
+.l-story .ss-fit { margin-inline: auto; } /* the kit centers a stage stopped at its design size; the global reset had zeroed it */
+.l-story--shop .l-story__space { height: min(680px, 68cqw); }
+.l-story--invest .l-story__space { height: min(660px, 75cqw); }
+@container (max-width: 719px) { .l-story--shop .l-story__space { height: min(640px, 178.771cqw); } }
+@container (max-width: 619px) { .l-story--invest .l-story__space { height: min(640px, 178.771cqw); } }
+
+/* Pause/play (WCAG 2.2.2): small and quiet, right-aligned just above the stage, outside the role=img figure */
+.l-story__pause {
+  align-self: flex-end; margin-bottom: 8px; width: 32px; height: 32px; display: grid; place-items: center; flex: none;
+  padding: 0; border: 1px solid var(--l-line); border-radius: 50%; background: rgba(255, 255, 255, .86); color: var(--l-ink-3);
+  cursor: pointer; transition: color .2s, border-color .2s, background-color .2s;
+}
+.l-story__pause:hover { color: var(--l-ink); border-color: #C9D3DD; background: #fff; }
+.l-page .l-story__pause:focus-visible { border-radius: 50%; }
+/* Over the stage's own right edge: the stage is centered and never wider than its design (1000/880, 358 compact) */
+.l-story-wrap--shop .l-story__pause { margin-right: max(0px, (100cqw - 1000px) / 2); }
+.l-story-wrap--invest .l-story__pause { margin-right: max(0px, (100cqw - 880px) / 2); }
+@container (max-width: 719px) { .l-story-wrap--shop .l-story__pause { margin-right: max(0px, (100cqw - 358px) / 2); } }
+@container (max-width: 619px) { .l-story-wrap--invest .l-story__pause { margin-right: max(0px, (100cqw - 358px) / 2); } }
+@media (prefers-reduced-motion: reduce) { .l-story__pause { display: none; } } /* the still poster has nothing to pause */
+
+/* The investing feature: copy on top, the story across the band, bleeding off its foot */
+.l-feat--wide .l-feat__in, .l-feat--teen.l-feat--wide .l-feat__in { grid-template-columns: minmax(0, 1fr); gap: clamp(24px, 4vw, 40px); }
+.l-feat--wide .l-feat__text { padding-bottom: 0; max-width: 640px; }
+.l-feat--teen.l-feat--wide .l-frames { order: 0; }
+.l-feat--wide .l-frames { display: block; align-self: stretch; margin: 0; }
+@media (max-width: 560px) { .l-feat--wide .l-frames { margin-inline: -22px; } }
