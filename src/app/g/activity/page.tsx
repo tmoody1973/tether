@@ -64,9 +64,7 @@ async function Activity({ searchParams }: { searchParams: Promise<Record<string,
 
       <div className="g-two">
         <div className="g-stack">
-          <Suspense fallback={<Purchases r={r} thisMonth={thisMonth} rec="checking" />}>
-            <CheckedPurchases r={r} thisMonth={thisMonth} familyId={familyId} />
-          </Suspense>
+          <Purchases r={r} thisMonth={thisMonth} rec={checkMonth(familyId, r.month)} />
           <RulesHistory grants={r.grants} />
           <Seam kinds={["sandbox"]} />
         </div>
@@ -84,24 +82,25 @@ async function Activity({ searchParams }: { searchParams: Promise<Record<string,
   );
 }
 
-async function CheckedPurchases({ r, thisMonth, familyId }: { r: RecordView; thisMonth: string; familyId: string }) {
-  let rec: Reconciliation | "down";
-  try {
-    rec = await reconcileMonth({ db: await getDb(), paypal: paypalFromEnv() }, familyId, r.month);
-  } catch (err) {
+type Check = Promise<Reconciliation | "down">;
+
+/** The month's PayPal check, started once and shared: every part of the page that needs it waits on the same promise. */
+function checkMonth(familyId: string, month: string): Check {
+  return (async () => reconcileMonth({ db: await getDb(), paypal: paypalFromEnv() }, familyId, month))().catch((err: unknown) => {
     console.error("reconcile: PayPal check failed", err instanceof Error ? err.message : err);
-    rec = "down";
-  }
-  return <Purchases r={r} thisMonth={thisMonth} rec={rec} />;
+    return "down" as const;
+  });
 }
 
-function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; rec: Reconciliation | "checking" | "down" }) {
+/**
+ * The month's payments, drawn once. Only what depends on PayPal's answer (each Proof's "Checked against PayPal" line,
+ * and the flags under the list) waits for the check, in its own small Suspense, so a Proof she opened while PayPal was
+ * being checked stays open when the answer arrives (the whole list used to be redrawn, closing it).
+ */
+function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; rec: Check }) {
   const prev = shiftMonth(r.month, -1), next = shiftMonth(r.month, 1);
   const { shown, hidden } = shownReceipts(r.receipts);
   const total = shown.reduce((s, p) => s + p.amountCents, 0);
-  const orphans = typeof rec === "object" ? rec.flags.filter((f) => f.kind === "paypal_only") : [];
-  const setAside = new Set(r.receipts.filter((x) => x.setAside).map((x) => x.captureId));
-  const hiddenLine = hiddenNote(hidden, typeof rec === "object" ? rec.flags.filter((f) => setAside.has(f.captureId)).length : 0);
   return (
     <section className="g-card" aria-labelledby="pay-h">
       <div className="g-section__head g-section__head--label">
@@ -132,6 +131,24 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
           {shown.slice().reverse().map((p) => <PaymentRow key={p.captureId} p={p} proof={<Proof p={p} rec={rec} teen={r.home.teenName} />} />)}
         </ul>
       )}
+      <Suspense fallback={hidden > 0 ? <p className="g-note" style={{ marginTop: 8 }}>{hiddenNote(hidden, 0)}</p> : null}>
+        <Flags r={r} rec={rec} hidden={hidden} />
+      </Suspense>
+      <p className="g-note" style={{ marginTop: 8 }}>
+        Each payment keeps its PayPal ID, the single-use permission slip, and the rules version that allowed it. Open &ldquo;Proof&rdquo; on any row.
+      </p>
+    </section>
+  );
+}
+
+/** What PayPal's answer adds under the list: charges with no receipt, and how many set-aside rows it flagged. */
+async function Flags({ r, rec, hidden }: { r: RecordView; rec: Check; hidden: number }) {
+  const checked = await rec;
+  const orphans = typeof checked === "object" ? checked.flags.filter((f) => f.kind === "paypal_only") : [];
+  const setAside = new Set(r.receipts.filter((x) => x.setAside).map((x) => x.captureId));
+  const hiddenLine = hiddenNote(hidden, typeof checked === "object" ? checked.flags.filter((f) => setAside.has(f.captureId)).length : 0);
+  return (
+    <>
       {orphans.length > 0 && (
         <ul className="g-flags" style={{ marginTop: 10 }} aria-label="PayPal charges Tether has no receipt for">
           {orphans.map((f) => (
@@ -146,16 +163,18 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
         <p className="g-note" style={{ marginTop: 6 }}>A payment above that is still settling can show here too, until its receipt arrives.</p>
       )}
       {hiddenLine && <p className="g-note" style={{ marginTop: 8 }}>{hiddenLine}</p>}
-      <p className="g-note" style={{ marginTop: 8 }}>
-        Each payment keeps its PayPal ID, the single-use permission slip, and the rules version that allowed it. Open &ldquo;Proof&rdquo; on any row.
-      </p>
-    </section>
+    </>
   );
 }
 
+/** One Proof's "Checked against PayPal" answer: the only part of a Proof that waits for PayPal. */
+async function CheckLine({ captureId, rec, teen }: { captureId: string; rec: Check; teen: string }) {
+  const check = checkWords(await rec, captureId, undefined, teen);
+  return <span className={check.ok ? "g-ok" : check.waiting ? "g-muted" : "g-warntext"}>{check.text}</span>;
+}
+
 /** The evidence packet behind one payment, folded under its row. No secrets. */
-function Proof({ p, rec, teen }: { p: RecordReceipt; rec: Reconciliation | "checking" | "down"; teen: string }) {
-  const check = checkWords(rec, p.captureId, undefined, teen);
+function Proof({ p, rec, teen }: { p: RecordReceipt; rec: Check; teen: string }) {
   return (
     <details className="g-proof">
       <summary>Proof<span className="g-sr"> for {formatCents(p.amountCents)} at {p.shop}, {formatDay(p.at)}</span></summary>
@@ -169,7 +188,12 @@ function Proof({ p, rec, teen }: { p: RecordReceipt; rec: Reconciliation | "chec
           Issued {formatWhen(p.slip.issuedAt)}, valid until {formatWhen(p.slip.expiresAt)}.<br />
           Cart fingerprint: <code>{p.slip.cartHash}</code>
         </dd>
-        <dt>Checked against PayPal</dt><dd className={check.ok ? "g-ok" : check.waiting ? "g-muted" : "g-warntext"}>{check.text}</dd>
+        <dt>Checked against PayPal</dt>
+        <dd>
+          <Suspense fallback={<span className="g-muted">{checkWords("checking", p.captureId).text}</span>}>
+            <CheckLine captureId={p.captureId} rec={rec} teen={teen} />
+          </Suspense>
+        </dd>
         <dd className="g-proofbox__wide"><div className="g-clause"><span className="g-clause__lbl">Rules v{p.ruleVersion}, as signed</span>{p.slip.clause}</div></dd>
       </dl>
     </details>

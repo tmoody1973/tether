@@ -153,7 +153,11 @@ createServer((req, res) => {
       }
       return send(201, orders.get(key));
     }
-    if (req.method === "GET" && path === "/v1/reporting/transactions") return send(200, { transaction_details: search, total_pages: 1 });
+    // Like the real Transaction Search, it takes a moment: Activity's Proof must not close when the answer lands.
+    if (req.method === "GET" && path === "/v1/reporting/transactions") {
+      setTimeout(() => send(200, { transaction_details: search, total_pages: 1 }), 2_500);
+      return;
+    }
     // The saved wallet is a placeholder PayPal has never seen: removal is refused, so the page must say so honestly.
     if (req.method === "DELETE" && path.startsWith("/v3/vault/payment-tokens/")) return send(404, { name: "RESOURCE_NOT_FOUND", message: "not found" });
     // Decision 031: 90-day price statistics; "low" at the sku's own price.
