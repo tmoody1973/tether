@@ -5,6 +5,9 @@
 export const SANDBOX_LOGIN = {
   email: "sb-yeg6453771544@personal.example.com",
   password: "s-i@.4BO",
-  /** The account's PayPal payer id (sandbox dashboard). Empty until Tarik adds it; an empty value never matches. */
-  payerId: "",
+  /**
+   * The account's PayPal payer id: PayPal's permanent id for it, so the shared login is still recognised if someone
+   * changes its email. Read 8 Nov 2026 from the families this account started (Tarik approved the read).
+   */
+  payerId: "UCGBS6LD437PL",
 } as const;

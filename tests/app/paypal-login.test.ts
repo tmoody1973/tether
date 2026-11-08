@@ -189,6 +189,9 @@ describe("H1: the published shared sandbox login works per browser", () => {
     expect(await isSharedLogin(testDb, { sub: "S-r2", email: "parent@example.com", payerId: "REALPAYER" }, unset)).toBe(false);
     expect(await isSharedLogin(testDb, { sub: "S-r2", email: "parent@example.com", payerId: "" }, unset)).toBe(false);
     expect(SANDBOX_LOGIN).toHaveProperty("payerId");
+    // The published account's real payer id is filled in: an email change can't make it look like an ordinary parent.
+    expect(SANDBOX_LOGIN.payerId).toMatch(/^[A-Z0-9]{13}$/);
+    expect(await isSharedLogin(testDb, { sub: "S-r3", email: "changed@example.com", payerId: SANDBOX_LOGIN.payerId })).toBe(true);
   });
 
   it("R1 keeps the fallback: an email that no longer matches, but this PayPal id already has a family stored with the shared email", async () => {
