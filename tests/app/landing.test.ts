@@ -54,7 +54,7 @@ describe("landing page", () => {
   });
 
   it("carries the share title and a 1200×630 image", () => {
-    expect(metadata.title).toBe("Tether — a parent signs the rules. An AI agent proposes. Code decides. PayPal pays.");
+    expect(metadata.title).toBe("Tether — Let your teen shop. Keep the boundaries you agreed on.");
     expect(metadata.openGraph?.images).toEqual([expect.objectContaining({ url: "/og-landing.png", width: 1200, height: 630 })]);
   });
 });
