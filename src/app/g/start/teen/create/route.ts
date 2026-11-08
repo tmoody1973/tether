@@ -6,7 +6,7 @@ import {
 import { safeErrorText } from "@/adapters/paypal/http";
 import { getDb } from "@/db/client";
 import type { Family } from "@/db/repo";
-import { consumeStartNonce, parseTeensForm, startFamilies, startProblem } from "@/flows/start";
+import { consumeStartNonce, isSharedLogin, parseTeensForm, startFamilies, startProblem } from "@/flows/start";
 import { goTo, retireQuietly, sameOrigin, signIn } from "../../../login/login";
 
 // "Create our family": needs the starting cookie from Log in with PayPal; every field is checked again here. One form
@@ -19,13 +19,16 @@ export async function POST(req: Request): Promise<Response> {
   const form = await req.formData().catch(() => null);
   const parsed = form ? parseTeensForm(form) : { ok: false as const, error: "name" as const };
   if (!parsed.ok) return goTo(req, `/g/start/teen?e=${parsed.error}`);
-  // One per browser per hour, except "Add another teen" (decision 028): a parent adding two teens back to back is the
-  // point. The site-wide daily cap in startFamilies still applies to every family.
-  if (!ticket.add && openStarted(readCookie(req, STARTED_COOKIE), now)) return goTo(req, "/g/start/teen?e=browser");
 
   let made: Family[] | null;
   try {
     const db = await getDb();
+    // One per browser per hour, except "Add another teen" from an ordinary PayPal (decision 028): a parent adding a teen
+    // straight after starting is the point, and that account has its own 5-a-day cap. The published shared login has no
+    // per-account cap (judges share one PayPal id), so it keeps the hourly limit even when adding: one browser can't
+    // use up the site's day (re-review LOW-3). The site-wide daily cap in startFamilies applies to every family.
+    const hourly = !ticket.add || (await isSharedLogin(db, ticket.who));
+    if (hourly && openStarted(readCookie(req, STARTED_COOKIE), now)) return goTo(req, "/g/start/teen?e=browser");
     const problem = await startProblem(db, ticket.who, parsed.teens, openBrowserFamilies(readCookie(req, BROWSER_FAMILY_COOKIE), now));
     if (problem) return goTo(req, `/g/start/teen?e=${problem}`); // before the ticket is spent: she can fix it and resend
     // M1: this starting cookie is used once, whoever presents it and however often: one batch of families at most.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useFamilyId } from "@/ui/FamilyField";
 import type { AnswerCard } from "@/ai/answerCards";
 import { AnswerCards } from "./AnswerCards";
 
@@ -19,6 +20,7 @@ export function AskBox() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [cards, setCards] = useState<AnswerCard[]>([]);
   const [pending, setPending] = useState(false);
+  const familyId = useFamilyId(); // the teen this page was drawn for: the server refuses a question for another
 
   async function ask(q: string) {
     const text = q.trim();
@@ -29,10 +31,10 @@ export function AskBox() {
     setCards([]);
     try {
       const res = await fetch("/api/g/ask", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: text }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: text, familyId }),
       });
       const body = (await res.json().catch(() => null)) as { answer?: unknown; cards?: unknown } | null;
-      const ok = res.ok && typeof body?.answer === "string";
+      const ok = (res.ok || res.status === 409) && typeof body?.answer === "string"; // 409: switched teens, said plainly
       setAnswer(ok ? (body.answer as string) : CANT_SEE_NOW);
       setCards(ok && Array.isArray(body.cards) ? (body.cards as AnswerCard[]) : []); // AnswerCards ignores unknown kinds
     } catch {

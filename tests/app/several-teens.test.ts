@@ -104,6 +104,17 @@ describe("Add another teen: the intent rides inside the sealed login state", () 
     expect(openBrowserFamilies(valueOf(made, BROWSER_FAMILY_COOKIE), new Date())).toEqual([zoe.id, kofi]);
   });
 
+  it("re-review LOW-3: on the shared login, adding a teen keeps the hourly per-browser limit (no per-account cap there)", async () => {
+    const judge = { sub: "S-add-shared-hour", email: SANDBOX_LOGIN.email };
+    const blocked = await createPost(sealStart(judge, new Date(), undefined, true), { [STARTED_COOKIE]: sealStarted(new Date()) });
+    expect(where(blocked)).toBe("/g/start/teen?e=browser");
+    expect(signedInTo(blocked)).toBeNull();
+    // An ordinary PayPal adding a teen within the hour goes through (it has its own 5-a-day cap).
+    const parent = { sub: "S-add-ordinary-hour", email: "hour@example.com" };
+    const made = await createPost(sealStart(parent, new Date(), undefined, true), { [STARTED_COOKIE]: sealStarted(new Date()) });
+    expect(where(made)).toBe("/g?started=added");
+  });
+
   it("without the add intent, the hourly per-browser limit still holds", async () => {
     who = { sub: "S-add-2", email: "amara2@example.com" };
     const res = await roundTrip();

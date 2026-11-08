@@ -401,13 +401,13 @@ describe("POST /api/g/ask", () => {
     const model = scripted([{ calls: [{ name: "tether_record", input: { month: "2026-10" } }] }, { text: "Total $20.50." }]);
     routeModel = model;
     await setNow(db, famA, new Date("2026-12-20T12:00:00Z")); // the family's demo clock, not real time
-    const res = await post({ question: "October?" }, signGuardianCookie(famA, new Date()));
+    const res = await post({ question: "October?", familyId: famA }, signGuardianCookie(famA, new Date())); // the page names its teen (028)
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ answer: "Total $20.50.", toolsUsed: ["tether_record"], cards: [BOOKSHOP_CARD] });
     expect(routeModelIds.at(-1)).toBe("claude-sonnet-5-5"); // the month assistant runs on Sonnet (Tarik's call); Haiku stays elsewhere
     expect(JSON.stringify(model.doGenerateCalls[0].prompt)).toContain("2026-12-20");
     routeModel = new MockLanguageModelV4({ doGenerate: async () => { throw new Error("upstream down"); } });
-    const bad = await post({ question: "x" }, signGuardianCookie(famA, new Date()));
+    const bad = await post({ question: "x", familyId: famA }, signGuardianCookie(famA, new Date()));
     expect(bad.status).toBe(502);
     expect(await bad.json()).toEqual({ answer: "I can't see that right now." });
   });

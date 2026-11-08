@@ -20,6 +20,9 @@ import { clockFor } from "@/clock/clock";
 import { signGrant } from "@/flows/grant";
 import { revokeAction, setLevelAction, signGrantAction } from "@/app/g/actions";
 import { linkSentAction } from "@/app/g/send-link/actions";
+import { POST as ask, STALE_ASK } from "@/app/api/g/ask/route";
+import { GUARDIAN_COOKIE, signGuardianCookie } from "@/auth/guardian";
+import * as t from "@/db/schema";
 
 process.env.TETHER_SIGNING_KEY = "test-key";
 let liam: repo.Family, maya: repo.Family;
@@ -63,5 +66,27 @@ describe("a form left open on another teen changes nothing", () => {
     await expect(revokeAction(form({ familyId: maya.id }))).rejects.toThrow("REDIRECT /g/rules?stopped=wallet-removed");
     expect((await repo.getLatestGrant(testDb, maya.id))?.status).toBe("revoked");
     expect(paypalDeletes).toEqual(["PT-MAYA"]);
+  });
+});
+
+describe("the month assistant, asked from a page drawn for another teen", () => {
+  const askAs = (session: string, body: Record<string, unknown>) => ask(new Request("http://localhost/api/g/ask", {
+    method: "POST", body: JSON.stringify(body),
+    headers: { "content-type": "application/json", cookie: `${GUARDIAN_COOKIE}=${encodeURIComponent(signGuardianCookie(session, new Date()))}` },
+  }));
+  const asked = async () => (await testDb.select().from(t.usage)).filter((r) => r.kind === "month_ask").reduce((n, r) => n + r.count, 0);
+
+  it("asks nothing: a plain answer, no model call, no quota", async () => {
+    delete process.env.ANTHROPIC_API_KEY; // were the check missing, this would reach the model set-up and fail as a 502
+    for (const body of [{ question: "what did Liam buy?", familyId: liam.id }, { question: "what did Liam buy?" }]) {
+      const res = await askAs(maya.id, body);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ answer: STALE_ASK });
+    }
+    expect(STALE_ASK).toBe("You switched teens in another tab; nothing was asked.");
+    expect(await asked()).toBe(0);
+    // Asked from Maya's own page, it goes on (here, to the missing key: a 502, still nothing charged).
+    expect((await askAs(maya.id, { question: "what did Maya buy?", familyId: maya.id })).status).toBe(502);
+    expect(await asked()).toBe(0);
   });
 });
