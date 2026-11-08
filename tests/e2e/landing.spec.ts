@@ -74,7 +74,7 @@ test("landing: the two animated stories show their payoff as the still under red
   await expect(shop).toHaveAttribute("aria-label", /Zoe is asking for \$25\.30 at Best Buy/);
   await expect(shop.getByText("Approved and paid — $25.30 at Best Buy. The receipt is in the record.")).toBeVisible();
   await expect(shop.getByText("Matches PayPal")).toBeVisible();
-  await expect(shop.getByText("Sent. Amara will see it, with what you have left this week.")).toBeVisible();
+  await expect(shop.getByText("Over-ear headphones · Amara approved this one")).toBeVisible(); // Zoe's week agrees with the payoff
 
   const invest = page.locator("figure.l-story--invest");
   await invest.scrollIntoViewIfNeeded();
