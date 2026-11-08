@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkWords, hiddenNote, itemsLine, monthEnd, needsBadge, shownReceipts, weekEnd } from "@/ui/activityWords";
+import { checkWords, hiddenNote, itemsLine, lagWords, monthEnd, needsBadge, shownReceipts, weekEnd } from "@/ui/activityWords";
 import { reviewMonth, type WeekRecord } from "@/engine/ladder";
 
 const kept = (k: string): WeekRecord => ({ weekKey: k, allowanceCents: 2000, spentCents: 1000, commitmentCents: 200 });
@@ -7,7 +7,7 @@ const kept = (k: string): WeekRecord => ({ weekKey: k, allowanceCents: 2000, spe
 describe("activity words (Amara's Activity page)", () => {
   it("says what PayPal's own list shows for one payment, in plain words", () => {
     const rec = { receiptsChecked: 3, flags: [
-      { kind: "unconfirmed" as const, captureId: "B", amountCents: 100, shop: "Target" },
+      { kind: "unconfirmed" as const, captureId: "B", amountCents: 100, shop: "Target", paidAt: new Date("2026-11-08T12:45:00Z") },
       { kind: "refunded" as const, captureId: "C", amountCents: 100, shop: "Target" },
     ] };
     expect(checkWords(rec, "A")).toEqual({ text: "Matches PayPal", ok: true });
@@ -15,6 +15,26 @@ describe("activity words (Amara's Activity page)", () => {
     expect(checkWords(rec, "C")).toEqual({ text: "Refunded in PayPal", ok: false });
     expect(checkWords("checking", "A")).toEqual({ text: "Checking with PayPal…", ok: false });
     expect(checkWords("down", "A")).toEqual({ text: "Couldn't reach PayPal to check. Try again later.", ok: false });
+  });
+
+  it("when PayPal says how far its list has caught up: waiting reads quiet, a real gap stays amber", () => {
+    const flags = [{ kind: "unconfirmed" as const, captureId: "B", amountCents: 1799, shop: "Best Buy", paidAt: new Date("2026-11-08T12:45:00Z") }];
+    const now = new Date("2026-11-08T12:57:00Z");
+    // the 8 Nov case: PayPal's list ran to 10:59:59, the payment was 12:45 → just not there yet
+    expect(checkWords({ receiptsChecked: 1, flags, refreshedThrough: new Date("2026-11-08T10:59:59Z") }, "B", now)).toEqual({
+      text: "Paid. PayPal's list is about 2 hours behind and hasn't reached this payment yet. It will show here once PayPal catches up.",
+      ok: false, waiting: true,
+    });
+    // PayPal's list already covers 12:45 and still doesn't have it → a real question
+    expect(checkWords({ receiptsChecked: 1, flags, refreshedThrough: new Date("2026-11-08T12:50:00Z") }, "B", now)).toEqual({
+      text: "Not confirmed by PayPal: its list covers the time of this payment but doesn't show it.", ok: false,
+    });
+  });
+
+  it("puts PayPal's lag in rounded words", () => {
+    expect(lagWords(10 * 60_000)).toBe("under an hour");
+    expect(lagWords(75 * 60_000)).toBe("about 1 hour");
+    expect(lagWords(118 * 60_000)).toBe("about 2 hours");
   });
 
   it("hides rows a demo reset set aside, and counts them for one muted line", () => {
