@@ -8,10 +8,7 @@ import { ledgerView } from "@/ledger/ledger";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, type Proposed } from "@/flows/teen";
 import { ApprovalError } from "@/flows/approvals";
-import { cardOutcome, cardSetsBack, pausedWords, type CardKind } from "@/ui/teenWords";
-import { cachedGoalPriceCents } from "@/flows/goalPrice";
-import * as t from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { cardOutcome, pausedWords, setsBack, type CardKind } from "@/ui/teenWords";
 import { agentModel, teenDeps } from "../teenDeps";
 
 export interface ShopCard {
@@ -76,10 +73,9 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
       const found = await deps.channel3.search(query, shops.domains, 6);
       items = found.flatMap((p) => { const cart = cartFor(p, shops.merchantIdByDomain, costs); return cart ? [{ cart }] : []; });
     }
-    const [goal] = await db.select({ productId: t.goals.channel3ProductId }).from(t.goals).where(eq(t.goals.familyId, fam.id));
-    const todayGoal = cachedGoalPriceCents(goal?.productId ?? null, shops.domains);
     const cards = (await proposeCarts(deps, fam.id, items)).map((p) => {
-      const back = cardSetsBack(week.goal, todayGoal, week.savingsCents, p.priceCents, week.commitmentCents);
+      // Decision 031: before buying, from the card's full cost, by the Goals screen's own count.
+      const back = setsBack(week.goal, week.goalTodayCents, week.savingsCents, p.priceCents, week.promiseCents);
       return { ...toCard(p, fam.guardianName), ...(back ? { setsBack: back } : {}) };
     });
     return cards.length ? { cards } : { cards, note: "Nothing from your shops matched that. Try saying it another way." };

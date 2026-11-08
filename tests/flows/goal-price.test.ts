@@ -9,7 +9,7 @@ import { createChannel3, type Channel3Like } from "@/adapters/channel3/client";
 import { signGrant, revoke } from "@/flows/grant";
 import { cachedGoalPriceCents, clearGoalPriceCache, goalPrice } from "@/flows/goalPrice";
 import { setGoal, teenGoals } from "@/flows/teenGoals";
-import { PRICE_CHECK_FAILED, cardSetsBack, goalPriceLine, priceStatusLine } from "@/ui/teenWords";
+import { PRICE_CHECK_FAILED, goalPriceLine, priceStatusLine, setsBack, weeksToGoal } from "@/ui/teenWords";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -49,13 +49,17 @@ describe("goal price words (031)", () => {
     for (const line of [goalPriceLine({ ...base, todayCents: 14999, pickedCents: 16999 }), priceStatusLine("low")]) expect(line).not.toMatch(/buy now|wait|should/i);
   });
 
-  it("the card's sets-back line: from the full cost; nothing without a goal or once it's met", () => {
-    const goal = { title: "Headphones", targetCents: 16999 };
-    expect(cardSetsBack(goal, null, 3400, 2002, 1000)).toBe("This sets Headphones back 3 weeks.");
-    expect(cardSetsBack(goal, 14999, 3400, 900, 1000)).toBe("This sets Headphones back 1 week.");
-    expect(cardSetsBack(null, null, 0, 900, 1000)).toBeNull();
-    expect(cardSetsBack(goal, 3000, 3400, 900, 1000)).toBeNull(); // today's price already saved for
-    expect(cardSetsBack(goal, null, 3400, 900, 0)).toBeNull(); // no weekly promise to count with
+  it("the sets-back line moves exactly as the Goals number would: the reviewer's 4-vs-3 case is 3 (review LOW 3)", () => {
+    const goal = { title: "Space headphones", targetCents: 14850 };
+    // $114.50 short at $2 a week: Goals says ceil(57.25) = 58. A $6.50 total makes it ceil(60.5) = 61: 3 weeks, not ceil(650/200) = 4.
+    expect(weeksToGoal(14850, 3400, 200)).toBe(58);
+    expect(weeksToGoal(14850, 3400 - 650, 200)).toBe(61);
+    expect(setsBack(goal, null, 3400, 650, 200)).toBe("This sets Space headphones back 3 weeks.");
+    // Today's goal price and her promise from now on, as the Goals screen uses them.
+    expect(setsBack(goal, 3000, 3400, 300, 1000)).toBeNull(); // $4 over today's price: still saved enough after a $3 buy
+    expect(setsBack(goal, 3000, 3400, 900, 1000)).toBe("This sets Space headphones back 1 week.");
+    expect(setsBack(null, null, 0, 900, 1000)).toBeNull();
+    expect(setsBack(goal, null, 3400, 900, 0)).toBeNull(); // no weekly promise to count with
   });
 });
 
@@ -109,6 +113,34 @@ describe("goalPrice (031)", () => {
     const ch = c3();
     expect((await goalPrice({ db, channel3: ch }, f, { channel3ProductId: "prod-1" })).status).toBeNull();
     expect(ch.priceHistory).not.toHaveBeenCalled();
+  });
+
+  it("a slow history call never costs her today's price, and two visits pay for it once (review MEDIUM 1)", async () => {
+    const f = await family();
+    const slow = c3({ priceHistory: vi.fn(() => new Promise<never>(() => undefined)) }); // never answers
+    const visit = () => goalPrice({ db, channel3: slow }, f, { channel3ProductId: "prod-1" }, Date.now(), 1_000, 50);
+    expect(await visit()).toEqual({ state: "ok", todayCents: 14999, status: null }); // the price shows; no status
+    expect(await visit()).toEqual({ state: "ok", todayCents: 14999, status: null });
+    expect(slow.priceHistory).toHaveBeenCalledTimes(1);
+    expect(await historyCount(f)).toBe(1); // one paid call for two visits
+    clearGoalPriceCache();
+    const failing = c3({ priceHistory: vi.fn(async () => { throw new Error("500"); }) });
+    await goalPrice({ db, channel3: failing }, f, { channel3ProductId: "prod-1" });
+    await goalPrice({ db, channel3: failing }, f, { channel3ProductId: "prod-1" });
+    expect(failing.priceHistory).toHaveBeenCalledTimes(1); // a failure is remembered for 15 minutes
+  });
+
+  it("the status only describes the price on screen: no '$189.99 … more … low' (review MEDIUM 2)", async () => {
+    const f = await family();
+    const elsewhere = c3({
+      retrieve: vi.fn(async (id: string, allowed: string[]) => ({ id, title: "Headphones", priceCents: 18999, domain: allowed[0], available: true, condition: "new" as const })),
+      priceHistory: vi.fn(async () => ({ currentCents: 14999, status: "low" as const })), // Channel3's tracked price, another seller
+    });
+    const got = await goalPrice({ db, channel3: elsewhere }, f, { channel3ProductId: "prod-1" });
+    expect(got).toEqual({ state: "ok", todayCents: 18999, status: null });
+    clearGoalPriceCache();
+    const close = c3({ priceHistory: vi.fn(async () => ({ currentCents: 15100, status: "typical" as const })) }); // within 1% of $149.99
+    expect((await goalPrice({ db, channel3: close }, f, { channel3ProductId: "prod-1" })).status).toBe("typical");
   });
 
   it("a goal she names herself drops the Channel3 product (no stale price)", async () => {

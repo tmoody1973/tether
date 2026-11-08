@@ -181,7 +181,7 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
       if (!c.priceTracking) return null;
       try {
         const h = await c.priceTracking.retrieveHistory(
-          { canonical_product_id: productId, days: 90 }, { timeoutInSeconds: Math.max(1, Math.ceil(timeoutMs / 1000)), maxRetries: 0 },
+          { canonical_product_id: productId, days: 90 }, { timeoutInSeconds: Math.max(1, Math.floor(timeoutMs / 1000)), maxRetries: 0 },
         );
         const st = h.statistics;
         if (!st || st.currency !== "USD" || !Number.isFinite(st.current_price)) return null;

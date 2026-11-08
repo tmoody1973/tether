@@ -75,7 +75,7 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
         ) : (
           <ul className="t-card t-card--tight" style={{ listStyle: "none" }}>
             {w.purchases.map((p) => {
-              const back = p.status === "paid" ? setsBack(w.goal, p.amountCents, w.commitmentCents) : null;
+              const back = p.status === "paid" ? setsBack(w.goal, w.goalTodayCents, w.savingsCents, p.amountCents, w.promiseCents) : null;
               return (
                 <li key={p.id} className="t-row">
                   <span className="t-row__who">{p.shop}<small>{p.title}{p.status === "paying" ? " · PayPal is confirming" : ""}{p.approved ? ` · ${g} approved this one` : ""}{back ? ` · ${back}` : ""}</small></span>
@@ -120,7 +120,7 @@ async function flashFor(sp: Search, w: TeenWeek, db: Db, familyId: string): Prom
   if (!code) return null;
   // The purchase's own status decides what Zoe is told; the code only explains a "nothing was spent".
   const p = await teenPurchase(db, familyId, one(sp, "p") ?? "");
-  const f = buyFlash(code, p, g, p ? setsBack(w.goal, p.amountCents, w.commitmentCents) : null);
+  const f = buyFlash(code, p, g, p ? setsBack(w.goal, w.goalTodayCents, w.savingsCents, p.amountCents, w.promiseCents) : null);
   return f && p ? { ...f, purchaseId: p.id } : f;
 }
 
