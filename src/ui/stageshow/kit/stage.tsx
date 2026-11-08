@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import './stage.css'
-import { checkSeam, createAct, Stopped, type Script } from './act'
+import { checkSeam, createAct, Stopped, type Hold, type Script } from './act'
 import { Cursor, ripple as spawnRipple, type CursorKind, type CursorStyle } from './cursor'
 import { Keycaps, type Keys, type KeysAt } from './keys'
 import { LookContext, type Fidelity, type Layout, type Palette, type Theme } from './looks'
@@ -26,6 +26,8 @@ export interface StageProps<S> {
   height: number
   /** Scene state at the start of each loop. Statics can leave it out. */
   initial?: S
+  /** Tether addition: hold the current frame (the script's clock and the stage's CSS motion stop) until false again. */
+  paused?: boolean
   /** Loops while on screen. Leave out for a static illustration. */
   script?: Script<S>
   /** The still frame shown under reduced motion or with no script. Defaults to initial. */
@@ -105,6 +107,7 @@ export function Stage<S extends object>({
   specimen,
   unframed,
   speed: speedProp = 1,
+  paused = false,
   accent,
   tokens,
   ground,
@@ -139,6 +142,8 @@ export function Stage<S extends object>({
   stateRef.current = state
   const [scale, setScale] = useState(1)
   const scaleRef = useRef(1)
+  // Tether addition: the story clock the script reads; it stands still while paused
+  const holdRef = useRef<Hold>({ paused: false, since: 0, offset: 0 })
   scaleRef.current = scale
   // film.mjs can slow every stage down (--slow) and film any stage dark (--dark)
   const film = typeof window === 'undefined' ? {} : ((window as unknown as { __stageshow?: { slow?: number; theme?: Theme } }).__stageshow ?? {})
@@ -401,10 +406,29 @@ export function Stage<S extends object>({
     () => (signal: AbortSignal) =>
       createAct<S>(signal, {
         rootRef, cursorRef, pos, hovered, kindRef, keysRef, dragging, autoUsed, autoRef, scaleRef,
-        speed, layout, cursor, resolve, place, remeasure, ripple, setState, setKind, setKeys, setLastKeys,
+        speed, layout, cursor, resolve, place, remeasure, ripple, setState, setKind, setKeys, setLastKeys, hold: holdRef,
       }),
     [resolve, place, speed, layout], // eslint-disable-line react-hooks/exhaustive-deps
   )
+
+  // Tether addition: pausing holds the frame. The script's clock stops (act.ts reads holdRef), and every CSS
+  // transition or animation running in the stage pauses where it is, then resumes from there.
+  useEffect(() => {
+    const hold = holdRef.current
+    const root = rootRef.current
+    if (paused === hold.paused) return
+    if (paused) {
+      hold.paused = true
+      hold.since = performance.now()
+      root?.setAttribute('data-paused', '')
+      for (const a of root?.getAnimations({ subtree: true }) ?? []) a.pause()
+    } else {
+      hold.offset += performance.now() - hold.since
+      hold.paused = false
+      root?.removeAttribute('data-paused')
+      for (const a of root?.getAnimations({ subtree: true }) ?? []) if (a.playState === 'paused') a.play()
+    }
+  }, [paused])
 
   // Run the loop only while the stage is on screen and the tab is visible.
   useEffect(() => {

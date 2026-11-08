@@ -110,6 +110,9 @@ export class Stopped extends Error {}
 type Ref<T> = { current: T }
 
 /** What an act works with: the stage's elements, refs and setters, read when the act is made. */
+/** Tether addition: the stage's pause. `offset` is the paused time so far; `since` when the current pause began. */
+export interface Hold { paused: boolean; since: number; offset: number }
+
 export interface ActEnv<S> {
   rootRef: { readonly current: HTMLDivElement | null }
   cursorRef: { readonly current: HTMLDivElement | null }
@@ -132,12 +135,13 @@ export interface ActEnv<S> {
   setKind: Dispatch<SetStateAction<CursorKind>>
   setKeys: Dispatch<SetStateAction<Keys>>
   setLastKeys: Dispatch<SetStateAction<Keys | null>>
+  hold: { readonly current: Hold }
 }
 
 // Each run gets its own act, bound to its own signal, so a canceled run can
 // never pick up the next run's signal and keep going.
 export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
-  const { rootRef, cursorRef, pos, hovered, kindRef, keysRef, dragging, autoUsed, autoRef, scaleRef, speed, layout, cursor, resolve, place, remeasure, ripple, setState, setKind, setKeys, setLastKeys } = env
+  const { rootRef, cursorRef, pos, hovered, kindRef, keysRef, dragging, autoUsed, autoRef, scaleRef, speed, layout, cursor, resolve, place, remeasure, ripple, setState, setKind, setKeys, setLastKeys, hold } = env
   const entering = bezier('enter')
   const check = () => {
     if (signal.aborted) throw new Stopped()
@@ -159,8 +163,23 @@ export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
       })
       signal.addEventListener('abort', abort, { once: true })
     })
-  const frame = () => pause((done) => requestAnimationFrame(done), cancelAnimationFrame)
-  const wait = (ms: number) => pause((done) => setTimeout(done, ms / speed), clearTimeout)
+  // Tether addition: story time, which stands still while the stage is paused. A frame isn't over until the
+  // pause is; a wait counts story time, so a paused beat resumes with the time it had left.
+  const now = () => performance.now() - hold.current.offset - (hold.current.paused ? performance.now() - hold.current.since : 0)
+  const frame = () =>
+    pause(
+      (done) => {
+        const c = { id: 0 }
+        const tick = () => (hold.current.paused ? (c.id = requestAnimationFrame(tick)) : done())
+        c.id = requestAnimationFrame(tick)
+        return c
+      },
+      (c) => cancelAnimationFrame(c.id),
+    )
+  const wait = async (ms: number) => {
+    const end = now() + ms / speed
+    while (now() < end) await frame()
+  }
   // Release transient DOM/ref state synchronously on abort. The guarded
   // finally call cannot then clear a new run's press or drag ownership.
   const own = (release: () => void) => {
@@ -175,11 +194,11 @@ export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
     return done
   }
   const tween = async (ms: number, step: (t: number) => void) => {
-    const start = performance.now()
+    const start = now()
     const dur = ms / speed
     for (;;) {
       check()
-      const t = Math.min(1, (performance.now() - start) / dur)
+      const t = Math.min(1, (now() - start) / dur)
       step(t)
       if (t === 1) return
       await frame()
