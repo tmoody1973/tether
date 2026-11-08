@@ -58,10 +58,11 @@ export function GrantEditor(p: GrantEditorProps) {
   const signForm = p.inForce ? undefined : SIGN_FORM; // with no rules in force, every control belongs to the one sign form
   const def = LEVELS[level];
   // A different weekly amount waits for next week unless she chooses this week too (decision 029).
+  const promisedCents = Math.max(p.week.commitmentCents, commitmentFloorCents(def.weeklyCents, floorPct)); // as week close judges it
   const weekly = p.week.thisWeekCents !== null && p.week.thisWeekCents !== def.weeklyCents
     ? weekChangeWords({
       teenName: zoe, fromCents: p.week.thisWeekCents, toCents: def.weeklyCents, spentCents: p.week.spentCents, startsOn: new Date(p.week.startsOn),
-      promisedCents: Math.max(p.week.commitmentCents, commitmentFloorCents(def.weeklyCents, floorPct)), // as week close judges it
+      promisedCents,
     })
     : null;
   const weekChoice = (form?: string) => weekly && (
@@ -73,6 +74,7 @@ export function GrantEditor(p: GrantEditorProps) {
           {/* What she was shown: the server applies it only if this week is still exactly this (decision 029). */}
           <input type="hidden" name="shownFromCents" value={p.week.thisWeekCents ?? ""} form={form} />
           <input type="hidden" name="shownSpentCents" value={p.week.spentCents} form={form} />
+          <input type="hidden" name="shownPromisedCents" value={promisedCents} form={form} />
           <button type="button" className="g-textlink" onClick={() => setApplyNow(false)}>Keep this week as it is</button>
         </>
       ) : (

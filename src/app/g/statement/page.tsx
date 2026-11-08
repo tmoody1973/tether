@@ -45,10 +45,10 @@ async function StatementView({ searchParams }: { searchParams: Promise<Record<st
       <section className="g-card g-statement" aria-labelledby="remaining-h">
         <h2 className="g-label" id="remaining-h">{owedLabel(s)}</h2>
         <div className="g-statement__total"><span>You owe {zoe}</span><Money cents={s.owedCents} /></div>
-        <p className="g-muted" style={{ marginTop: 6 }}>
-          {formatCents(s.remainingCents)} recorded so far ({formatCents(s.recordedCents)} from closed weeks − {formatCents(s.paidCents)} paid
-          to {zoe} − {formatCents(s.investedCents)} moved to investing)
-          {s.current.state === "none" ? "." : ` + ${formatCents(s.current.addsCents)} this week adds when it closes on ${formatDay(s.current.closesAt)}.`}
+        <p className="g-muted" style={{ marginTop: 6 }}>{owedParts(s)}</p>
+        <p className="g-note" style={{ marginTop: 4 }}>
+          Savings recorded so far: {formatCents(s.recordedCents)} from closed weeks − {formatCents(s.paidCents)} paid to {zoe} − {formatCents(s.investedCents)} moved
+          to investing = {formatCents(s.remainingCents)}, the figure {zoe} sees.
         </p>
       </section>
 
@@ -64,6 +64,14 @@ async function StatementView({ searchParams }: { searchParams: Promise<Record<st
       </section>
     </GuardianShell>
   );
+}
+
+/** The headline in parts: "$X saved + $Y your match + $Z this week", leaving out parts that are zero-by-definition. */
+function owedParts(s: Statement): string {
+  const parts = [`${formatCents(s.remainingCents)} saved`];
+  if (s.waiting) parts.push(`${formatCents(s.waiting.matchCents)} your match on the release waiting to be paid`);
+  if (s.current.state !== "none") parts.push(`${formatCents(s.current.addsCents)} this week, when it closes on ${formatDay(s.current.closesAt)}`);
+  return `${parts.join(" + ")}.`;
 }
 
 /** After a stop the total is final; while rules are in force this week can still change as she spends. */

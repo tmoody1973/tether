@@ -32,8 +32,9 @@ export interface Statement {
   /** = the savings figure Zoe and Amara see (closed weeks only). */
   remainingCents: number;
   /**
-   * The headline: remaining plus what this week adds when it closes (0 when no rules cover it). After a stop nothing
-   * more can be spent, so it is final and equals the savings figure once the week closes. Same unspentCents/weekTerms.
+   * The headline, the whole debt: remaining (the savings figure) + the match on a release already worked out but not yet
+   * paid + what this week adds when it closes (0 when no rules cover it). Same ledger rows, release row, unspentCents and
+   * weekTerms the app already uses: no new formula. After a stop nothing more can be spent, so it is final.
    */
   owedCents: number;
   /** Self-started families are retired (decision 026). */
@@ -73,7 +74,7 @@ export async function closingStatement(db: Db, familyId: string, now: Date): Pro
     waiting: open ? { savedCents: open.savedCents, matchCents: open.matchCents } : null,
     investedCents: parts.investedCents,
     remainingCents: parts.savingsCents,
-    owedCents: parts.savingsCents + (state === "none" ? 0 : unspentCents(allowanceCents, ledger.spentThisWeekCents)),
+    owedCents: parts.savingsCents + (open?.matchCents ?? 0) + (state === "none" ? 0 : unspentCents(allowanceCents, ledger.spentThisWeekCents)),
     removesAt: fam.paypalSub !== null ? removalDate(fam.createdAt) : null,
   };
 }

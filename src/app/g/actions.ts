@@ -37,7 +37,7 @@ export type SignState = { error?: string };
 function applyNowFrom(form: FormData): ApplyNow {
   if (form.get("applyNow") !== "1") return false;
   const cents = (k: string) => { const v = form.get(k); return typeof v === "string" && /^\d{1,7}$/.test(v) ? Number(v) : -1; };
-  return { shownFromCents: cents("shownFromCents"), shownSpentCents: cents("shownSpentCents") };
+  return { shownFromCents: cents("shownFromCents"), shownSpentCents: cents("shownSpentCents"), shownPromisedCents: cents("shownPromisedCents") };
 }
 
 /** The week moved since the page was drawn: nothing changed. Re-draw the page and say what it means now. */

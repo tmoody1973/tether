@@ -42,19 +42,19 @@ export class WeekChangedError extends GrantError {
 
 /**
  * false: a different weekly amount waits for next week. true: apply it this week (no check; tests and internal use).
- * The rules page sends what Amara was shown; it applies only if this week's amount and her spending are still those.
+ * The rules page sends what Amara was shown; it applies only if this week's amount, her spending and the savings
+ * promise the week is judged on (behind the level-up warning) are all still those.
  */
-export type ApplyNow = boolean | { shownFromCents: number; shownSpentCents: number };
+export type ApplyNow = boolean | { shownFromCents: number; shownSpentCents: number; shownPromisedCents: number };
 
-async function checkShown(tx: Db, familyId: string, latest: GrantRow | null, body: Grant, now: Date, shown: { shownFromCents: number; shownSpentCents: number }) {
+async function checkShown(tx: Db, familyId: string, latest: GrantRow | null, body: Grant, now: Date, shown: Exclude<ApplyNow, boolean>) {
   const fromCents = thisWeeksCents(latest, now);
   const spentCents = (await ledgerView(tx, familyId, now)).spentThisWeekCents;
-  if (fromCents === shown.shownFromCents && spentCents === shown.shownSpentCents) return;
+  // The family's commitment in force (a pending one is promoted when a week closes), floored as week close judges it.
   const [fam] = await tx.select({ c: t.families.commitmentCents }).from(t.families).where(eq(t.families.id, familyId));
-  throw new WeekChangedError({
-    fromCents: fromCents ?? body.weeklyCents, toCents: body.weeklyCents, spentCents,
-    promisedCents: Math.max(fam?.c ?? 0, commitmentFloorCents(body.weeklyCents, body.commitmentFloorPct)), // as week close judges it
-  });
+  const promisedCents = Math.max(fam?.c ?? 0, commitmentFloorCents(body.weeklyCents, body.commitmentFloorPct));
+  if (fromCents === shown.shownFromCents && spentCents === shown.shownSpentCents && promisedCents === shown.shownPromisedCents) return;
+  throw new WeekChangedError({ fromCents: fromCents ?? body.weeklyCents, toCents: body.weeklyCents, spentCents, promisedCents });
 }
 
 /**

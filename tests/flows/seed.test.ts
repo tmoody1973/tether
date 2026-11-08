@@ -267,6 +267,19 @@ describe("decision 029 on the shared demo family", () => {
     expect(st.remainingCents).toBe((await ledgerView(db, r.familyId, await clockNow(db, r.familyId))).savingsCents);
   });
 
+  it("'You owe Zoe' includes the match already worked out on a waiting release (re-review LOW 1)", async () => {
+    const { r } = await seeded();
+    const { review } = await advanceDemoClock(d(), r.familyId, "endOfMonth"); // promotes: $56.50 saved + $56.50 match, unpaid
+    expect(review!.release).toMatchObject({ savedCents: 5650, matchCents: 5650 });
+    const now = await clockNow(db, r.familyId);
+    const st = await closingStatement(db, r.familyId, now);
+    expect(st.remainingCents).toBe((await ledgerView(db, r.familyId, now)).savingsCents); // the ledger figure
+    expect(st.remainingCents).toBe(5650);
+    expect(st.waiting).toEqual({ savedCents: 5650, matchCents: 5650 });
+    expect(st.current.state).toBe("in_force");
+    expect(st.owedCents).toBe(5650 + 5650 + st.current.addsCents);
+  });
+
   it("an earlier judge's Stop doesn't mark the next judge's week stopped or not kept (review MEDIUM 2)", async () => {
     const { r, keys } = await seeded();
     await revoke(d(), r.familyId); // judge 1 stops in W53
