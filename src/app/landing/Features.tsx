@@ -57,7 +57,7 @@ function Refusal() {
         <div className="l-refusal" role="img" aria-label="Example refusal: You've got $13.02 left this week and this is $25.30. Two ways forward: Ask Amara, or Wait 3 days.">
           <div className="l-refusal__head">
             <span className="l-refusal__tag"><NoSign size={18} stroke={1.6} />Not this time</span>
-            <span className="l-refusal__item money">Monopoly · $25.30</span>
+            <span className="l-refusal__item money">Over-ear headphones · $25.30</span>
           </div>
           <p className="l-refusal__line">You&apos;ve got <span className="money">$13.02</span> left this week and this is <span className="money">$25.30</span>.</p>
           <div className="l-refusal__ways"><span>Ask Amara</span><span>Wait 3 days</span></div>

@@ -35,6 +35,8 @@ type S = {
   open: boolean
   approve: Approve
   paid: boolean
+  refreshed: boolean
+  lead: boolean
   focus: 'zoe' | 'amara'
   noteAt: Rect
 }
@@ -54,12 +56,14 @@ const START: S = {
   open: false,
   approve: 'idle',
   paid: false,
+  refreshed: false,
+  lead: false,
   focus: 'zoe',
   noteAt: ZERO,
 }
 
 // The payoff with both phones: Zoe's ask sent, Amara's payment approved and proved
-const POSTER: S = { ...START, query: SHOP.query, shown: 3, asked: true, launch: true, open: true, paid: true, focus: 'amara' }
+const POSTER: S = { ...START, query: SHOP.query, shown: 3, asked: true, launch: true, open: true, paid: true, refreshed: true, lead: true, focus: 'amara' }
 
 // Zoe's phone is the hero; Amara's straddles its right edge, a step lower and
 // in front, over Zoe's bezel and screen margin only (never her cards)
@@ -140,15 +144,21 @@ async function script(a: Act<S>) {
   // 6. The payoff holds: approved and paid, and the proof
   a.put({ paid: true })
   a.mark('paid')
-  await a.move(REST)
+  void a.move(REST)
+  // Zoe's week catches up: the purchase moves to This week, as Amara approved it
+  await a.wait(550)
+  a.put({ refreshed: true })
+  // Then the approval leads: Amara's phone steps forward, Zoe's screen quiets
+  await a.wait(650)
+  a.put({ lead: true })
   await a.wait(2200)
 
   // 7. Reset with a cause: Amara locks her phone; Zoe's ask page gives way to a fresh Shop
   a.mark('reset')
   await a.snap({ query: '', shown: 0, scroll: 0 }, 'zoe-col')
-  a.put({ launch: false, note: false, asked: false })
+  a.put({ launch: false, note: false, asked: false, lead: false })
   await a.wait(280)
-  await a.snap({ open: false, paid: false, approve: 'idle', noteAt: START.noteAt })
+  await a.snap({ open: false, paid: false, refreshed: false, approve: 'idle', noteAt: START.noteAt })
   if (compact) await a.set({ focus: 'zoe' })
   await a.wait(200)
 }
@@ -215,35 +225,48 @@ function ZoeShop({ s }: { s: S }) {
   )
 }
 
-function ZoeWeek({ s }: { s: S }) {
+function ZoeWeek({ s, after }: { s: S; after?: boolean }) {
+  const on = after ? s.asked && s.refreshed : s.asked && !s.refreshed
+  const spent = after ? SHOP.cents.spentAfter : SHOP.cents.spent
   return (
-    <div className="tt-page" data-on={s.asked || undefined}>
+    <div className="tt-page" data-on={on || undefined}>
       <div className="tt-col">
         <div>
           <div className="t-eyebrow">Your week</div>
-          <div className="t-hero money">{SHOP.left}</div>
+          <div className="t-hero money">{after ? SHOP.leftAfter : SHOP.left}</div>
           <div className="t-hero-sub">left this week</div>
         </div>
         <div>
           <div className="t-bar">
-            <span style={{ width: `${(16.98 / 30) * 100}%` }} />
+            <span style={{ width: `${Math.min(100, (spent / SHOP.cents.weekly) * 100)}%` }} />
           </div>
           <div className="t-barlabels">
             <span>
-              spent <span className="money">$16.98</span> of <span className="money">$30.00</span>
+              spent <span className="money">{after ? SHOP.spentAfter : SHOP.spent}</span> of <span className="money">{SHOP.weekly}</span>
             </span>
             <span>{SHOP.resets}</span>
           </div>
         </div>
         <div className="t-pill">{SHOP.level}</div>
-        <p className="t-flash" data-target="flash">
-          {SHOP.sent}
-        </p>
+        {!after && (
+          <p className="t-flash" data-target="flash">
+            {SHOP.sent}
+          </p>
+        )}
         <section>
           <div className="t-eyebrow" style={{ marginBottom: 6 }}>
             This week
           </div>
           <div className="t-card t-card--tight">
+            {after && (
+              <div className="t-row">
+                <span className="t-row__who">
+                  {SHOP.focal.shop}
+                  <small>{SHOP.approvedRow}</small>
+                </span>
+                <span className="t-row__amt money">{SHOP.focal.price}</span>
+              </div>
+            )}
             {[
               [118, 150],
               [96, 176],
@@ -258,20 +281,22 @@ function ZoeWeek({ s }: { s: S }) {
             ))}
           </div>
         </section>
-        <section>
-          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
-            Your asks
-          </div>
-          <div className="t-card t-card--tight">
-            <div className="t-row">
-              <span className="t-row__who">
-                {SHOP.focal.shop}
-                <small>{SHOP.focal.title} · Waiting for Amara</small>
-              </span>
-              <span className="t-row__amt money">{SHOP.focal.price}</span>
+        {!after && (
+          <section>
+            <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+              Your asks
             </div>
-          </div>
-        </section>
+            <div className="t-card t-card--tight">
+              <div className="t-row">
+                <span className="t-row__who">
+                  {SHOP.focal.shop}
+                  <small>{SHOP.focal.title} · Waiting for Amara</small>
+                </span>
+                <span className="t-row__amt money">{SHOP.focal.price}</span>
+              </div>
+            </div>
+          </section>
+        )}
         <Button className="t-btn t-btn--primary" variant="primary">
           Find something
         </Button>
@@ -332,7 +357,7 @@ function AmaraRequest({ s }: { s: S }) {
             She has <b className="money">{SHOP.left}</b> left this week. This would use the rest and <b className="money">{SHOP.over}</b> more.
           </p>
           <div className="g-bar">
-            <span style={{ width: `${(13.02 / 25.3) * 100}%` }} />
+            <span style={{ width: `${(SHOP.cents.left / SHOP.cents.price) * 100}%` }} />
           </div>
           <div className="g-barlabels">
             <span>{SHOP.left} available</span>
@@ -385,11 +410,11 @@ function AmaraPaid({ s }: { s: S }) {
             </div>
             <div>
               <dt>Allowed by</dt>
-              <dd>Rules v3, signed by you, and you approved it</dd>
+              <dd>{SHOP.allowed}</dd>
             </div>
             <div>
               <dt>Permission slip</dt>
-              <dd>Single use, this cart only, valid 2 minutes.</dd>
+              <dd>{SHOP.slip}</dd>
             </div>
             <div>
               <dt>Checked against PayPal</dt>
@@ -421,9 +446,9 @@ function TetherNote(props: { 'data-target'?: string }) {
   return <Notification {...props} icon={<Image className="tt-appicon" src="/brand/tether-app-icon.svg" alt="" width={38} height={38} />} title="Tether" body={SHOP.request} />
 }
 
-export default function TetherShopStory() {
+export default function TetherShopStory({ paused = false }: { paused?: boolean }) {
   return (
-    <Stage<S> width={1000} height={680} compact={{ below: 720, width: 358, height: 640 }} initial={START} poster={POSTER} script={script} cursor={{ at: REST, style: 'touch' }} className="tt tt-shop">
+    <Stage<S> paused={paused} width={1000} height={680} compact={{ below: 720, width: 358, height: 640 }} initial={START} poster={POSTER} script={script} cursor={{ at: REST, style: 'touch' }} className="tt tt-shop">
       {(s, _rect, layout) => {
         const compact = layout === 'compact'
         const width = compact ? COMPACT.phone : WIDE.phone
@@ -435,16 +460,18 @@ export default function TetherShopStory() {
         return (
           <>
             <div className="tt-track" style={{ transform: `translateX(${pan}px)` }}>
-              <Phone width={width} time="8:54" className="tt-phone" data-target="zoe-phone" style={{ left: zoeLeft, top }}>
+              <Phone width={width} time="8:54" className="tt-phone" data-back={s.lead || undefined} data-target="zoe-phone" style={{ left: zoeLeft, top }}>
                 <div className="tt-app tt-app--teen" data-target="zoe-app">
                   <ZoeShop s={s} />
                   <ZoeWeek s={s} />
+                  <ZoeWeek s={s} after />
                   <div className="tt-statusbg" />
+                  <div className="tt-veil" data-on={s.lead || undefined} />
                   <Sheet s={s} />
                 </div>
               </Phone>
 
-              <Phone width={width} time="8:54" dark={!s.open} wallpaper={WALLPAPER} className="tt-phone" data-target="amara-phone" style={{ left: amaraLeft, top: amaraTop }}>
+              <Phone width={width} time="8:54" dark={!s.open} wallpaper={WALLPAPER} className="tt-phone" data-front={s.lead || undefined} data-target="amara-phone" style={{ left: amaraLeft, top: amaraTop }}>
                 <LockScreen time="8:54" date="" stack="top" size="satellite">
                   <div className="tt-note" data-on={s.note || undefined}>
                     <TetherNote data-target="note" />
