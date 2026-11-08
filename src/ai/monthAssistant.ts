@@ -5,6 +5,7 @@ import { getActiveGrant, getFamily, getLatestGrant, receiptsForMonth, type Month
 import type { PaypalHttp } from "@/adapters/paypal/http";
 import { LAG_NOTE, MONTH_RE, paypalWindowForMonth, reconcileMonth, type ReconFlag, type Reconciliation } from "@/flows/reconcile";
 import { monthReviewView } from "@/flows/month";
+import { asOf } from "@/engine/ladder";
 import { availableSavingsCents, ledgerView } from "@/ledger/ledger";
 import { hiddenNote, monthEnd, shownReceipts } from "@/ui/activityWords";
 import { APPROVED_BY_PARENT, buildCards, type AnswerCard, type ToolResults } from "@/ai/answerCards";
@@ -126,7 +127,8 @@ async function readCheckin(db: Db, familyId: string, now: Date) {
     monthReviewView(db, familyId), ledgerView(db, familyId, now), availableSavingsCents(db, familyId),
     getActiveGrant(db, familyId), getLatestGrant(db, familyId),
   ]);
-  const weeklyCents = (active ?? latest)?.body.weeklyCents ?? 0;
+  const signed = (active ?? latest)?.body;
+  const weeklyCents = signed ? asOf(signed, now).weeklyCents : 0; // this week's amount (029)
   const e = v.evidence;
   return {
     month: ymd(now).slice(0, 7), level: v.level, rulesStopped: v.stopped, weeklyAllowance: dollars(weeklyCents),
@@ -215,6 +217,7 @@ function systemPrompt(now: Date, teen: string): string {
 - Use paypal_check(month) for whether Tether's receipts match PayPal.
 - A setAsideNote counts payments an earlier demo reset set aside. They are not part of her month: never count or describe them as her purchases.
 - Use month_checkin for her level, savings, and how her month is going.
+- Savings (totalSavings) is an amount you have promised ${teen}: Tether tracks it, and the money isn't set aside or held anywhere. Never say savings is in PayPal, in an account, or kept by Tether.
 - Use zoe_investments for how ${teen}'s investments are doing. If tooSoonToTell is true, say it's too soon to tell. Investment and news dates are real-world dates, not demo dates.
 - Use fund_inside(symbol) for what one of ${teen}'s funds owns. Use news() for market headlines, or news(ticker) for a company inside one of her funds.
 - Facts only: never advise, predict, rank or say what she or ${teen} should do. For news, say what the headlines are about; don't explain why a price moved beyond what the headlines say.

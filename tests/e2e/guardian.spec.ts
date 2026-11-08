@@ -332,7 +332,13 @@ test("changing her level from her rules page needs a reason", async ({ page }) =
   await expect(page.getByLabel("Level 2")).not.toBeChecked(); // nothing chosen for her
   await page.getByLabel("Level 2").check();
   await page.getByRole("button", { name: "Move Zoe to Level 2" }).click();
-  await expect(page.getByText(/Move Zoe to Level 2\? Her weekly money becomes \$30\.00/)).toBeVisible();
+  await expect(page.getByText(/Move Zoe to Level 2\? Her shops and approvals follow the new level now/)).toBeVisible();
+  // Decision 029: the weekly amount waits for next week unless she chooses this week too, after reading what it means.
+  await expect(page.getByText(/^From \w{3} \d{1,2} \w{3}: \$30\.00\/week\. This week stays \$20\.00\.$/)).toBeVisible();
+  await page.getByRole("button", { name: "Change this week too" }).click();
+  await expect(page.getByText(/^This week becomes \$30\.00\. Zoe has spent \$\d+\.\d\d, so she has \$\d+\.\d\d left, and this week adds/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Yes, change this week too" })).toBeVisible();
+  await page.getByRole("button", { name: "Keep this week as it is" }).click();
   await page.getByRole("button", { name: "Yes, move her" }).click();
   await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveText("Say why — it goes on the record. Nothing changed.");
   await page.reload();
@@ -344,6 +350,7 @@ test("changing her level from her rules page needs a reason", async ({ page }) =
   await expect(page).toHaveURL(/\/g\/rules\?level=2$/);
   await expect(page.getByRole("status")).toContainText("Zoe is now at Level 2.");
   await expect(levelChip).toHaveText("Level 2");
+  await expect(page.getByTestId("weekly-waits")).toHaveText(/^From \w{3} \d{1,2} \w{3}: \$30\.00\/week\. This week stays \$20\.00\.$/);
   await page.goto("/g/activity"); // the reason is on the record
   await expect(page.getByText("“She has been careful all month.”")).toBeVisible();
 });
@@ -353,13 +360,22 @@ test("stopping her rules from her rules page asks first", async ({ page }) => {
   await page.goto("/g/rules");
   await page.getByRole("button", { name: "Stop Zoe's rules" }).click();
   await expect(page.getByText("Stop Zoe's rules now?")).toBeVisible();
+  await expect(page.getByText("This stops purchases immediately and disconnects your saved PayPal. This week's savings still count as promised. Savings already recorded remain yours to pay.")).toBeVisible();
   await page.getByRole("button", { name: "Keep them" }).click(); // backing out changes nothing
   await expect(page.getByText("Rules stopped", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Stop Zoe's rules" }).click();
   await page.getByRole("button", { name: "Yes, stop them" }).click();
-  await expect(page).toHaveURL(/\/g\/rules\?stopped=wallet-kept$/); // the fake PayPal refuses the wallet delete
+  await expect(page).toHaveURL(/\/g\/statement\?stopped=wallet-kept$/); // the fake PayPal refuses the wallet delete
   await expect(page.getByRole("status")).toContainText(
     "Rules stopped. PayPal didn't confirm removing the saved wallet — remove Tether in PayPal settings: Settings → Payments → Automatic payments.");
+  // Decision 029: the closing statement, with this week counted as promised.
+  await expect(page.getByRole("heading", { level: 1, name: "Statement for Zoe" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Promised to Zoe, counting this week" })).toBeVisible(); // not "$0 owed"
+  await expect(page.locator(".g-statement__total")).toContainText(/^You owe Zoe\$\d+\.\d\d$/);
+  await expect(page.getByText(/^Rules stopped on \w{3} \d{1,2} \w{3}\. This week still counts as promised\.$/)).toBeVisible();
+  await expect(page.getByText(/^\$20\.00 this week − \$\d+\.\d\d Zoe spent = \$\d+\.\d\d recorded when it closes\.$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Print or save as PDF" })).toBeVisible();
+  await page.goto("/g/rules");
   await expect(page.getByText("Rules stopped", { exact: true })).toBeVisible();
   await expect(page.getByLabel(/Level 1/)).toBeChecked(); // she keeps her level instead of falling to Level 1
   await expect(page.getByRole("button", { name: "Sign and send" })).toBeVisible(); // stopped rules stay stopped until she signs

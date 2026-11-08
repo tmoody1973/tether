@@ -2,18 +2,29 @@ import { eq } from "drizzle-orm";
 import * as t from "@/db/schema";
 import { appendJournal } from "@/db/repo";
 import { weekKey, weekRecords } from "@/ledger/ledger";
-import { commitmentFloorCents } from "@/engine/ladder";
-import { GrantError, withFamilyLock } from "@/flows/grant";
+import { asOf, commitmentFloorCents, unspentCents } from "@/engine/ladder";
+import type { GrantRow } from "@/db/repo";
+import { GrantError, coversWeek, weekStart, withFamilyLock } from "@/flows/grant";
 import type { Deps } from "@/flows/purchase";
 
 const WEEK_MS = 7 * 86_400_000;
 
-/** Monday 00:00 UTC of the ISO week containing d. */
-const weekStart = (d: Date): Date =>
-  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7)));
+/**
+ * The terms a week is closed on: the rules signed last before it ended, their allowance for that week (a weekly change
+ * waits for next week, decision 029), and whether any rules were stopped during it. Rules that had ended before the
+ * week began, or were stopped before it, give no allowance (Final review I2). Rules stopped DURING the week keep it.
+ */
+export function weekTerms(grants: GrantRow[], monday: Date) {
+  const end = new Date(monday.getTime() + WEEK_MS);
+  const byVersion = [...grants].sort((a, b) => a.version - b.version);
+  const grant = [...byVersion].reverse().find((g) => g.signedAt < end) ?? byVersion[0];
+  const inForce = coversWeek(grant, monday);
+  const stopped = grants.some((g) => g.revokedAt !== null && g.revokedAt >= monday && g.revokedAt < end);
+  return { grant, inForce, stopped, allowanceCents: inForce ? asOf(grant.body, monday).weeklyCents : 0 };
+}
 
 /** Monday of ISO week key like '2026-W45' (week 1 contains Jan 4). */
-function mondayOfKey(key: string): Date {
+export function mondayOfKey(key: string): Date {
   const [y, w] = key.split("-W").map(Number);
   return new Date(weekStart(new Date(Date.UTC(y, 0, 4))).getTime() + (w - 1) * WEEK_MS);
 }
@@ -37,22 +48,17 @@ export async function closeWeek(deps: Pick<Deps, "db" | "now">, familyId: string
     const closed: string[] = [];
     for (; monday < thisMonday; monday = new Date(monday.getTime() + WEEK_MS)) {
       const key = weekKey(monday);
-      const end = new Date(monday.getTime() + WEEK_MS);
-      const grant = [...grants].reverse().find((g) => g.signedAt < end) ?? grants[0]; // grant in force that week
-      // Final review I2: rules that had ended before the week began, or were stopped, give no allowance: nothing is
-      // saved and the week can't count as kept. ponytail: grants have no revoked-at time, so a stopped grant gives 0 for
-      // every week not yet closed when it is stopped; the demo clock closes weeks as it moves, so that is at most this week.
-      const inForce = grant.status !== "revoked" && grant.expiresAt > monday;
+      const { grant, inForce, stopped, allowanceCents } = weekTerms(grants, monday);
       // R33: never less than the floor Amara signed for that week, so an unset commitment can't count as kept.
-      const promised = Math.max(commitment, commitmentFloorCents(grant.body.weeklyCents, grant.body.commitmentFloorPct));
+      const promised = Math.max(commitment, commitmentFloorCents(allowanceCents || grant.body.weeklyCents, grant.body.commitmentFloorPct));
       const ins = await tx.insert(t.weeks).values({
-        familyId, weekKey: key, allowanceCents: inForce ? grant.body.weeklyCents : 0, closedAt: now,
+        familyId, weekKey: key, allowanceCents, closedAt: now, stopped,
         commitmentCents: inForce ? promised : Math.max(1, promised), // 0 allowance never keeps a promise of 1 cent or more
       }).onConflictDoNothing().returning({ k: t.weeks.weekKey });
       if (ins.length === 0) continue;
       const rec = (await weekRecords(tx, familyId)).find((w) => w.weekKey === key)!;
       await appendJournal(tx, {
-        familyId, kind: "week_close", amountCents: Math.max(0, rec.allowanceCents - rec.spentCents), ref: key, at: now,
+        familyId, kind: "week_close", amountCents: unspentCents(rec.allowanceCents, rec.spentCents), ref: key, at: now,
       });
       if (closed.length === 0 && fam.pendingCommitmentCents !== null) {
         commitment = fam.pendingCommitmentCents;

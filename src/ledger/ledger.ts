@@ -27,10 +27,10 @@ export const counted = sql`not exists (select 1 from families f, lateral (select
     ${t.journal.createdAt}) as written) w
   where f.id = ${t.journal.familyId} and w.written > f.ledger_void_from and w.written <= f.ledger_void_to)`;
 
-type Entry = { at: Date; kind: (typeof t.journalKinds)[number]; amountCents: number };
+type Entry = { at: Date; kind: (typeof t.journalKinds)[number]; amountCents: number; ref: string | null };
 
 const entries = (db: Db, familyId: string): Promise<Entry[]> =>
-  db.select({ at: t.journal.at, kind: t.journal.kind, amountCents: t.journal.amountCents })
+  db.select({ at: t.journal.at, kind: t.journal.kind, amountCents: t.journal.amountCents, ref: t.journal.ref })
     .from(t.journal).where(and(eq(t.journal.familyId, familyId), counted)).orderBy(asc(t.journal.at));
 
 const SPEND_SIGN: Partial<Record<Entry["kind"], 1 | -1>> = { spend: 1, spend_reversal: -1 };
@@ -44,6 +44,23 @@ const spentInWeek = (rows: Entry[], key: string): Cents =>
 
 export async function savingsCents(db: Db, familyId: string): Promise<Cents> {
   return sum(await entries(db, familyId), SAVINGS_SIGN);
+}
+
+/**
+ * The savings figure in its parts, from the same counted journal rows and signs (decision 029's closing statement):
+ * savingsCents = recordedCents − paidCents − investedCents, and is exactly what savingsCents() returns.
+ */
+export async function savingsParts(db: Db, familyId: string) {
+  const rows = await entries(db, familyId);
+  const of = (kind: Entry["kind"]) => rows.filter((r) => r.kind === kind).reduce((s, r) => s + r.amountCents, 0);
+  return {
+    recordedCents: of("week_close"), paidCents: of("release"), investedCents: of("invest") - of("invest_reversal"),
+    savingsCents: sum(rows, SAVINGS_SIGN),
+    /** Payments to her that count (a demo reset sets earlier ones aside): release id and the saved amount that left savings. */
+    releases: rows.filter((r) => r.kind === "release" && r.ref).map((r) => ({ releaseId: r.ref as string, savedCents: r.amountCents })),
+    /** What each closed week added, by week key. */
+    byWeek: new Map(rows.filter((r) => r.kind === "week_close" && r.ref).map((r) => [r.ref as string, r.amountCents])),
+  };
 }
 
 /**
@@ -82,6 +99,6 @@ export async function weekRecords(db: Db, familyId: string): Promise<WeekRecord[
   ]);
   return weeks.map((w) => ({
     weekKey: w.weekKey, allowanceCents: w.allowanceCents,
-    spentCents: spentInWeek(rows, w.weekKey), commitmentCents: w.commitmentCents,
+    spentCents: spentInWeek(rows, w.weekKey), commitmentCents: w.commitmentCents, ...(w.stopped ? { stopped: true } : {}),
   }));
 }

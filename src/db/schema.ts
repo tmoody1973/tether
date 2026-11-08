@@ -71,6 +71,7 @@ export const grants = pgTable("grants", {
   signedAt: ts("signed_at").notNull(),
   expiresAt: ts("expires_at").notNull(),
   status: text("status", { enum: ["active", "expired", "revoked"] }).notNull(),
+  revokedAt: ts("revoked_at"), // demo-clock time Amara stopped these rules; that week still closes as promised (029)
 }, (g) => [uniqueIndex("grants_family_version_uq").on(g.familyId, g.version)]);
 
 export const vault = pgTable("vault", {
@@ -154,6 +155,7 @@ export const weeks = pgTable("weeks", {
   allowanceCents: integer("allowance_cents").notNull(),
   commitmentCents: integer("commitment_cents").notNull(),
   closedAt: ts("closed_at"),
+  stopped: boolean("stopped").notNull().default(false), // rules were stopped during this week: it never counts as kept (029)
 }, (t) => [primaryKey({ columns: [t.familyId, t.weekKey] })]);
 
 export const goals = pgTable("goals", {

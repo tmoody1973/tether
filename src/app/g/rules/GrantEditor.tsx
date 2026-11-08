@@ -3,7 +3,7 @@
 import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { INVESTING_FROM, LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
-import { approvalShort, formatCents, formatDay, grantClause, matchWords } from "@/ui/grantWords";
+import { approvalShort, formatCents, formatDay, grantClause, matchWords, weekChangeWords } from "@/ui/grantWords";
 import { editDraft, type Draft } from "@/ui/rulesDraft";
 import { setLevelAction, signGrantAction, type LevelState, type SignState } from "../actions";
 
@@ -16,6 +16,11 @@ export interface GrantEditorProps {
   /** Rules active and not yet ended: changes apply to them. Otherwise every control feeds one "Sign and send". */
   inForce: boolean; inForceUntil: string | null;
   shops: Record<Level, string[]>; expiresAt: string; paypalSaved: boolean;
+  /**
+   * Decision 029: this week's allowance under the rules covering it (null: none do), what she has spent, next Monday,
+   * and the savings promise this week is judged on before the level's floor (the family's commitment).
+   */
+  week: { thisWeekCents: number | null; spentCents: number; startsOn: string; commitmentCents: number };
   /** Server-rendered sections placed in the layout: Shops (left, after the level), Stop + Zoe's link (right). */
   shopsSlot: ReactNode; sideSlot: ReactNode;
 }
@@ -30,7 +35,9 @@ export function GrantEditor(p: GrantEditorProps) {
     matchPct: MATCHES.includes(p.matchPct) ? p.matchPct : 100,
   };
   const [draft, setDraft] = useState<Draft>(signed);
-  const [confirm, setConfirm] = useState<Confirm>(null);
+  const [confirm, setConfirmState] = useState<Confirm>(null);
+  const [applyNow, setApplyNow] = useState(false); // "Change this week too", chosen after reading its consequence
+  const setConfirm = (c: Confirm) => { setConfirmState(c); setApplyNow(false); };
   const [signState, signAction, signing] = useActionState<SignState, FormData>(signGrantAction, {});
   const [levelState, levelAction, moving] = useActionState<LevelState, FormData>(setLevelAction, {});
   // In force, a level pick and a saving change never mix (editDraft): the preview is what the next button signs.
@@ -50,6 +57,34 @@ export function GrantEditor(p: GrantEditorProps) {
   });
   const signForm = p.inForce ? undefined : SIGN_FORM; // with no rules in force, every control belongs to the one sign form
   const def = LEVELS[level];
+  // A different weekly amount waits for next week unless she chooses this week too (decision 029).
+  const promisedCents = Math.max(p.week.commitmentCents, commitmentFloorCents(def.weeklyCents, floorPct)); // as week close judges it
+  const weekly = p.week.thisWeekCents !== null && p.week.thisWeekCents !== def.weeklyCents
+    ? weekChangeWords({
+      teenName: zoe, fromCents: p.week.thisWeekCents, toCents: def.weeklyCents, spentCents: p.week.spentCents, startsOn: new Date(p.week.startsOn),
+      promisedCents,
+    })
+    : null;
+  const weekChoice = (form?: string) => weekly && (
+    <div className="g-weekchoice" style={{ margin: "0 0 10px" }}>
+      {applyNow ? (
+        <>
+          <p style={{ fontWeight: 600 }}>{weekly.now}</p>
+          <input type="hidden" name="applyNow" value="1" form={form} />
+          {/* What she was shown: the server applies it only if this week is still exactly this (decision 029). */}
+          <input type="hidden" name="shownFromCents" value={p.week.thisWeekCents ?? ""} form={form} />
+          <input type="hidden" name="shownSpentCents" value={p.week.spentCents} form={form} />
+          <input type="hidden" name="shownPromisedCents" value={promisedCents} form={form} />
+          <button type="button" className="g-textlink" onClick={() => setApplyNow(false)}>Keep this week as it is</button>
+        </>
+      ) : (
+        <>
+          <p>{weekly.later}</p>
+          <button type="button" className="g-btn g-btn--small g-btn--ghost" style={{ marginTop: 6 }} onClick={() => setApplyNow(true)}>Change this week too</button>
+        </>
+      )}
+    </div>
+  );
 
   const levelPicker = (
     <fieldset className="g-fieldset">
@@ -109,11 +144,14 @@ export function GrantEditor(p: GrantEditorProps) {
                   ) : (
                     <div role="group" aria-label="Confirm level change" className="g-confirm">
                       <p style={{ marginBottom: 10, fontWeight: 600 }}>
-                        Move {zoe} to Level {level}? Her weekly money becomes {formatCents(def.weeklyCents)} and her shops follow the
-                        new level, keeping the shops you added or removed. It applies now.
+                        {weekly
+                          ? <>Move {zoe} to Level {level}? Her shops and approvals follow the new level now, keeping the shops you added or removed.</>
+                          : <>Move {zoe} to Level {level}? Her weekly money becomes {formatCents(def.weeklyCents)} and her shops follow the
+                            new level, keeping the shops you added or removed. It applies now.</>}
                       </p>
+                      {weekChoice()}
                       <div className="g-btnrow">
-                        <button type="submit" className="g-btn" disabled={moving} autoFocus>{moving ? "Changing…" : "Yes, move her"}</button>
+                        <button type="submit" className="g-btn" disabled={moving} autoFocus>{moving ? "Changing…" : applyNow ? "Yes, change this week too" : "Yes, move her"}</button>
                         <button type="button" className="g-btn g-btn--ghost" onClick={() => setConfirm(null)}>Go back</button>
                       </div>
                     </div>
@@ -188,8 +226,9 @@ export function GrantEditor(p: GrantEditorProps) {
               ) : (
                 <div style={{ marginTop: 14 }} role="group" aria-label="Confirm">
                   <p style={{ marginBottom: 10, fontWeight: 600 }}>Sign these rules for {zoe}? They start now and end {formatDay(expires)}.</p>
+                  {weekChoice(SIGN_FORM)}
                   <div className="g-btnrow">
-                    <button type="submit" form={SIGN_FORM} className="g-btn" disabled={signing} autoFocus>{signing ? "Signing…" : "Yes, sign"}</button>
+                    <button type="submit" form={SIGN_FORM} className="g-btn" disabled={signing} autoFocus>{signing ? "Signing…" : applyNow ? "Yes, change this week too" : "Yes, sign"}</button>
                     <button type="button" className="g-btn g-btn--ghost" onClick={() => setConfirm(null)}>Go back</button>
                   </div>
                 </div>
