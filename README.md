@@ -16,6 +16,16 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 **Live app:** https://tether-five-beta.vercel.app (sandbox only, no real money moves)
 **Demo video:** _link coming with the submission_
 
+## Tether: Delegated spending, built for trust
+
+AI shopping is making it easier for software to act on a consumer's behalf. But what happens when the shopper is a teenager and the person who controls the money is a parent?
+
+Tether demonstrates one answer.
+
+A parent establishes spending rules. A teenager shops with an AI agent. Deterministic software evaluates the proposed purchase, and PayPal processes authorized payments with a record of the applicable rules and permission.
+
+The result is an approach to supervised family commerce that could extend PayPal's role from payment processing into managing trusted, delegated purchasing experiences.
+
 ## The problem
 
 | Who | One cited number | Tether's answer |
@@ -128,6 +138,21 @@ someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpa
 | **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls: market headlines, or only what's on Zoe's list and the companies inside her funds. Fund holdings 40 a family a day, headlines 20 a day and at most two per question. |
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
+
+## Why it matters for PayPal
+
+Tether demonstrates how PayPal could let one person make purchasing decisions under spending authority granted by another.
+
+PayPal is already building for AI shoppers. Its [agentic commerce services](https://developer.paypal.com/agentic-commerce-services/about) help customers find products, manage carts and complete purchases through AI assistants, and [Agent Ready](https://developer.paypal.com/agent-ready/overview) supports "both supervised and automatic shopping scenarios" using delegated payment tokens. Tether works on the question those services leave open: what happens when the person shopping isn't the person whose money it is?
+
+- **A permission layer for agent-assisted commerce.** An agent proposes; the payer's signed rules decide. Every payment carries the rules version and a single-use, cart-bound permission slip, so anyone can trace why it was allowed. Families are the first case. The same model fits other delegated purchases, such as an employee buying on a company account.
+- **More use of the parent's PayPal.** Supervised purchases run on the wallet the parent already has: no separate teen account, no card handed over.
+- **A record both sides can trust.** The parent sees why each payment was allowed; the teen sees what's left. Neither has to take the other's word for it.
+
+What PayPal would need to settle before real money moves:
+- **Who may start a payment.** PayPal accounts are for adults, so Tether keeps the account in the parent's name. PayPal would still need to approve a teen initiating purchases on it.
+- **Real merchant checkout and refunds.** PayPal's agentic commerce services are by application and onboarding today, not an open checkout API; the sandbox pays one stand-in merchant.
+- **How savings is shown.** Tether's savings is a promise the parent makes, never money set aside, and every screen has to say so.
 
 ## How Channel3 is used
 
