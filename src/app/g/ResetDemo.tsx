@@ -1,5 +1,6 @@
 "use client";
 
+import { FamilyField } from "@/ui/FamilyField";
 import { useState } from "react";
 import { PendingButton } from "@/ui/PendingButton";
 import { resetDemoAction } from "./actions";
@@ -16,6 +17,7 @@ export function ResetDemo() {
   }
   return (
     <form action={resetDemoAction} style={{ marginTop: 12 }} role="group" aria-label="Confirm demo reset">
+      <FamilyField />
       <p style={{ marginBottom: 10, fontWeight: 600 }}>
         Reset the demo? The clock, rules and requests go back to how they were set up. PayPal charges made since then stay
         on the record but stop counting toward this week.

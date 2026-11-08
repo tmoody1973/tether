@@ -13,6 +13,10 @@
 .s-form { display: grid; gap: 6px; }
 .s-form .g-input { margin-bottom: 6px; }
 .s-form .g-btn { margin-top: 10px; }
+/* one teen per row (decision 028); later rows sit under a hairline with their Remove button */
+.s-teenrow { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 6px; }
+.s-teenrow + .s-teenrow { border-top: 1px solid var(--g-line); padding-top: 12px; margin-top: 6px; }
+.s-form .s-remove, .s-form .s-addrow { margin-top: 0; justify-self: start; }
 .s-check { display: flex; gap: 10px; align-items: center; font-weight: 600; margin-top: 6px; }
 .s-check input { width: 20px; height: 20px; accent-color: var(--g-accent, #0F6E5C); }
 .s-actions { margin: 16px 0 10px; }

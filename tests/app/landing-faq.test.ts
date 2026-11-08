@@ -48,7 +48,11 @@ describe("landing FAQ", () => {
     expect(text).toContain("7 days after it starts, this demo removes the family");
     const start = src("src/flows/start.ts");
     expect(start).toContain('guardianName: "Removed", teenName: "Removed"');
-    expect(start).toContain("paypalSub: null, paypalPayerId: null, paypalEmail: null, parentGivenName: null");
+    // Every parent's PayPal details are wiped; only the published shared sandbox account keeps its id and email (028,
+    // review MEDIUM-1), which are nobody's personal details. The FAQ's "your PayPal details are wiped" stays true.
+    expect(start).toContain("parentGivenName: null, paypalPayerId: null,");
+    expect(start).toContain("...(keep ? { paypalEmail: sharedEmail } : { paypalSub: null, paypalEmail: null }),");
+    expect(start).toContain("const keep = email?.toLowerCase() === sharedEmail;");
     expect(src("src/flows/invest.ts")).toContain("Fake demo identities: this is a sandbox, there is no real KYC data anywhere.");
   });
 });

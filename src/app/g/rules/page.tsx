@@ -6,15 +6,12 @@ import { getDb } from "@/db/client";
 import { getFamily, getLatestGrant } from "@/db/repo";
 import { nextMonday, shopsForLevel, thisWeeksCents } from "@/flows/grant";
 import { asOf } from "@/engine/ladder";
-import { guardianHome } from "@/flows/home";
+import { guardianHome, needsCount } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
 import type { Level } from "@/engine/ladder";
 import { formatDay, stoppedWords, weekChangeWords } from "@/ui/grantWords";
 import { RetirementNotice } from "@/ui/RetirementNotice";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
-import { appBaseUrl } from "../connect-paypal/setup";
-import { ResetLink } from "../ResetLink";
-import { TeenLink } from "../TeenLink";
 import { GrantEditor } from "./GrantEditor";
 import { StopRules } from "./RulesControls";
 import { ShopsSection } from "./ShopsSection";
@@ -34,7 +31,6 @@ function flash(sp: Record<string, string | string[] | undefined>, zoe: string): 
   const stopped = typeof sp.stopped === "string" ? stoppedWords(sp.stopped, zoe) : null; // Stop now lands on /g/statement
   if (stopped) return stopped;
   if (typeof sp.level === "string" && /^[123]$/.test(sp.level)) return { text: `${zoe} is now at Level ${sp.level}. Your reason is on the record.` };
-  if (sp.link === "reset") return { text: "The old link has stopped working. Send the new one." };
   return null;
 }
 
@@ -62,7 +58,7 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
     : stopped ? "Stopped. Sign new rules below when you're ready." : `Not in force. Sign them below so ${zoe} can spend.`;
 
   return (
-    <GuardianShell active="rules" teenName={zoe} needs={h.needsYou.length}>
+    <GuardianShell active="rules" teenName={zoe} needs={needsCount(h)} familyId={familyId}>
       <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}&apos;s rules</h1>
         {cur && <span className="g-chip">Version {cur.version}</span>}
@@ -86,6 +82,7 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
         week={{ thisWeekCents: thisWeek, spentCents: h.spentThisWeekCents, startsOn: startsOn.toISOString(), commitmentCents: fam?.commitmentCents ?? 0 }}
         shopsSlot={<ShopsSection teenName={zoe} inForce={shops.inForce} shops={shops.shops} />}
         sideSlot={
+          // The teen's link and its reset moved to Settings (decision 028).
           <>
             <section className="g-card g-section g-stopcard" aria-labelledby="stop-h">
               <div className="g-section__head"><h2 id="stop-h">Stop {zoe}&apos;s rules</h2></div>
@@ -97,11 +94,6 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
                   <StopRules teenName={zoe} demo={h.isDemo} />
                 </>
               )}
-            </section>
-            <section className="g-card" aria-labelledby="link-h">
-              <h2 className="g-label" id="link-h" style={{ display: "block", marginBottom: 8 }}>{zoe}&apos;s way in</h2>
-              <TeenLink url={`${appBaseUrl()}/t/${h.teenToken}`} teenName={zoe} />
-              <ResetLink teenName={zoe} />
             </section>
           </>
         }

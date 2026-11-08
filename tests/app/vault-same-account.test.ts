@@ -30,7 +30,7 @@ async function family(identity: Partial<repo.Family>) {
   return f;
 }
 const back = (familyId: string, setupId: string) => paypalReturn(new Request(`http://localhost/g/connect-paypal/return?approval_token_id=${setupId}`, {
-  headers: { cookie: `${GUARDIAN_COOKIE}=${encodeURIComponent(signGuardianCookie(familyId, new Date()))}; tether_setup=${setupId}` },
+  headers: { cookie: `${GUARDIAN_COOKIE}=${encodeURIComponent(signGuardianCookie(familyId, new Date()))}; tether_setup=${encodeURIComponent(`${familyId}|${setupId}`)}` },
 }));
 const outcome = (res: Response) => new URL(res.headers.get("location")!).searchParams.get("paypal");
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { FamilyField } from "@/ui/FamilyField";
 import { useState } from "react";
 import { resetTeenLinkAction } from "./actions";
 
@@ -18,6 +19,7 @@ export function ResetLink({ teenName }: { teenName: string }) {
   }
   return (
     <form action={resetTeenLinkAction} style={{ marginTop: 12 }} role="group" aria-label="Confirm reset">
+      <FamilyField />
       <p style={{ marginBottom: 10, fontWeight: 600 }}>
         Reset {teenName}&apos;s link? Her current link stops working now, and you&apos;ll need to send her the new one.
       </p>

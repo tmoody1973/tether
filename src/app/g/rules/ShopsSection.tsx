@@ -1,5 +1,6 @@
 "use client";
 
+import { FamilyField } from "@/ui/FamilyField";
 import { useActionState, useState } from "react";
 import type { FoundSite, ListedShop } from "@/flows/shops";
 import { SHOP_QUERY_MAX, matchingProducts, sellsTooSlow } from "@/ui/grantWords";
@@ -54,6 +55,7 @@ export function ShopsSection({ teenName: zoe, inForce, shops }: ShopsSectionProp
       {confirm && <Confirm zoe={zoe} pending={confirm} inForce={inForce} busy={changing} action={submitChange} onBack={() => setConfirm(null)} />}
 
       <form action={search} className="g-stack" style={{ gap: 8, marginTop: 6 }} role="search">
+        <FamilyField />
         <label htmlFor="shop-q" className="g-def__k">Add a shop</label>
         <div className="g-search">
           <input id="shop-q" name="q" type="search" className="g-input" placeholder="What it sells or its name, like sneakers or Lego"
@@ -108,6 +110,7 @@ function Confirm({ zoe, pending, inForce, busy, action, onBack }: {
   const body = add ? `She can buy there under her usual rules.${early}${later}` : `She won't be able to buy there until you add it back.${later}`;
   return (
     <form action={action} className="g-confirm" role="group" aria-label="Confirm">
+      <FamilyField />
       <input type="hidden" name="op" value={pending.op} />
       {add
         ? <><input type="hidden" name="domain" value={pending.site.domain} /><input type="hidden" name="name" value={pending.site.name} /></>

@@ -1,5 +1,6 @@
 "use client";
 
+import { FamilyField } from "@/ui/FamilyField";
 import { useState } from "react";
 import { STOP_CONFIRM, STOP_CONFIRM_DEMO } from "@/ui/grantWords";
 import { revokeAction } from "../actions";
@@ -16,6 +17,7 @@ export function StopRules({ teenName, demo }: { teenName: string; demo: boolean 
   }
   return (
     <form action={revokeAction} role="group" aria-label="Confirm stop">
+      <FamilyField />
       <p style={{ marginBottom: 6, fontWeight: 600 }}>Stop {teenName}&apos;s rules now?</p>
       <p style={{ marginBottom: 10 }}>{demo ? STOP_CONFIRM_DEMO : STOP_CONFIRM}</p>
       <div className="g-btnrow">

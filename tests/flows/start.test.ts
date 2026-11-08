@@ -9,7 +9,7 @@ import * as t from "@/db/schema";
 import type { PaypalHttp } from "@/adapters/paypal/http";
 import type { AlpacaBroker } from "@/adapters/alpaca/broker";
 import { GUARDIAN_COOKIE, verifyGuardianCookie } from "@/auth/guardian";
-import { BROWSER_FAMILY_COOKIE, START_COOKIE, STARTED_COOKIE, openBrowserFamily, sealStart, sealStarted } from "@/auth/start";
+import { BROWSER_FAMILY_COOKIE, START_COOKIE, STARTED_COOKIE, openBrowserFamilies, sealStart, sealStarted } from "@/auth/start";
 import { POST as create } from "@/app/g/start/teen/create/route";
 import { ALPACA_ACCOUNTS_PER_DAY, AccountCapError, NEW_FAMILIES_PER_DAY, RETIRE_AFTER_MS, parseTeenForm, retireStaleFamilies } from "@/flows/start";
 import { DAILY_CAPS, takeDaily } from "@/flows/usage";
@@ -34,10 +34,12 @@ const valueOf = (res: Response, name: string) => { const c = cookieOf(res, name)
 const where = (res: Response) => { const u = new URL(res.headers.get("location")!, "http://localhost"); return `${u.pathname}${u.search}`; };
 const form = (v: Record<string, string>) => { const f = new FormData(); for (const [k, x] of Object.entries(v)) f.set(k, x); return f; };
 
+let parents = 0;
 const AMARA = { sub: "S-amara", givenName: "Amara", email: "amara@example.com", payerId: "P-AMARA" };
 function post(fields: Record<string, string>, cookies: { start?: string | null; started?: string } = {}) {
   const jar: string[] = [];
-  const start = cookies.start === undefined ? sealStart(AMARA, new Date()) : cookies.start;
+  // Each post is its own parent by default: one PayPal can't have two teens with one name (028, LOW-5) or pass 5 a day.
+  const start = cookies.start === undefined ? sealStart({ ...AMARA, sub: `S-amara-${++parents}` }, new Date()) : cookies.start;
   if (start) jar.push(`${START_COOKIE}=${encodeURIComponent(start)}`);
   if (cookies.started) jar.push(`${STARTED_COOKIE}=${encodeURIComponent(cookies.started)}`);
   return create(new Request("http://localhost/g/start/teen/create", {
@@ -73,7 +75,7 @@ describe("POST /g/start/teen/create", () => {
     const f = (await repo.getFamily(testDb, familyId))!;
     expect(f).toMatchObject({
       teenName: "Zoe", guardianName: "Amara", parentGivenName: "Amara", name: "Amara & Zoe",
-      paypalSub: "S-amara", paypalEmail: "amara@example.com", paypalPayerId: "P-AMARA", demo: null, teenLinkSentAt: null,
+      paypalSub: expect.stringMatching(/^S-amara-\d+$/), paypalEmail: "amara@example.com", paypalPayerId: "P-AMARA", demo: null, teenLinkSentAt: null,
     });
     expect(f.teenToken).toMatch(/^[A-Za-z0-9_-]{32,64}$/);
     expect(await repo.getLatestGrant(testDb, familyId)).toBeNull(); // no rules until she signs (Level 1)
@@ -82,7 +84,7 @@ describe("POST /g/start/teen/create", () => {
     expect(cookieOf(res, STARTED_COOKIE)).toMatch(/HttpOnly/i);
     // "family in this browser": how the shared sandbox login finds this family again, here only (decision 026, H1)
     expect(cookieOf(res, BROWSER_FAMILY_COOKIE)).toMatch(/HttpOnly/i);
-    expect(openBrowserFamily(valueOf(res, BROWSER_FAMILY_COOKIE)!, new Date())).toBe(familyId);
+    expect(openBrowserFamilies(valueOf(res, BROWSER_FAMILY_COOKIE)!, new Date())).toEqual([familyId]);
   });
 
   it("M1: a starting cookie makes one family; replaying it is refused calmly", async () => {

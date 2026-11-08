@@ -30,7 +30,7 @@ async function StatementView({ searchParams }: { searchParams: Promise<Record<st
   const note = typeof how === "string" ? stoppedWords(how, zoe) : null;
 
   return (
-    <GuardianShell active={null} teenName={zoe}>
+    <GuardianShell active={null} teenName={zoe} familyId={familyId}>
       <div className="g-head g-head--base">
         <h1 className="g-title">Statement for {zoe}</h1>
         <span className="g-sub">What Tether has recorded as promised to {zoe}, as of {formatDay(s.now)}. Tether tracks it; the money isn&apos;t set aside.</span>

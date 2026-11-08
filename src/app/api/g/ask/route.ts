@@ -9,6 +9,8 @@ import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 import { pageHoldings } from "@/app/g/flowDeps";
 
 const MAX_QUESTION = 500;
+/** Decision 028 (re-review): asked from a page drawn for a teen she has since switched away from in another tab. */
+export const STALE_ASK = "You switched teens in another tab; nothing was asked.";
 
 // POST handlers are request-time; no `export const dynamic` (build error with cacheComponents).
 export async function POST(req: Request): Promise<Response> {
@@ -23,13 +25,16 @@ export async function POST(req: Request): Promise<Response> {
   if (!req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
     return Response.json({ error: "content-type must be application/json" }, { status: 415 });
   }
-  const body = (await req.json().catch(() => null)) as { question?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { question?: unknown; familyId?: unknown } | null;
   const question = typeof body?.question === "string" ? body.question.trim() : "";
   if (!question || question.length > MAX_QUESTION) {
     return Response.json({ error: `question must be 1-${MAX_QUESTION} characters` }, { status: 400 });
   }
   // Review M2: a retired family's signed cookie outlives it by up to 7 days; it gets nothing paid for.
   if (!(await isLiveFamily(familyId).catch(() => false))) return Response.json({ error: "sign-in required" }, { status: 401 });
+  // The page names the teen it was drawn for: another teen's page (she switched in another tab) asks nothing, so no model
+  // call and no quota, and no answer about one teen lands on the other's page.
+  if (body?.familyId !== familyId) return Response.json({ answer: STALE_ASK }, { status: 409 });
   try {
     const db = await getDb();
     const { ANTHROPIC_API_KEY: apiKey, PAYPAL_CLIENT_ID: clientId, PAYPAL_CLIENT_SECRET: clientSecret } = process.env;

@@ -6,7 +6,7 @@ const enter = (page: Page, key: string = E2E.guardianKey) => page.goto(`/g/enter
 const nav = (page: Page) => page.getByRole("navigation", { name: "Main" });
 
 test("no cookie ⇒ neutral page, no data", async ({ page }) => {
-  for (const path of ["/g", "/g/rules", "/g/activity", "/g/grant", "/g/record", "/g/review", "/g/invest",
+  for (const path of ["/g", "/g/rules", "/g/activity", "/g/grant", "/g/record", "/g/review", "/g/invest", "/g/savings", "/g/settings",
     `/g/requests/${E2E.approvalId}`, "/g/enter/not-a-real-key"]) {
     await page.goto(path);
     await expect(page.getByText("Open your Tether link to continue.")).toBeVisible();
@@ -65,23 +65,25 @@ test("home shows this week, what needs you, recent payments and her rules at a g
   await expect(glance).toContainText(/Best Buy and Target|Target and Best Buy/);
   await expect(glance.getByRole("link", { name: "Change her rules" })).toHaveAttribute("href", "/g/rules");
   await expect(page.getByRole("region", { name: "Ask about Zoe's month" }).getByRole("button", { name: "What did Zoe buy this month?" })).toBeVisible();
-  // Zoe's link moved to her rules; demo controls are folded away.
+  // Zoe's link lives in Settings; demo controls are folded away.
   await expect(page.getByRole("button", { name: "Send Zoe her link" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Advance to end of month" })).toBeHidden();
   await page.getByText("Demo controls").click();
   for (const b of ["Advance 1 day", "Advance to end of week", "Advance to end of month"]) await expect(page.getByRole("button", { name: b })).toBeVisible();
 });
 
-test("home labels the savings goal with its name", async ({ page }) => {
+test("home labels the amount promised and the goal by name, never as money held", async ({ page }) => {
   await enter(page, E2E.grantKey);
-  const goal = page.getByRole("region", { name: "Zoe's savings goal" });
-  await expect(goal).toContainText("Space One Pro headphones");
-  await expect(goal).toContainText("$0.00 of $169.99 saved");
+  const goal = page.getByRole("region", { name: "Promised to Zoe" });
+  await expect(goal).toContainText("Zoe's goal: Space One Pro headphones");
+  await expect(goal).toContainText("$0.00 of $169.99 goal");
+  await expect(goal).toContainText("This is your recorded commitment, not a separate PayPal balance. Tether has not reserved or transferred this money.");
+  await expect(page.getByRole("main")).not.toContainText(/stays in your PayPal|withdraw/i);
 });
 
-test("Zoe's link: send and reset live on her rules page", async ({ page }) => {
+test("Zoe's link: send and reset live in Settings", async ({ page }) => {
   await enter(page);
-  await page.goto("/g/rules");
+  await page.goto("/g/settings");
   await page.getByRole("button", { name: "Reset Zoe's link" }).click(); // asks first
   await expect(page.getByRole("button", { name: "Yes, reset" })).toBeVisible();
   await page.getByRole("button", { name: "Keep it" }).click();

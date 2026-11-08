@@ -14,7 +14,7 @@ const websites = vi.fn(async (q: string) => [{ domain: `${q}.com`, name: q }]);
 const shopsSelling = vi.fn(async (): Promise<{ domain: string; products: number }[]> => []);
 const channel3 = { search: async () => [], lookup: async () => ({ kind: "not_a_product" as const }), retrieve: async () => null, websites, shopsSelling };
 vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: async () => testDb }));
-vi.mock("@/auth/guardianSession", () => ({ guardianFamilyId: async () => session }));
+vi.mock("@/auth/guardianSession", async (orig) => ({ ...(await orig<typeof import("@/auth/guardianSession")>()), guardianFamilyId: async () => session }));
 vi.mock("next/cache", () => ({ refresh: vi.fn() }));
 vi.mock("@/app/g/flowDeps", () => ({
   paymentDeps: (db: Db) => ({ db, now: clockFor(db), channel3 }),
@@ -35,7 +35,8 @@ beforeAll(async () => {
 });
 beforeEach(() => { session = null; websites.mockClear(); shopsSelling.mockClear(); });
 
-const form = (fields: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(fields)) f.set(k, v); return f; };
+// Every guardian form names the teen it was drawn for (028, HIGH-1); `familyId` defaults to this test's family.
+const form = (fields: Record<string, string>) => { const f = new FormData(); f.set("familyId", fam.id); for (const [k, v] of Object.entries(fields)) f.set(k, v); return f; };
 const payees = async () => ((await repo.getActiveGrant(testDb, fam.id))!.body.constraints
   .find((c) => c.type === "payment.allowed_payees") as { merchantIds: string[] }).merchantIds;
 

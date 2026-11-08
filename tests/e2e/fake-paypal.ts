@@ -99,13 +99,16 @@ createServer((req, res) => {
     };
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
-    // Log in with PayPal: /connect "signs in" at once and sends the browser back with a code; each login is a new
-    // PayPal user (the code names it), so a re-run never finds an earlier run's family.
+    // Log in with PayPal: /connect "signs in" at once and sends the browser back with a code. The PayPal user is per
+    // browser (a cookie this fake sets), so logging in again in the same test is the same parent (decision 028: add
+    // another teen), while every test's fresh browser context is a new parent who never finds another test's family.
     if (req.method === "GET" && path === "/connect") {
+      const known = /(?:^|;\s*)e2e_paypal_user=(\d+)/.exec(String(req.headers.cookie ?? ""))?.[1];
+      const user = known ?? String(++n);
       const back = new URL(url.searchParams.get("redirect_uri") ?? "http://localhost/");
-      back.searchParams.set("code", `E2E-LOGIN-${++n}`);
+      back.searchParams.set("code", `E2E-LOGIN-${user}.${++n}`);
       back.searchParams.set("state", url.searchParams.get("state") ?? "");
-      res.writeHead(302, { location: back.toString() });
+      res.writeHead(302, { location: back.toString(), "set-cookie": `e2e_paypal_user=${user}; Path=/connect; HttpOnly; SameSite=Lax` });
       return res.end();
     }
     if (req.method === "POST" && path === "/v1/oauth2/token") {
@@ -114,7 +117,7 @@ createServer((req, res) => {
       return send(200, { access_token: "e2e-fake", expires_in: 3600 });
     }
     if (req.method === "GET" && path === "/v1/identity/oauth2/userinfo") {
-      const who = String(req.headers.authorization ?? "").replace(/^Bearer login:/, "");
+      const who = String(req.headers.authorization ?? "").replace(/^Bearer login:/, "").replace(/\.\d+$/, ""); // the user, not this login
       return send(200, { user_id: `e2e-paypal-user-${who}`, given_name: "Amara", name: "Amara Okafor", payer_id: "E2EPAYER1", verified_account: "true", emails: [{ value: "amara@e2e.example", primary: true }] });
     }
     // Saving a wallet (vault v3): a setup token whose approve link comes straight back, then a payment token that says

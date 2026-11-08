@@ -45,7 +45,7 @@ const usedOf = async (kind: UsageKind) => {
 };
 const form = (fields: Record<string, string>) => { const f = new FormData(); f.set("token", "caps-teen-token"); for (const [k, v] of Object.entries(fields)) f.set(k, v); return f; };
 const askReq = (q: string) => new Request("http://localhost/api/g/ask", {
-  method: "POST", body: JSON.stringify({ question: q }),
+  method: "POST", body: JSON.stringify({ question: q, familyId: fam.id }),
   headers: { "content-type": "application/json", cookie: `${GUARDIAN_COOKIE}=${encodeURIComponent(signGuardianCookie(fam.id, new Date()))}` },
 });
 

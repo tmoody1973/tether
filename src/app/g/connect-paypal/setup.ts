@@ -1,5 +1,11 @@
-// The setup token this browser started, so the return step only accepts PayPal approvals Amara began here.
+// The setup token this browser started, so the return step only accepts PayPal approvals Amara began here, and the
+// teen she started it for (review HIGH-1): `familyId|setupTokenId`. The return step saves only to that teen.
 export const SETUP_COOKIE = "tether_setup";
+export const setupCookieValue = (familyId: string, setupId: string) => `${familyId}|${setupId}`;
+export function openSetupCookie(value: string | null): { familyId: string; setupId: string } | null {
+  const [familyId, setupId, extra] = (value ?? "").split("|");
+  return familyId && setupId && extra === undefined ? { familyId, setupId } : null;
+}
 export const SETUP_COOKIE_PATH = "/g/connect-paypal";
 
 export const setupCookieOptions = () => ({

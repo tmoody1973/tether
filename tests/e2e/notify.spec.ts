@@ -15,7 +15,7 @@ window.OneSignalDeferred = { push: (fn) => fn(OneSignal) };
 queued.forEach((fn) => fn(OneSignal));
 `;
 
-test("Amara's Home offers notifications; OneSignal loads only on her page, only when she turns them on", async ({ page, context }) => {
+test("Amara's Settings offers notifications; OneSignal loads only on her page, only when she turns them on", async ({ page, context }) => {
   const sdk: string[] = [];
   await context.route("https://cdn.onesignal.com/**", (route) => {
     sdk.push(route.request().url());
@@ -30,9 +30,10 @@ test("Amara's Home offers notifications; OneSignal loads only on her page, only 
   await expect(page.locator('script[src*="onesignal"]')).toHaveCount(0);
   expect(sdk).toEqual([]);
 
-  // Amara's Home: the card. Headless Chromium starts with notifications denied, so it says how to allow them, and
+  // Amara's Settings: the card (decision 028 moved it off Home). Headless Chromium starts with notifications denied, so it says how to allow them, and
   // OneSignal is not loaded (it is only ever loaded once the browser allows notifications or she taps the button).
   await page.goto(`/g/enter/${E2E.guardianKey}`);
+  await page.goto("/g/settings");
   await expect(page.getByRole("heading", { name: "Get a buzz when Zoe asks." })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Notifications are blocked for this site" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Turn on notifications" })).toHaveCount(0);
@@ -60,6 +61,27 @@ test("Amara's Home offers notifications; OneSignal loads only on her page, only 
   });
   expect(os.login).toMatch(/^[0-9a-f]{64}$/); // the family's opaque alias, not its id
   expect(os.optedIn).toBe(true);
+});
+
+// Decision 028, review LOW-2: the card moved to Settings, so Home keeps an already-on device on the family's current
+// alias without a word or a prompt (pushes for an ordinary parent now go to one alias for all her teens).
+test("Home quietly keeps a device that already has notifications on, on the current alias; never prompts", async ({ page, context }) => {
+  const sdk: string[] = [];
+  await context.route("https://cdn.onesignal.com/**", (route) => {
+    sdk.push(route.request().url());
+    return route.fulfill({ contentType: "application/javascript", body: SDK_STUB.replace("optedIn: false", "optedIn: true") });
+  });
+  let asked = 0;
+  await context.exposeFunction("__asked", () => { asked++; });
+  await context.addInitScript(() => {
+    Object.defineProperty(Notification, "permission", { get: () => "granted" });
+    Notification.requestPermission = async () => { (window as unknown as { __asked: () => void }).__asked(); return "granted"; };
+  });
+  await page.goto(`/g/enter/${E2E.guardianKey}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Zoe" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __os?: { login?: string } }).__os?.login)).toMatch(/^[0-9a-f]{64}$/);
+  await expect(page.getByRole("heading", { name: "Get a buzz when Zoe asks." })).toHaveCount(0); // no card on Home
+  expect(asked).toBe(0);
 });
 
 test("Tether's root worker hosts OneSignal, so a tapped push can navigate the open app", async ({ request }) => {

@@ -1,6 +1,7 @@
+import { FamilyField } from "@/ui/FamilyField";
+import { connectPaypalHref } from "@/ui/connectPaypalHref";
 import { Suspense } from "react";
 import Link from "next/link";
-import { pushAlias } from "@/auth/guardian";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
@@ -8,7 +9,7 @@ import { getLatestGrant, recentReceipts } from "@/db/repo";
 import { LEVELS } from "@/engine/ladder";
 import { shopsForLevel } from "@/flows/grant";
 import { commitmentFloorCents } from "@/engine/ladder";
-import { guardianHome, type NeedsYou } from "@/flows/home";
+import { guardianHome, needsCount, type NeedsYou } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
 import { weekEnd } from "@/ui/activityWords";
 import { teenMessage } from "@/flows/approvals";
@@ -20,9 +21,11 @@ import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
 import { advanceClockAction } from "./actions";
 import { AskBox } from "./AskBox";
-import { NotifyCard } from "./NotifyCard";
 import { PaymentRow } from "./PaymentRow";
-import { ResetDemo } from "./ResetDemo";
+import { PromisedCard } from "./PromisedCard";
+import { RetirementNotice } from "@/ui/RetirementNotice";
+import { PushAliasRefresh } from "./NotifyCard";
+import { pushAliasFor } from "@/flows/notify";
 import { FirstRun, WayBackIn } from "./FirstRun";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
@@ -42,6 +45,8 @@ const paypalRemoved = (guardian: string) =>
 
 function flash(sp: Search, names: { teen: string; guardian: string }, paid: Parameters<typeof approveWords>[2]): Flash | null {
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
+  // Review HIGH-1: a form or Save-your-PayPal link drawn for another teen, from before she switched in another tab.
+  if (one("stale") === "1") return { text: `That page was for a teen you've since switched away from, so nothing changed. You're on ${names.teen} now.`, warn: true };
   const signed = one("signed");
   if (signed && /^\d+$/.test(signed)) return { text: `Signed. Rules v${signed} are in force now.` };
   const paypal = one("paypal");
@@ -49,7 +54,13 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "failed") return { text: "PayPal didn't finish saving, so nothing was saved. Try again.", warn: true };
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
   if (paypal === "different") return { text: "That PayPal is a different account from the one you logged in with, so nothing was saved.", warn: true, connectPaypal: true };
-  if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.` };
+  const teens = Number(one("teens") ?? 1);
+  const others = teens > 1 && teens <= 5 ? ` Your other teens are a tap away in the teen switcher at the top.` : "";
+  if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.${others}` };
+  if (one("switched") === "1") return { text: `Now showing ${names.teen}.` };
+  if (one("started") === "added") {
+    return { text: `${teens > 1 && teens <= 5 ? `${teens} teens are added, starting with ${names.teen}.` : `${names.teen} is added.`} Three steps and ${names.teen} can start. Switch teens at the top.` };
+  }
   const demo = one("demo");
   if (demo === "reset" || demo === "reset-paypal") {
     const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
@@ -79,14 +90,14 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   const leftCents = Math.max(0, h.weeklyCents - h.spentThisWeekCents);
   // Decision 026: a family started with PayPal sees its first-run checklist instead of "Needs you" until all three are done.
   const firstRun = h.firstRun?.some((s) => !s.done) ? h.firstRun : null;
-  const needs = firstRun ? firstRun.filter((s) => !s.done).length : h.needsYou.length;
+  const needs = needsCount(h);
   const rulesLine = firstRun ? await firstRulesLine(db, familyId, now) : "";
   // Review L9: a family started with PayPal could be anyone's teen, so its Home says the teen's name, never "her".
   // The shared demo family (and seeded ones) keep today's wording.
   const w = teenWords(zoe, h.firstRun !== null);
 
   return (
-    <GuardianShell active="home" teenName={zoe} needs={needs}>
+    <GuardianShell active="home" teenName={zoe} needs={needs} familyId={familyId}>
       <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}</h1>
         {h.level && <span className="g-chip g-chip--accent">Level {h.level}</span>}
@@ -94,17 +105,17 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
       </div>
       {note && (
         <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">
-          {note.text}{note.connectPaypal && <> <a className="g-textlink" href="/g/connect-paypal">Save your PayPal</a></>}
+          {note.text}{note.connectPaypal && <> <a className="g-textlink" href={connectPaypalHref(familyId)}>Save your PayPal</a></>}
         </p>
       )}
-      {/* Push is on only where OneSignal is set up; the alias is this family's opaque external id, never its raw id. */}
-      {process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID && <NotifyCard appId={process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID} alias={pushAlias(familyId)} teenName={zoe} />}
 
+      <RetirementNotice removesAt={h.removesAt} statementLink />
+      {process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID && <PushAliasRefresh appId={process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID} alias={await pushAliasFor(db, familyId)} />}
       <div className="g-two g-home">
         <div className="g-stack">
           {firstRun ? (
             <>
-              <FirstRun steps={firstRun} teen={zoe} rulesLine={rulesLine} />
+              <FirstRun steps={firstRun} teen={zoe} rulesLine={rulesLine} familyId={familyId} />
               <WayBackIn />
             </>
           ) : h.needsYou.length === 0 ? (
@@ -116,7 +127,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <section className="g-card g-home__needs" aria-labelledby="needs-h">
               <h2 className="g-label" id="needs-h">Needs you</h2>
               <ul className="g-needs">
-                {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} item={n} zoe={zoe} guardian={h.guardianName} hadRules={h.grantVersion !== null} w={w} />)}
+                {h.needsYou.map((n) => <NeedsYouRow key={n.kind === "approval" ? n.id : n.kind} familyId={familyId} item={n} zoe={zoe} guardian={h.guardianName} hadRules={h.grantVersion !== null} w={w} />)}
               </ul>
             </section>
           )}
@@ -143,16 +154,9 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <div className="g-muted"><Money cents={h.spentThisWeekCents} /> spent · week ends {formatDay(weekEnd(now))}</div>
           </section>
 
-          <section className="g-card" aria-labelledby="saved-h">
-            <h2 className="g-label" id="saved-h">{h.goal ? `${zoe}'s savings goal` : `${zoe}'s savings`}</h2>
-            {h.goal && <div className="g-goal__name">{h.goal.title}</div>}
-            <div className="g-figure" style={{ fontSize: 19 }}>
-              <Money cents={h.savingsCents} /> <small>{h.goal ? <>of <Money cents={h.goal.targetCents} /> saved</> : "saved"}</small>
-            </div>
-            {h.goal && <Bar goal value={h.savingsCents} max={h.goal.targetCents}
-              label={`${formatCents(h.savingsCents)} saved of ${formatCents(h.goal.targetCents)}`} />}
-            <div className="g-card__sub">What {zoe} didn&apos;t spend. It stays in your PayPal; Tether keeps count.</div>
-          </section>
+          <PromisedCard teen={zoe} cents={h.savingsCents} goal={h.goal}>
+            <p className="g-more"><Link className="g-textlink" href="/g/savings">See {zoe}&apos;s savings</Link></p>
+          </PromisedCard>
 
           <section className="g-card" aria-labelledby="glance-h">
             <h2 className="g-label" id="glance-h">{w.Her} rules at a glance</h2>
@@ -173,6 +177,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
               <Seam kinds={["clock"]}>Demo date: <b>{formatDay(h.now)}</b>.</Seam>
             </div>
             <form action={advanceClockAction} className="g-btnrow">
+              <FamilyField />
               {([["day", "Advance 1 day"], ["week", "Advance 1 week"], ["endOfWeek", "Advance to end of week"], ["endOfMonth", "Advance to end of month"]] as const)
                 .map(([to, label]) => <PendingButton key={to} name="to" value={to} label={label} pendingLabel="Moving the clock…" className="g-btn g-btn--ghost" />)}
             </form>
@@ -184,7 +189,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
                 Your family&apos;s own clock: moving it changes nothing for anyone else. This family is removed on <b>{formatDay(h.removesAt)}</b>, 7 days after you made it.
               </p>
             )}
-            {h.isDemo && <ResetDemo />}
+            {h.isDemo && <p className="g-note" style={{ marginTop: 8 }}>Reset demo is in <Link className="g-textlink" href="/g/settings">Settings</Link>.</p>}
           </details>
         </div>
       </div>
@@ -211,8 +216,8 @@ function teenWords(teen: string, named: boolean) {
   return named ? { her: `${teen}'s`, Her: `${teen}'s`, she: teen } : { her: "her", Her: "Her", she: "she" };
 }
 
-function NeedsYouRow({ item, zoe, guardian, hadRules, w }: {
-  item: NeedsYou; zoe: string; guardian: string; hadRules: boolean; w: ReturnType<typeof teenWords>;
+function NeedsYouRow({ item, zoe, guardian, hadRules, w, familyId }: {
+  familyId: string; item: NeedsYou; zoe: string; guardian: string; hadRules: boolean; w: ReturnType<typeof teenWords>;
 }) {
   if (item.kind === "rules") {
     return (
@@ -229,7 +234,7 @@ function NeedsYouRow({ item, zoe, guardian, hadRules, w }: {
   if (item.kind === "paypal") {
     return (
       // A plain <a>: this starts a PayPal redirect and must never be prefetched.
-      <li><a href="/g/connect-paypal">
+      <li><a href={connectPaypalHref(familyId)}>
         <span>Save your PayPal<small>{item.removedByRevoke ? paypalRemoved(guardian)
           : <>Tether charges it only for purchases that pass {zoe}&apos;s rules. Sandbox: no real money.</>}</small></span>
       </a></li>

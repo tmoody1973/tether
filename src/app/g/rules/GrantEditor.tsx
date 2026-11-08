@@ -1,5 +1,7 @@
 "use client";
 
+import { FamilyField, useFamilyId } from "@/ui/FamilyField";
+import { connectPaypalHref } from "@/ui/connectPaypalHref";
 import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { INVESTING_FROM, LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
@@ -29,6 +31,7 @@ type Confirm = "sign" | "level" | "saving" | null;
 
 /** Zoe's rules, in Amara's order (mockup `rules` view). The clause is the same plain code her rules are signed from. */
 export function GrantEditor(p: GrantEditorProps) {
+  const familyId = useFamilyId();
   const signed: Draft = {
     level: p.currentLevel ?? 1,
     floorPct: FLOORS.includes(p.floorPct) ? p.floorPct : 10,
@@ -120,7 +123,7 @@ export function GrantEditor(p: GrantEditorProps) {
 
   return (
     <div className="g-two">
-      {!p.inForce && <form id={SIGN_FORM} action={signAction} hidden />}
+      {!p.inForce && <form id={SIGN_FORM} action={signAction} hidden><FamilyField /></form>}
       <div className="g-stack">
         <section className="g-card g-section" aria-labelledby="level-h">
           <div className="g-section__head">
@@ -133,6 +136,7 @@ export function GrantEditor(p: GrantEditorProps) {
           </p>
           {p.inForce && cur ? (
             <form action={levelAction} noValidate style={{ display: "grid", gap: 10 }}>
+              <FamilyField />
               {levelPicker}
               {levelChanged && (
                 <>
@@ -179,6 +183,7 @@ export function GrantEditor(p: GrantEditorProps) {
           <div className="g-section__head"><h2 id="saving-h">Saving</h2></div>
           {p.inForce && cur ? (
             <form action={signAction}>
+              <FamilyField />
               <input type="hidden" name="level" value={cur} />
               {savingRows}
               {savingChanged && (confirm !== "saving" ? (
@@ -205,7 +210,7 @@ export function GrantEditor(p: GrantEditorProps) {
             <Def k="Asks you first" v={approvalShort(level)} />
             <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : `opens at Level ${INVESTING_FROM}`}
               sub={def.investing ? "her investments and your investing list" : "funds or stocks she proposes, you approve"} />
-            <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href="/g/connect-paypal">save your PayPal</a>} sub="sandbox: no real money" />
+            <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href={connectPaypalHref(familyId)}>save your PayPal</a>} sub="sandbox: no real money" />
           </div>
         </section>
       </div>

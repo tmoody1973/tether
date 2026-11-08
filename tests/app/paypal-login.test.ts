@@ -19,7 +19,7 @@ import * as repo from "@/db/repo";
 import * as t from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { GUARDIAN_COOKIE, verifyGuardianCookie } from "@/auth/guardian";
-import { BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, START_COOKIE, openBrowserFamily, openStart, sealBrowserFamily, sealStart } from "@/auth/start";
+import { BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, START_COOKIE, openBrowserFamilies, openStart, sealBrowserFamilies, sealStart } from "@/auth/start";
 import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
 import { isSharedLogin } from "@/flows/start";
 import { GET as login } from "@/app/g/login/paypal/route";
@@ -146,7 +146,7 @@ describe("H1: the published shared sandbox login works per browser", () => {
     expect(where(res)).toBe("/g/start/teen");
     expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
     // even though this PayPal id owns exactly one family, which would sign in for anyone else
-    const theirs = await roundTrip("good", { browserFamily: sealBrowserFamily(first.id, new Date()) });
+    const theirs = await roundTrip("good", { browserFamily: sealBrowserFamilies([first.id], new Date()) });
     expect(verifyGuardianCookie(valueOf(theirs, GUARDIAN_COOKIE)!, new Date())).toBe(first.id);
   });
 
@@ -160,7 +160,7 @@ describe("H1: the published shared sandbox login works per browser", () => {
     const other = await own("S-other-owner", "Mia");
     const retired = await own("S-shared", "Old", { guardianToken: `${repo.ARCHIVED_PREFIX}r1` });
     who = SHARED;
-    for (const browserFamily of [sealBrowserFamily(other.id, new Date()), sealBrowserFamily(retired.id, new Date()), "forged.1.x", `${other.id}`]) {
+    for (const browserFamily of [sealBrowserFamilies([other.id], new Date()), sealBrowserFamilies([retired.id], new Date()), "forged.1.x", `${other.id}`]) {
       const res = await roundTrip("good", { browserFamily });
       expect(where(res)).toBe("/g/start/teen");
       expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
@@ -214,10 +214,10 @@ describe("H1: the published shared sandbox login works per browser", () => {
   });
 
   it("the browser cookie opens only for its own purpose", () => {
-    const v = sealBrowserFamily("fam-1", new Date());
-    expect(openBrowserFamily(v, new Date())).toBe("fam-1");
-    expect(openBrowserFamily(sealStart({ sub: "x" }, new Date()), new Date())).toBeNull();
-    expect(openBrowserFamily(v, new Date(Date.now() + 9 * 86_400_000))).toBeNull();
+    const v = sealBrowserFamilies(["fam-1"], new Date());
+    expect(openBrowserFamilies(v, new Date())).toEqual(["fam-1"]);
+    expect(openBrowserFamilies(sealStart({ sub: "x" }, new Date()), new Date())).toEqual([]);
+    expect(openBrowserFamilies(v, new Date(Date.now() + 9 * 86_400_000))).toEqual([]);
   });
 });
 
