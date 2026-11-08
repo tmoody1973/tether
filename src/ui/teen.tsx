@@ -4,12 +4,21 @@ import { LEVELS, type Level } from "@/engine/ladder";
 import type { CardKind } from "@/ui/teenWords";
 import { formatCents } from "@/ui/grantWords";
 
+// Line icons in the same style as Amara's menu (src/ui/guardian.tsx): a 24 grid, 2px round strokes. Invest reuses her
+// Investing icon so the two sides read as one product.
+const ICON = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
+
 const TABS = [
-  { key: "week", path: "", label: "Week" },
-  { key: "shop", path: "/shop", label: "Shop" },
-  { key: "goals", path: "/goals", label: "Goals" },
-  { key: "map", path: "/map", label: "Map" },
-  { key: "invest", path: "/invest", label: "Invest" },
+  { key: "week", path: "", label: "Week",
+    icon: <svg {...ICON}><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M8 2.5v4M16 2.5v4M3 10h18" /></svg> },
+  { key: "shop", path: "/shop", label: "Shop",
+    icon: <svg {...ICON}><path d="M5.5 7.5h13l1 12.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></svg> },
+  { key: "goals", path: "/goals", label: "Goals",
+    icon: <svg {...ICON}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></svg> },
+  { key: "map", path: "/map", label: "Map",
+    icon: <svg {...ICON}><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z" /><path d="M9 4v13.5M15 6.5V20" /></svg> },
+  { key: "invest", path: "/invest", label: "Invest",
+    icon: <svg {...ICON}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg> },
 ] as const;
 
 /**
@@ -28,7 +37,7 @@ export function TeenShell({ token, active, level = null, center = false, childre
           {tabs.map((tab) => (
             <li key={tab.key}>
               <Link className="t-tab" href={`/t/${token}${tab.path}`} aria-current={tab.key === active ? "page" : undefined}>
-                <i aria-hidden />{tab.label}
+                {tab.icon}{tab.label}
               </Link>
             </li>
           ))}

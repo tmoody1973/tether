@@ -78,6 +78,17 @@ async function Settings({ searchParams }: { searchParams: Promise<Record<string,
                   and link, and you save your PayPal once for each teen.
                 </p>
               </>
+            ) : h.isDemo ? (
+              // The shared demo has one teen and no PayPal sign-in, so several teens would stay invisible to anyone who
+              // only opens the demo. Point at the real path instead of hiding it in a text link.
+              <div className="g-card g-card--inset" style={{ marginTop: 12 }}>
+                <p style={{ margin: 0 }}>
+                  <b>Several teens?</b> This shared demo has one. Start your own family with PayPal and add each of your
+                  teens: they each get their own rules, budget and record, and a switcher keeps them one tap apart.
+                </p>
+                {/* A plain <a>: this starts a PayPal redirect and must never be prefetched. */}
+                <a className="g-btn g-btn--block" href="/g/login/paypal" style={{ marginTop: 10 }}>Start your own family</a>
+              </div>
             ) : (
               <p className="g-note" style={{ marginTop: 10 }}>
                 <a className="g-textlink" href="/g/login/paypal">Log in with PayPal</a> to see or add your other teens.
