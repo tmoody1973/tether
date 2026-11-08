@@ -110,7 +110,7 @@ export async function decideRequestAction(form: FormData): Promise<void> {
   redirect(`/g?decided=${code}&req=${encodeURIComponent(id)}`);
 }
 
-/** "Record payment to Zoe": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
+/** "I've sent it": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
 export async function confirmReleaseAction(form: FormData): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");

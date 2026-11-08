@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { STOP_CONFIRM, STOP_CONFIRM_DEMO, clauseText, grantClause, retirementWords, stoppedWords } from "@/ui/grantWords";
 import { SAVINGS_LABEL, savingsPromisedLine } from "@/ui/teenWords";
-import { releaseWords } from "@/ui/activityWords";
 
 const src = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
 
@@ -26,19 +25,12 @@ describe("savings words (029)", () => {
     expect(stoppedWords("nonsense", "Zoe")).toBeNull();
   });
 
-  it("the release card records a payment; it never says withdraw", () => {
-    expect(releaseWords("Zoe", "$68.00")).toEqual({
-      button: "Record payment to Zoe",
-      line: "Send Zoe $68.00 yourself — Venmo, PayPal or cash — then record it here. Tether can't see that payment.",
-    });
-  });
-
   it("the retirement notice", () => {
     expect(retirementWords(new Date("2026-11-15T10:00:00Z"))).toBe("This demo family is removed on Sun 15 Nov. Its links stop working then. Save or print your statement before.");
   });
 
-  it("the old wording is gone from Zoe's screens, the activity card and the clause source", () => {
-    for (const p of ["src/app/t/[token]/goals/page.tsx", "src/app/t/[token]/page.tsx", "src/app/g/activity/page.tsx", "src/ui/grantWords.ts"]) {
+  it("the old wording is gone from Zoe's screens and the clause source (the Release card is feat/several-teens' ReleaseCard)", () => {
+    for (const p of ["src/app/t/[token]/goals/page.tsx", "src/app/t/[token]/page.tsx", "src/ui/grantWords.ts"]) {
       const s = src(p);
       expect(s, p).not.toMatch(/stay in .{0,40}PayPal until|stays in your PayPal|I've sent it|withdraw/i);
     }

@@ -10,7 +10,7 @@ import { FLAG_WORDS, MONTH_RE, reconcileMonth, type Reconciliation } from "@/flo
 import { resumePayingPurchases } from "@/flows/purchase";
 import { INVESTING_FROM, LEVELS, type Level } from "@/engine/ladder";
 import { TOKEN_TTL_MS } from "@/engine/token";
-import { checkWords, herReason, hiddenNote, monthEnd, releaseWords, shownReceipts } from "@/ui/activityWords";
+import { checkWords, herReason, hiddenNote, monthEnd, shownReceipts } from "@/ui/activityWords";
 import { approvalWords, formatCents, formatDay, formatMonth, formatWhen } from "@/ui/grantWords";
 import { INVEST_STATUS } from "@/ui/investWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
@@ -36,7 +36,7 @@ const shiftMonth = (month: string, by: number): string => {
 };
 
 function flash(sp: Record<string, string | string[] | undefined>): string | null {
-  if (sp.sent === "1") return "Payment recorded, as you said you sent it. Tether can't see that payment, and the record says so.";
+  if (sp.sent === "1") return "Recorded as sent by you. Tether can't see the money move, and the record says so.";
   if (sp.promoted === "1") return "The month closed and the check-in ran.";
   return null;
 }
@@ -78,7 +78,6 @@ async function Activity({ searchParams }: { searchParams: Promise<Record<string,
             <AskBox />
           </section>
           <Investments r={r} />
-          <p className="g-more"><Link className="g-textlink" href="/g/statement">Closing statement: what you&apos;ve promised {zoe}</Link></p>
         </div>
       </div>
     </GuardianShell>
@@ -222,7 +221,6 @@ function CheckIn({ v, r, now }: { v: ReviewView; r: RecordView; now: Date }) {
 }
 
 function Release({ zoe, release }: { zoe: string; release: NonNullable<ReviewView["release"]> }) {
-  const words = releaseWords(zoe, formatCents(release.savedCents + release.matchCents));
   return (
     <section className="g-card" aria-labelledby="release-h" style={{ borderColor: "var(--g-goal)" }}>
       <h2 className="g-label" id="release-h">Release to {zoe}</h2>
@@ -230,11 +228,11 @@ function Release({ zoe, release }: { zoe: string; release: NonNullable<ReviewVie
         <Money cents={release.savedCents} /> saved + <Money cents={release.matchCents} /> your match
         = <Money cents={release.savedCents + release.matchCents} />
       </div>
-      <p className="g-card__sub">{words.line}</p>
+      <p className="g-card__sub">Send it to {zoe} yourself — Venmo, PayPal or cash — then tap below.</p>
       <div style={{ marginTop: 8 }}><Seam kinds={["release"]} /></div>
       <form action={confirmReleaseAction} style={{ marginTop: 12 }}>
         <input type="hidden" name="releaseId" value={release.id} />
-        <PendingButton label={words.button} pendingLabel="Recording…" className="g-btn g-btn--block" />
+        <PendingButton label="I've sent it" pendingLabel="Recording…" className="g-btn g-btn--block" />
       </form>
     </section>
   );
