@@ -52,3 +52,22 @@ test("pause → Zoe sees 'Paused by Amara' and can only ask; resume puts Buy bac
   await page.getByRole("button", { name: "Check it" }).click();
   await expect(card(page, /Notebook.*Fits your week/)).toBeVisible();
 });
+
+test("rules stopped on 'every purchase': picking 'Up to $20' and a tax changes the clause she'll sign (review NEW-1)", async ({ page }) => {
+  test.setTimeout(90_000);
+  await enter(page, E2E.clauseKey);
+  await page.goto("/g/rules");
+  const clause = page.locator(".g-clause");
+  await expect(clause).toContainText("Every purchase comes to you first.");
+  await page.getByLabel(/^Up to/).check();
+  await page.getByLabel("Dollars per purchase without asking").fill("20");
+  await expect(clause).toContainText("Anything over $20.00, or at a shop she hasn't used before, comes to you first.");
+  await expect(clause).not.toContainText("Every purchase comes to you first.");
+  await page.getByLabel(/Sales tax where you live/).fill("8.25");
+  await expect(clause).toContainText("8.25% sales tax and $5.99 shipping an order");
+  await page.getByRole("button", { name: "Sign and send" }).click();
+  await page.getByRole("button", { name: "Yes, sign" }).click();
+  await expect(page).toHaveURL(/\/g\?signed=2$/);
+  await page.goto("/g/rules");
+  await expect(page.locator(".g-clause")).toContainText("Anything over $20.00, or at a shop she hasn't used before, comes to you first."); // as signed
+});

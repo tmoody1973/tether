@@ -13,9 +13,9 @@ import { costSplit, itemOf, pricedCart, taxCents } from "@/engine/pricing";
 import { orderAmount, usd } from "@/adapters/paypal/orders";
 import { requestApproval } from "@/flows/approvals";
 import { approveAndSettle, type ApproveDeps } from "@/flows/approve";
-import { GrantError, guardianSetLevel, setCosts, setInvesting, setPaused, setSpending, signGrant } from "@/flows/grant";
+import { GrantError, guardianSetLevel, revoke, setCosts, setInvesting, setPaused, setSpending, signGrant } from "@/flows/grant";
 import { runMonthReview } from "@/flows/month";
-import { carrySpending } from "@/engine/ladder";
+import { carrySpending, settingsToSign, type ConsentSettings } from "@/engine/ladder";
 import { clauseText, grantClause, spendingCarryWords } from "@/ui/grantWords";
 import { proposePurchase, settlePurchase } from "@/flows/purchase";
 import { applyRefunds, refundedByCapture } from "@/flows/refunds";
@@ -130,6 +130,24 @@ describe("spending mode (030)", () => {
     expect(g.level).toBe(2);
     expect(g.body.spending).toEqual({ mode: "upTo", upToCents: 500 });
     expect(await outcome(f.familyId, cart(f.mid, 1500))).toBe("NEEDS_APPROVAL");
+  });
+
+  it("rules stopped on 'every purchase'; she picks 'Up to $20', types a tax, turns investing off: the clause shown is the clause signed (review NEW-1)", async () => {
+    const f = await family(2);
+    await setSpending(deps(100), f.familyId, { mode: "every" });
+    await revoke(deps(100), f.familyId);
+    const latest = (await repo.getLatestGrant(db, f.familyId))!.body;
+    const sent = { spending: { mode: "upTo", upToCents: 2000 } as const, costs: { salesTaxBps: 825, shippingCents: 450 }, investing: false };
+    const clauseFor = (s: ConsentSettings) => clauseText(grantClause({ teenName: "Zoe", level: 2, shops: [], floorPct: 10, matchPct: 100, expiresAt: WED, ...s }));
+    const preview = clauseFor(settingsToSign(2, sent, latest)); // what the rules page shows, from the form's fields
+    await signGrant(deps(100), f.familyId, { level: 2, ...sent });
+    const signed = (await repo.getActiveGrant(db, f.familyId))!.body;
+    expect(clauseFor({ spending: signed.spending, investing: signed.investing, costs: signed.costs })).toBe(preview);
+    expect(preview).toContain("Anything over $20.00 comes to you first.");
+    expect(preview).toContain("Investing is off.");
+    expect(preview).toContain("8.25% sales tax and $4.50 shipping an order");
+    // Nothing sent: the latest rules' choice carries, and the preview says so.
+    expect(clauseFor(settingsToSign(2, {}, latest))).toContain("Every purchase comes to you first.");
   });
 
   it("the clause Amara previews for a new level is the clause that's signed (review HIGH 1)", async () => {

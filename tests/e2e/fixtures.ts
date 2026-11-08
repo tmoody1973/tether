@@ -36,6 +36,7 @@ export const E2E = {
   // Decision 030: consent controls, one family each (a $6 paid purchase at Target, so Target isn't a first-time shop).
   consentKey: "e2e-guardian-key-for-tests-only-0015", consentTeen: "e2e-teen-consent-0001",
   pauseKey: "e2e-guardian-key-for-tests-only-0016", pauseTeen: "e2e-teen-pause-0001",
+  clauseKey: "e2e-guardian-key-for-tests-only-0017", // rules stopped while on "every purchase" (review NEW-1)
   teenAskKey: "e2e-guardian-key-for-tests-only-0007",
   teenResetKey: "e2e-guardian-key-for-tests-only-0008",
   // Another family entirely (Sam & Kai).

@@ -1,4 +1,4 @@
-import type { Cents, Constraint, Grant, SpendingMode } from "./types";
+import type { Cents, Constraint, CostTerms, Grant, SpendingMode } from "./types";
 
 export type Level = 1 | 2 | 3;
 
@@ -97,6 +97,21 @@ export const withPause = (g: Grant, paused: boolean): Grant =>
 export function carrySpending(spending: SpendingMode | undefined, level: Level): SpendingMode | undefined {
   if (!spending || spending.mode === "every" || spending.upToCents === null) return spending;
   return { mode: "upTo", upToCents: Math.min(spending.upToCents, LEVELS[level].weeklyCents) };
+}
+
+/** Decision 030: the consent settings a signing carries. */
+export interface ConsentSettings { spending?: SpendingMode; investing?: boolean; costs?: CostTerms }
+
+/**
+ * Review NEW-1: the one rule for what a signing ends up with. What the form sends, else the latest rules' setting (the
+ * spending mode carried by level). The server signs with it and the rules page's clause previews with it.
+ */
+export function settingsToSign(level: Level, sent: ConsentSettings, latest?: ConsentSettings): ConsentSettings {
+  return {
+    spending: sent.spending ?? carrySpending(latest?.spending, level),
+    investing: sent.investing ?? latest?.investing,
+    costs: sent.costs ?? latest?.costs,
+  };
 }
 
 /** Amara's "up to" amount: whole cents, at least $1, at most the weekly amount (null: no limit, Level 3's default). */

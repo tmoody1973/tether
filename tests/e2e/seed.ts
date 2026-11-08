@@ -26,7 +26,7 @@ type Fam = { id: string; grant: { id: string; version: number } };
 
 async function family(
   db: Db, guardianToken: string, teenToken: string, names = { guardianName: "Amara", teenName: "Zoe" },
-  rules: { level: 1 | 2 | 3; fundAllowlist?: string[] } = { level: 1 },
+  rules: { level: 1 | 2 | 3; fundAllowlist?: string[]; spending?: { mode: "every" } } = { level: 1 },
 ): Promise<Fam> {
   const fam = await insertFamily(db, { name: `${names.guardianName} & ${names.teenName}`, ...names, teenToken, guardianToken });
   await saveVault(db, fam.id, `e2e-placeholder-${teenToken}`); // only ever sent to the local fake PayPal
@@ -88,6 +88,8 @@ async function main() {
   await bought(db, over, 450, "e2e-token-teen-over-2", "E2E-CAP-teen-over-2"); // $10.50 spent, $9.50 left
   await teen(E2E.consentTeen, E2E.consentKey); // decision 030
   await teen(E2E.pauseTeen, E2E.pauseKey);
+  const clause = await family(db, E2E.clauseKey, "e2e-teen-clause", undefined, { level: 1, spending: { mode: "every" } });
+  await db.update(t.grants).set({ status: "revoked" }).where(eq(t.grants.id, clause.grant.id)); // stopped on "every purchase"
   const paused = await teen(E2E.teen.paused, "e2e-guardian-key-teen-paused");
   await db.update(t.grants).set({ status: "revoked" }).where(eq(t.grants.id, paused.grant.id)); // Amara stopped the rules
   const ended = await teen(E2E.teen.ended, "e2e-guardian-key-teen-ended");

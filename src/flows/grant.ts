@@ -4,7 +4,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getVault, type GrantRow } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
-import { LEVELS, asOf, carrySpending, commitmentFloorCents, grantForLevel, validSpending, validateCommitment, withSpending, type Level } from "@/engine/ladder";
+import { LEVELS, asOf, commitmentFloorCents, settingsToSign, grantForLevel, validSpending, validateCommitment, withSpending, type Level } from "@/engine/ladder";
 import { validCosts } from "@/engine/pricing";
 import { ledgerView } from "@/ledger/ledger";
 import type { Constraint, CostTerms, Grant, SpendingMode } from "@/engine/types";
@@ -186,16 +186,13 @@ export async function installLevel(
   tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>, keep?: { latest: GrantRow | null; applyNow: ApplyNow },
 ): Promise<Grant> {
   const cur = (await getLatestGrant(tx, familyId))?.body;
-  // Decision 030 (review HIGH 1): Amara's spending mode carries across every level change, the automatic level-up
-  // included, never looser than she chose; only she replaces it.
-  const keptSpending = carrySpending(cur?.spending, level);
+  // Decision 030: what she sends, else the latest rules' (spending carried across the level change, never looser, review
+  // HIGH 1). The same settingsToSign the rules page previews with (review NEW-1).
   const base: Settings = {
     commitmentFloorPct: s?.commitmentFloorPct ?? cur?.commitmentFloorPct ?? 10,
     matchPct: s?.matchPct ?? cur?.matchPct ?? 100,
     fundAllowlist: s?.fundAllowlist ?? cur?.fundAllowlist ?? [],
-    spending: s?.spending ?? keptSpending,
-    investing: s?.investing ?? cur?.investing,
-    costs: s?.costs ?? cur?.costs,
+    ...settingsToSign(level, { spending: s?.spending, investing: s?.investing, costs: s?.costs }, cur),
   };
   if (base.spending && !validSpending(base.spending, LEVELS[level].weeklyCents)) {
     throw new GrantError("spending amount must be between $1 and the weekly amount");

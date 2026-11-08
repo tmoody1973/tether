@@ -12,7 +12,6 @@ import type { Level } from "@/engine/ladder";
 import { formatDay, stoppedWords, weekChangeWords } from "@/ui/grantWords";
 import { RetirementNotice } from "@/ui/RetirementNotice";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
-import { ConsentControls } from "./ConsentControls";
 import { GrantEditor } from "./GrantEditor";
 import { SIGN_FORM } from "./consentForm";
 import { PauseControl } from "./PauseControl";
@@ -85,10 +84,10 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
         week={{ thisWeekCents: thisWeek, spentCents: h.spentThisWeekCents, startsOn: startsOn.toISOString(), commitmentCents: fam?.commitmentCents ?? 0 }}
         shopsSlot={<ShopsSection teenName={zoe} inForce={shops.inForce} shops={shops.shops} />}
         signed={{ spending: cur?.body.spending, investing: cur?.body.investing, costs: cur?.body.costs }}
-        consentSlot={
-          <ConsentControls teenName={zoe} level={(cur?.level ?? 1) as Level} inForce={shops.inForce} signForm={SIGN_FORM}
-            spending={cur?.body.spending} investing={cur?.body.investing !== false} costs={cur?.body.costs} demo={h.isDemo} />
-        }
+        consent={{
+          teenName: zoe, level: (cur?.level ?? 1) as Level, inForce: shops.inForce, signForm: SIGN_FORM,
+          spending: cur?.body.spending, investing: cur?.body.investing !== false, costs: cur?.body.costs, demo: h.isDemo,
+        }}
         sideSlot={
           // The teen's link and its reset moved to Settings (decision 028).
           <>

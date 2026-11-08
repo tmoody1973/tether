@@ -2,9 +2,9 @@
 
 // Decision 030: how Zoe spends, investing on/off, and the cost estimates. With rules in force each applies at once
 // after a one-sentence before/after confirm; with none in force the fields belong to the one "Sign and send" form.
-import { useActionState, useState } from "react";
-import { LEVELS, askOverCents, type Level } from "@/engine/ladder";
-import { DEFAULT_SHIPPING_CENTS } from "@/engine/pricing";
+import { useActionState, useEffect, useState } from "react";
+import { LEVELS, askOverCents, type ConsentSettings, type Level } from "@/engine/ladder";
+import { DEFAULT_SHIPPING_CENTS, DEMO_COSTS } from "@/engine/pricing";
 import type { CostTerms, SpendingMode } from "@/engine/types";
 import { FamilyField } from "@/ui/FamilyField";
 import {
@@ -16,6 +16,11 @@ import { costsAction, investingAction, spendingAction, type ControlState } from 
 export interface ConsentProps {
   teenName: string; level: Level; inForce: boolean; signForm: string;
   spending?: SpendingMode; investing: boolean; costs?: CostTerms; demo: boolean;
+  /**
+   * Review NEW-1: with no rules in force, what each section would send with "Sign and send" (undefined: not sent), so
+   * the clause Amara reads is built from the same settings the server signs (settingsToSign).
+   */
+  onDraft?: (part: ConsentSettings) => void;
 }
 
 const dollars = (c: number | null) => (c === null ? "" : (c / 100).toFixed(2));
@@ -62,6 +67,9 @@ function SpendingSection(p: ConsentProps) {
   // Not in force: sent with "Sign and send" only once she changes it, so a new level otherwise starts from its own rule.
   const form = p.inForce || !touched ? undefined : p.signForm;
   const edit = (f: () => void) => { f(); setConfirm(false); setTouched(true); };
+  const sent = form && draft ? draft : undefined;
+  const { onDraft } = p;
+  useEffect(() => { onDraft?.({ spending: sent }); }, [onDraft, JSON.stringify(sent)]); // eslint-disable-line react-hooks/exhaustive-deps
   const fields = (
     <fieldset className="g-fieldset">
       <legend className="g-sr">How {p.teenName} spends</legend>
@@ -106,6 +114,8 @@ function InvestingSection(p: ConsentProps) {
   const [on, setOn] = useState(p.investing);
   const [confirm, setConfirm] = useState(false);
   const form = p.inForce || on === p.investing ? undefined : p.signForm; // not in force: sent only when changed
+  const { onDraft } = p;
+  useEffect(() => { onDraft?.({ investing: form ? on : undefined }); }, [onDraft, form, on]);
   const fields = (
     <fieldset className="g-fieldset">
       <legend className="g-sr">Investing</legend>
@@ -138,13 +148,17 @@ function InvestingSection(p: ConsentProps) {
 
 function CostsSection(p: ConsentProps) {
   const [state, action, pending] = useActionState<ControlState, FormData>(costsAction, {});
-  const [tax, setTax] = useState(p.costs ? (p.costs.salesTaxBps / 100).toFixed(2) : "");
-  const [ship, setShip] = useState(dollars(p.costs?.shippingCents ?? DEFAULT_SHIPPING_CENTS));
+  // The shared demo family starts from its labelled demo values when its rules have none yet (review MEDIUM 4).
+  const start = p.costs ?? (p.demo ? DEMO_COSTS : undefined);
+  const [tax, setTax] = useState(start ? (start.salesTaxBps / 100).toFixed(2) : "");
+  const [ship, setShip] = useState(dollars(start?.shippingCents ?? DEFAULT_SHIPPING_CENTS));
   const [confirm, setConfirm] = useState(false);
   const bps = parseTaxBps(tax), shipCents = ship.trim() === "" ? DEFAULT_SHIPPING_CENTS : parseCents(ship);
   const draft: CostTerms | null = bps !== null && shipCents !== null ? { salesTaxBps: bps, shippingCents: shipCents } : null;
   const changed = draft !== null && (draft.salesTaxBps !== p.costs?.salesTaxBps || draft.shippingCents !== p.costs?.shippingCents);
   const form = p.inForce ? undefined : p.signForm;
+  const { onDraft } = p;
+  useEffect(() => { onDraft?.({ costs: form && draft ? draft : undefined }); }, [onDraft, form, draft?.salesTaxBps, draft?.shippingCents]); // eslint-disable-line react-hooks/exhaustive-deps
   const edit = (f: () => void) => { f(); setConfirm(false); };
   const fields = (
     <>

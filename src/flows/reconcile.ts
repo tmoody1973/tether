@@ -16,23 +16,34 @@ export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 /**
  * Review MEDIUM 3: a refund can land after the month's 31-day window (a purchase late in the month, refunded weeks
  * later). Searched for: only this month's captures, from the window's end until now, at most 180 days after the window
- * started (PayPal's usual refund limit), in 31-day searches, so at most 5 more searches, and none for the current
- * month. A failed later search is skipped and tried again at the next check; the month's own result stands.
+ * started (PayPal's usual refund limit), in 31-day searches, so at most 5 more searches, and none for the current month.
+ * Review NEW-2: they run in parallel, each with its own PayPal timeout, under one deadline. Whatever hasn't answered by
+ * then is left for the next check (refunds are written by running total, so a later check adds only what's new); the
+ * month's own result is shown either way, so Activity is never held up by more than the deadline.
  */
 export const REFUND_HORIZON_MS = 180 * DAY_MS;
-async function laterUndoRows(paypal: PaypalHttp, start: Date, from: Date, realNow: Date, captures: Set<string>): Promise<PaypalTx[]> {
+export const LATER_SEARCH_TIMEOUT_MS = 4_000;
+async function laterUndoRows(
+  paypal: PaypalHttp, start: Date, from: Date, realNow: Date, captures: Set<string>, timeoutMs: number,
+): Promise<PaypalTx[]> {
   const until = Math.min(realNow.getTime(), start.getTime() + REFUND_HORIZON_MS);
-  const out: PaypalTx[] = [];
+  const windows: [Date, Date][] = [];
   for (let s = from.getTime(); s < until && captures.size > 0; s += MAX_WINDOW_MS) {
-    try {
-      const { rows } = await searchTransactions(paypal, new Date(s), new Date(Math.min(until, s + MAX_WINDOW_MS)));
-      out.push(...rows.filter((r) => r.amountCents < 0 && r.referenceId && captures.has(r.referenceId)));
-    } catch (err) {
-      console.error("reconcile: later refund search failed", err instanceof Error ? err.message : err);
-      break;
-    }
+    windows.push([new Date(s), new Date(Math.min(until, s + MAX_WINDOW_MS))]);
   }
-  return out;
+  if (windows.length === 0) return [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"late">((resolve) => { timer = setTimeout(() => resolve("late"), timeoutMs); });
+  const found: PaypalTx[][] = windows.map(() => []);
+  const searches = Promise.allSettled(windows.map(async ([a, b], i) => {
+    found[i] = (await searchTransactions(paypal, a, b, timeoutMs)).rows
+      .filter((r) => r.amountCents < 0 && r.referenceId && captures.has(r.referenceId));
+  }));
+  const done = await Promise.race([searches, deadline]);
+  clearTimeout(timer);
+  if (done === "late") console.error("reconcile: later refund searches still running at the deadline; the next check retries");
+  else if (done.some((r) => r.status === "rejected")) console.error("reconcile: a later refund search failed; the next check retries");
+  return found.flat(); // what answered in time
 }
 
 export type ReconFlag =
@@ -95,6 +106,7 @@ export async function paypalWindowForMonth(
  */
 export async function reconcileMonth(
   deps: { db: Db; paypal: PaypalHttp; now?: (familyId: string, conn?: Db) => Promise<Date> }, familyId: string, month: string, realNow: Date = new Date(),
+  laterTimeoutMs = LATER_SEARCH_TIMEOUT_MS,
 ): Promise<Reconciliation> {
   if (!MONTH_RE.test(month)) throw new Error(`bad month ${month}`);
   const { db } = deps;
@@ -103,7 +115,7 @@ export async function reconcileMonth(
   if (!window) return { receiptsChecked: 0, flags: [] };
   const first = await searchTransactions(deps.paypal, window.start, window.end);
   const { refreshedThrough } = first;
-  const later = await laterUndoRows(deps.paypal, window.start, window.end, realNow, new Set(receipts.map((r) => r.captureId)));
+  const later = await laterUndoRows(deps.paypal, window.start, window.end, realNow, new Set(receipts.map((r) => r.captureId)), laterTimeoutMs);
   const rows = [...new Map([...first.rows, ...later].map((r) => [r.id, r])).values()]; // one row per PayPal id, whatever window found it
 
   const mine = new Set(monthTokens.map((tk) => tk.tokenId));

@@ -29,7 +29,9 @@ export async function listTransactions(p: PaypalHttp, start: Date, end: Date): P
  * Same search, plus how far PayPal's list has caught up: Transaction Search fills in hours after a payment, and every
  * reply says the time it is complete up to (last_refreshed_datetime). Undefined if PayPal leaves it out or it's garbled.
  */
-export async function searchTransactions(p: PaypalHttp, start: Date, end: Date): Promise<{ rows: PaypalTx[]; refreshedThrough?: Date }> {
+export async function searchTransactions(
+  p: PaypalHttp, start: Date, end: Date, timeoutMs?: number,
+): Promise<{ rows: PaypalTx[]; refreshedThrough?: Date }> {
   const out: PaypalTx[] = [];
   let refreshedThrough: Date | undefined;
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -37,7 +39,7 @@ export async function searchTransactions(p: PaypalHttp, start: Date, end: Date):
       start_date: start.toISOString(), end_date: end.toISOString(), fields: "transaction_info",
       page_size: String(PAGE_SIZE), page: String(page),
     });
-    const { data } = await p.request<TxResponse>("GET", `/v1/reporting/transactions?${q}`);
+    const { data } = await p.request<TxResponse>("GET", `/v1/reporting/transactions?${q}`, timeoutMs ? { timeoutMs } : undefined);
     const refreshed = typeof data.last_refreshed_datetime === "string" ? new Date(data.last_refreshed_datetime) : undefined;
     if (refreshed && !Number.isNaN(refreshed.getTime())) refreshedThrough = refreshed;
     for (const { transaction_info: t } of data.transaction_details ?? []) {

@@ -166,3 +166,33 @@ describe("late refunds (030, review MEDIUM 3)", () => {
     expect(rows).toHaveLength(1);
   });
 });
+
+describe("late refund searches don't hold up Activity (030, review NEW-2)", () => {
+  it("later searches that don't answer by the deadline are skipped; the month's result shows; the next check applies the refund once", async () => {
+    const { familyId, buy } = await family();
+    await buy(`tok-h${n}`, 700, `CAP-H${n}`);
+    const DAY = 86_400_000;
+    const firstUse = Date.now();
+    const refund = tx(`REF-H${n}`, "-7.00", `tok-h${n}`, { paypal_reference_id: `CAP-H${n}`, transaction_event_code: "T1107" });
+    let hang = true;
+    const f = vi.fn(async (url: string | URL | Request) => {
+      const u = new URL(String(url));
+      if (u.pathname.endsWith("/v1/oauth2/token")) return new Response(JSON.stringify({ access_token: "AT", expires_in: 3600 }), { status: 200 });
+      const later = Date.parse(u.searchParams.get("start_date") ?? "") > firstUse + 20 * DAY;
+      if (later && hang) return new Promise<Response>(() => undefined); // PayPal never answers this one
+      const rows = [tx(`CAP-H${n}`, "7.00", `tok-h${n}`), ...(later ? [refund] : [])];
+      return new Response(JSON.stringify({ transaction_details: rows.map((r) => ({ transaction_info: r })), total_pages: 1 }), { status: 200 });
+    });
+    const paypal = paypalHttp({ baseUrl: "https://paypal.test", clientId: "c", secret: "s" }, f as unknown as typeof fetch);
+    const late = new Date(firstUse + 100 * DAY);
+    const started = Date.now();
+    const first = await reconcileMonth({ db, paypal }, familyId, "2026-11", late, 50);
+    expect(Date.now() - started).toBeLessThan(2_000); // bounded by the deadline, not by PayPal
+    expect(first.flags).toEqual([]); // today's result: matches PayPal, no refund seen yet
+    hang = false;
+    const second = await reconcileMonth({ db, paypal }, familyId, "2026-11", late, 2_000);
+    expect(second.flags).toEqual([{ kind: "refunded", captureId: `CAP-H${n}`, amountCents: 700, shop: "Target", refund: { weekCents: 700, promisedCents: 0, grossCents: 700 } }]);
+    await reconcileMonth({ db, paypal }, familyId, "2026-11", late, 2_000);
+    expect((await db.select().from(t.journal)).filter((j) => j.familyId === familyId && j.kind.startsWith("refund"))).toHaveLength(1);
+  });
+});
