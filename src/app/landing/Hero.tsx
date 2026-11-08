@@ -25,7 +25,7 @@ export function Hero({ links }: { links: DemoLinks }) {
         <div className="l-side l-side--teen">
           <Phone src="zoe-week" width={240} eager alt="Zoe's phone: $13.02 left this week, Level 2, her Best Buy ask waiting for Amara." />
           <div className="l-side__text">
-            <h2>Shops with an agent that only proposes.</h2>
+            <h2>Shops on her own. Asks when she needs more.</h2>
             <p><b>Zoe, 15,</b> sees one number for her week: what she has left.</p>
             {links && <a className="l-btn l-btn--teen" href={links.zoe}>Open Zoe&apos;s view <Arrow /></a>}
           </div>
