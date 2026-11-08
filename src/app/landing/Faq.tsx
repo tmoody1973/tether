@@ -39,7 +39,7 @@ export const FAQ: { q: string; lead: string; body: ReactNode }[] = [
     lead: "They can't buy it through Tether, but they can ask you.",
     body: (
       <>
-        <p>Your teen&apos;s shopping agent only searches the shops you&apos;ve allowed, and more kinds of shop open as they level up. If they want something their rules can&apos;t pay for, they can send you an ask, and nothing is charged. You can add a shop from the rules page.</p>
+        <p>Your teen&apos;s shopping agent only searches the shops you&apos;ve allowed, and more kinds of shop open as they level up. It only suggests items those shops list as in stock. If they want something their rules can&apos;t pay for, they can send you an ask, and nothing is charged. You can add a shop from the rules page.</p>
         <p>In this demo, purchases go to one stand-in merchant. A real launch needs each store&apos;s own checkout.</p>
       </>
     ),

@@ -39,6 +39,8 @@ describe("landing FAQ", () => {
     expect(src("src/ui/activityWords.ts")).toContain('"Refunded in PayPal"');
     expect(text).toContain("marks the receipt “Refunded in PayPal”");
     expect(src("src/app/t/[token]/page.tsx")).toContain("Your rules can't pay for this one, so nothing will be charged.");
+    expect(text).toContain("It only suggests items those shops list as in stock.");
+    expect(src("src/adapters/channel3/client.ts")).toContain('o.availability === "InStock"');
   });
 
   it("matches the 7-day removal, what it wipes, and the fake investing identities", () => {
