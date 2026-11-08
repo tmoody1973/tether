@@ -99,6 +99,9 @@ async function main() {
   const saved = (f: Fam, cents: number) =>
     appendJournal(db, { familyId: f.id, kind: "week_close", amountCents: cents, at: new Date(), ref: "2026-W44", note: null });
   const zoeNames = { guardianName: "Amara", teenName: "Zoe" };
+  const priced = await teen(E2E.goalPriceTeen, E2E.goalPriceKey); // decision 031
+  await saved(priced, 3400);
+  await db.insert(t.goals).values({ familyId: priced.id, title: "Space headphones", targetCents: 16999, channel3ProductId: "sku-14999" });
   await saved(await teen(E2E.teenB.goals, "e2e-guardian-key-teen-goals"), 3400); // $34 toward a goal she names in the test
   await teen(E2E.teenB.promise, "e2e-guardian-key-teen-promise");
   await teen(E2E.teenB.map, E2E.teenMapKey);

@@ -70,6 +70,7 @@ function ResultCard({ card: c, token, guardian }: { card: ShopCard; token: strin
       </div>
       <p className="t-small t-result__cost">{c.cost}</p>
       <Chip kind={c.kind} label={c.label} />
+      {c.setsBack && <p className="t-small t-result__goal" data-testid="sets-back">{c.setsBack}</p>}
       {c.kind === "fits" && (
         <form action={buyAction}>
           <input type="hidden" name="token" value={token} />

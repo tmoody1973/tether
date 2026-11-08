@@ -1,4 +1,5 @@
 // Zoe's goal and her own weekly savings promise (F13, D15). familyId always comes from her link (R39).
+import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily } from "@/db/repo";
@@ -16,16 +17,22 @@ export interface TeenGoals {
   /** The promise in force this week, and the one she chose that starts at the next week close (null: no change). */
   commitmentCents: number; pendingCents: number | null;
   floorCents: number; weeklyCents: number; matchPct: number;
+  /** Decision 031: the Channel3 product behind her goal (null: she named it herself, so there's no price to check). */
+  goalProductId: string | null;
 }
 
 export async function teenGoals(db: Db, familyId: string, now: Date): Promise<TeenGoals> {
-  const [week, fam, grant] = await Promise.all([teenWeek(db, familyId, now), getFamily(db, familyId), getActiveGrant(db, familyId)]);
+  const [week, fam, grant, [goal]] = await Promise.all([
+    teenWeek(db, familyId, now), getFamily(db, familyId), getActiveGrant(db, familyId),
+    db.select({ productId: t.goals.channel3ProductId }).from(t.goals).where(eq(t.goals.familyId, familyId)),
+  ]);
   if (!fam) throw new TeenError(`unknown family ${familyId}`);
   const body = grant?.body;
   return {
     week, commitmentCents: week.commitmentCents, pendingCents: fam.pendingCommitmentCents,
     floorCents: body ? commitmentFloorCents(body.weeklyCents, body.commitmentFloorPct) : 0,
     weeklyCents: body?.weeklyCents ?? week.weeklyCents, matchPct: body?.matchPct ?? 0,
+    goalProductId: goal?.productId ?? null,
   };
 }
 
@@ -36,8 +43,9 @@ export async function setGoal(deps: Pick<Deps, "db">, familyId: string, title: s
   const name = title.trim();
   if (!name || name.length > GOAL_TITLE_MAX) return { ok: false, error: "title" };
   if (!Number.isInteger(targetCents) || targetCents < GOAL_TARGET_MIN_CENTS || targetCents > GOAL_TARGET_MAX_CENTS) return { ok: false, error: "target" };
-  await deps.db.insert(t.goals).values({ familyId, title: name, targetCents })
-    .onConflictDoUpdate({ target: t.goals.familyId, set: { title: name, targetCents } });
+  // Decision 031: a goal she names herself is hers, not a Channel3 product any more, so there's no price to check.
+  await deps.db.insert(t.goals).values({ familyId, title: name, targetCents, channel3ProductId: null })
+    .onConflictDoUpdate({ target: t.goals.familyId, set: { title: name, targetCents, channel3ProductId: null } });
   return { ok: true };
 }
 

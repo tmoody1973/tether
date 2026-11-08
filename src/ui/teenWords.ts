@@ -28,10 +28,21 @@ export const sheetNumbers = (spentCents: Cents, weeklyCents: Cents, withLeft = t
 
 const weeks = (n: number) => `${n} week${n === 1 ? "" : "s"}`;
 
-/** D12 moment 1: "This sets Headphones back 1 week." Weeks at her own weekly savings promise. */
-export function setsBack(goal: { title: string } | null, amountCents: Cents, commitmentCents: Cents): string | null {
-  if (!goal || commitmentCents <= 0 || amountCents <= 0) return null;
-  return `This sets ${goal.title} back ${weeks(Math.ceil(amountCents / commitmentCents))}.`;
+/**
+ * D12 moment 1: "This sets Headphones back 1 week." N is exactly how far the Goals screen's number moves if this much
+ * is spent instead of saved: weeksToGoal(goal, saved − cost) − weeksToGoal(goal, saved), at her promise from now on and
+ * today's goal price when known (decision 031, review LOW 3). The same on cards before buying and after paying. Null:
+ * no goal, no promise to count with, or it doesn't move the count (she's saved enough either way).
+ */
+export function setsBack(
+  goal: { title: string; targetCents: Cents } | null, todayGoalCents: Cents | null, savedCents: Cents, costCents: Cents, promiseCents: Cents,
+): string | null {
+  if (!goal || costCents <= 0) return null;
+  const target = todayGoalCents ?? goal.targetCents;
+  const before = weeksToGoal(target, savedCents, promiseCents);
+  const after = weeksToGoal(target, savedCents - costCents, promiseCents);
+  if (before === null || after === null || after <= before) return null;
+  return `This sets ${goal.title} back ${weeks(after - before)}.`;
 }
 
 const DAY_MS = 86_400_000;
@@ -170,3 +181,25 @@ export const pausedLine = (guardian: string): string =>
 
 /** Decision 030: totals on her cards include Tether's estimates. */
 export const TEEN_ESTIMATES = "Totals include an estimate of tax and shipping. A real shop's checkout would give the exact amount, and if it were more, it would come back to you.";
+
+// ---- Decision 031: her goal at today's price. Facts only: never "buy now", never "wait". -------------------------------
+
+/**
+ * "$149.99 today, $20.00 less than when you picked it. That's 2 weeks closer." `who` is "you" for Zoe, her name for
+ * Amara. The weeks part only when her weekly promise makes it countable and the count actually changes.
+ */
+export function goalPriceLine(i: { todayCents: Cents; pickedCents: Cents; savedCents: Cents; commitmentCents: Cents; who: string }): string {
+  const today = `${formatCents(i.todayCents)} today`;
+  const diff = i.pickedCents - i.todayCents;
+  if (diff === 0) return `${today}, the same as when ${i.who} picked it.`;
+  const was = weeksToGoal(i.pickedCents, i.savedCents, i.commitmentCents);
+  const now = weeksToGoal(i.todayCents, i.savedCents, i.commitmentCents);
+  const moved = was !== null && now !== null && was !== now
+    ? ` That's ${weeks(Math.abs(was - now))} ${was > now ? "closer" : "further"}.` : "";
+  return `${today}, ${formatCents(Math.abs(diff))} ${diff > 0 ? "less" : "more"} than when ${i.who} picked it.${moved}`;
+}
+
+/** Channel3's 90-day price statistics, as a fact. */
+export const priceStatusLine = (status: "low" | "typical" | "high"): string => `Today's price is ${status} for the last 90 days.`;
+
+export const PRICE_CHECK_FAILED = "Couldn't check today's price.";

@@ -8,6 +8,7 @@ import { counted, ledgerView, weekKey, weekRecords } from "@/ledger/ledger";
 import { asOf, commitmentFloorCents, streak, type Level, type WeekRecord } from "@/engine/ladder";
 import type { Cart, CostTerms, Decision, Grant, SpendingMode } from "@/engine/types";
 import { itemOf, pricedCart } from "@/engine/pricing";
+import { cachedGoalPriceCents } from "@/flows/goalPriceCache";
 import type { Product } from "@/adapters/channel3/client";
 import { liftableOverage, requestApproval } from "@/flows/approvals";
 import { monthReviewView, reviewWeeks } from "@/flows/month";
@@ -49,6 +50,10 @@ export interface TeenWeek {
   investingOff: boolean;
   /** Decision 030: Amara's spending mode on the rules in force, for "what needs her OK" on Zoe's screens. */
   spending?: SpendingMode;
+  /** Decision 031: her savings promise from now on (a pending change included), as the Goals screen counts weeks with. */
+  promiseCents: number;
+  /** Decision 031: today's goal price if it's cached (never fetched here), else null: the stored price applies. */
+  goalTodayCents: number | null;
 }
 
 /** Read model for every teen page. `now` is the family's demo-clock time. */
@@ -63,6 +68,9 @@ export async function teenWeek(db: Db, familyId: string, now: Date): Promise<Tee
     : active && active.expiresAt > now ? "active" : "ended";
   const signed = (active ?? latest)?.body;
   const body: Grant | null = signed ? asOf(signed, now) : null; // this week's amount (029)
+  const commitmentCents = Math.max(fam.commitmentCents, body ? commitmentFloorCents(body.weeklyCents, body.commitmentFloorPct) : 0);
+  const goalTodayCents = goal?.channel3ProductId
+    ? cachedGoalPriceCents(goal.channel3ProductId, (await allowedShops(db, familyId))?.domains ?? []) : null;
   const weeklyCents = body?.weeklyCents ?? 0;
   const ended = active ?? latest;
   return {
@@ -73,7 +81,7 @@ export async function teenWeek(db: Db, familyId: string, now: Date): Promise<Tee
     asks: await thisWeeksAsks(db, familyId, now),
     goal: goal ? { title: goal.title, targetCents: goal.targetCents } : null,
     savingsCents: ledger.savingsCents,
-    commitmentCents: Math.max(fam.commitmentCents, body ? commitmentFloorCents(body.weeklyCents, body.commitmentFloorPct) : 0),
+    commitmentCents, promiseCents: fam.pendingCommitmentCents ?? commitmentCents, goalTodayCents,
     streak: streak(counting),
     release: await latestRelease(db, familyId, now),
     levelUp: await unseenLevelUp(db, familyId, fam.teenSeenLevelAt),

@@ -25,6 +25,7 @@ const search: Row[] = [
   row(E2E.unlinkedCapture, "50.00"),
 ];
 const orders = new Map<string, unknown>(); // PayPal-Request-Id → order
+let slowNextSearchMs = 0; // set by POST /__e2e/slow-next-search; used once
 
 // Decision 030: a photo on a made-up https host (screenshots route it; tests never need it to load), and an offer
 // condition that search, lookup and retrieve all agree on, so a cart re-prices to itself at payment.
@@ -153,9 +154,26 @@ createServer((req, res) => {
       }
       return send(201, orders.get(key));
     }
-    if (req.method === "GET" && path === "/v1/reporting/transactions") return send(200, { transaction_details: search, total_pages: 1 });
+    // e2e control: slow down only the NEXT Transaction Search (the Activity Proof-race test arms it); every other
+    // search answers at once, so no other test waits on it.
+    if (req.method === "POST" && path === "/__e2e/slow-next-search") {
+      slowNextSearchMs = Math.min(10_000, Math.max(0, Number(url.searchParams.get("ms") ?? 0) || 0));
+      return send(204);
+    }
+    if (req.method === "GET" && path === "/v1/reporting/transactions") {
+      const ms = slowNextSearchMs;
+      slowNextSearchMs = 0;
+      if (ms > 0) { setTimeout(() => send(200, { transaction_details: search, total_pages: 1 }), ms); return; }
+      return send(200, { transaction_details: search, total_pages: 1 });
+    }
     // The saved wallet is a placeholder PayPal has never seen: removal is refused, so the page must say so honestly.
     if (req.method === "DELETE" && path.startsWith("/v3/vault/payment-tokens/")) return send(404, { name: "RESOURCE_NOT_FOUND", message: "not found" });
+    // Decision 031: 90-day price statistics; "low" at the sku's own price.
+    const history = path.match(/^\/v0\/price-tracking\/history\/sku-(\d+)$/);
+    if (req.method === "GET" && history) {
+      const price = Number(history[1]) / 100;
+      return send(200, { canonical_product_id: `sku-${history[1]}`, statistics: { current_price: price, min_price: price, max_price: price + 30, mean: price + 15, std_dev: 8, currency: "USD", current_status: "low" } });
+    }
     const product = path.match(/^\/v1\/products\/sku-(\d+)$/);
     if (req.method === "GET" && product) {
       const w = url.searchParams.get("website_ids") ?? "";

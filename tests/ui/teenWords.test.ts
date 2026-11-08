@@ -24,10 +24,11 @@ describe("teen words", () => {
   });
 
   it("says how many weeks a purchase sets the goal back, only with a goal and a commitment", () => {
-    expect(setsBack({ title: "Headphones" }, 500, 400)).toBe("This sets Headphones back 2 weeks.");
-    expect(setsBack({ title: "Headphones" }, 400, 400)).toBe("This sets Headphones back 1 week.");
-    expect(setsBack(null, 500, 400)).toBeNull();
-    expect(setsBack({ title: "Headphones" }, 500, 0)).toBeNull();
+    const h = { title: "Headphones", targetCents: 8000 };
+    expect(setsBack(h, null, 0, 500, 400)).toBe("This sets Headphones back 2 weeks."); // ceil(8000/400)=20 → ceil(8500/400)=22
+    expect(setsBack(h, null, 0, 400, 400)).toBe("This sets Headphones back 1 week.");
+    expect(setsBack(null, null, 0, 500, 400)).toBeNull();
+    expect(setsBack(h, null, 0, 500, 0)).toBeNull();
   });
 
   it("says when the budget resets: next ISO Monday (UTC), or sooner if her rules end first", () => {
