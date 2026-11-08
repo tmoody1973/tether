@@ -154,6 +154,8 @@ What PayPal would need to settle before real money moves:
 - **Real merchant checkout and refunds.** PayPal's agentic commerce services are by application and onboarding today, not an open checkout API; the sandbox pays one stand-in merchant.
 - **How savings is shown.** Tether's savings is a promise the parent makes, never money set aside, and every screen has to say so.
 
+**Next: Give, through PayPal Giving Fund.** The same permission layer extends to giving: the teen picks a cause, the parent approves, and [PayPal Giving Fund's Charity Search API](https://www.paypal.com/us/paypal-giving-fund/partner) supplies over a million vetted charities. A donation would follow the same path as a purchase (rules check, parent's OK, single-use permission slip, a PayPal order marked as a donation), and the parent stays the donor of record. Spend, Save and Invest work today; Give is next.
+
 ## How Channel3 is used
 
 Channel3 is the shopping agent's only source of products, and the parent's signed rules decide what Channel3 may return (`src/adapters/channel3/client.ts`).
