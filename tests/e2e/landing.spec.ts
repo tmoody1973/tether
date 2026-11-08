@@ -133,3 +133,24 @@ test("landing: each story has a keyboard pause button outside the animation", as
   await expect(page.locator("figure.l-story--shop .ss-stage")).not.toHaveAttribute("data-paused", "");
   await expect(page.getByRole("button", { name: "Pause the investing animation" })).toHaveCount(1);
 });
+
+test("landing: the FAQ answers five parent questions; each opens from the keyboard", async ({ page }) => {
+  await page.goto("/");
+  const faq = page.locator("section#faq");
+  await expect(faq.getByRole("heading", { level: 2, name: "Questions parents ask." })).toBeVisible();
+  const items = faq.locator("details");
+  await expect(items).toHaveCount(5);
+  const first = items.first();
+  await first.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(first).toHaveAttribute("open", "");
+  await expect(first.getByText("Not automatically. Savings is a promise Tether records, not money it holds.")).toBeVisible();
+});
+
+test("landing: the FAQ fits a phone with no sideways scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/#faq");
+  for (const d of await page.locator("section#faq details").all()) await d.locator("summary").click();
+  const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
+  expect(sw).toBeLessThanOrEqual(iw);
+});

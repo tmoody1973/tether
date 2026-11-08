@@ -286,6 +286,18 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 .l-honest td:first-child { color: var(--l-ink); width: 55%; }
 
 /* ---------- try ---------- */
+.l-faq { padding: clamp(40px, 5vw, 64px) 0 clamp(24px, 3vw, 40px); scroll-margin-top: 12px; }
+.l-faq__list { margin-top: 28px; background: #fff; border-radius: 24px; box-shadow: var(--shadow-rest); overflow: hidden; }
+.l-faq__item + .l-faq__item { border-top: 1px solid var(--l-line, #E6E9EF); }
+.l-faq__item summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px clamp(18px, 3vw, 28px); font-size: clamp(17px, 1.6vw, 19px); font-weight: 700; color: var(--l-ink); }
+.l-faq__item summary::-webkit-details-marker { display: none; }
+.l-faq__item summary::after { content: ""; flex: none; width: 10px; height: 10px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); opacity: .55; transition: transform .2s; }
+.l-faq__item[open] summary::after { transform: rotate(225deg); }
+.l-faq__item summary:focus-visible { outline: 3px solid var(--l-brand-deep); outline-offset: -3px; }
+.l-faq__a { padding: 0 clamp(18px, 3vw, 28px) 24px; display: grid; gap: 12px; font-size: 16px; line-height: 1.55; color: var(--l-ink-2); max-width: 72ch; }
+.l-faq__a p { margin: 0; }
+.l-faq__lead { font-weight: 700; color: var(--l-ink); }
+@media (prefers-reduced-motion: reduce) { .l-faq__item summary::after { transition: none; } }
 .l-try { padding: clamp(40px, 5vw, 64px) 0 clamp(64px, 8vw, 112px); scroll-margin-top: 12px; }
 .l-try__in { background: #fff; border-radius: 32px; padding: clamp(32px, 5vw, 64px); display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 5vw, 72px); box-shadow: var(--shadow-rest); }
 .l-try ol { margin: 28px 0 0; padding: 0; list-style: none; counter-reset: l-s; display: grid; gap: 18px; }
