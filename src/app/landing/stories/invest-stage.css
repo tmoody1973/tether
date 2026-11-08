@@ -1,0 +1,40 @@
+/* The investing story: Zoe's fund and invest pages, Amara's request and
+   holding. On the landing's teen band, so the stage takes the band's color. */
+
+.tt-invest .ss-stage { background: #E7E3FF; }
+
+.tt .ti-name { font-size: 23px; margin-top: 6px; }
+.tt .t-hl { list-style: none; margin: 8px 0 0; padding: 0; }
+.tt .t-hl li { display: grid; grid-template-columns: 1fr 70px 44px; gap: 8px; align-items: center; padding: 5px 0; font-size: 14px; line-height: 1.4; }
+.tt .t-hl__bar { height: 6px; background: #EEEDF5; border-radius: 99px; overflow: hidden; }
+.tt .t-hl__bar i { display: block; height: 100%; border-radius: 99px; background: var(--tt-t-accent); }
+.tt .t-hl__pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--tt-ink-2); }
+
+/* Her answers, already written: the form's textareas */
+.tt .t-textarea {
+  min-height: 72px;
+  border: 1.5px solid #DCDAE7;
+  border-radius: 13px;
+  padding: 11px 14px;
+  background: #fff;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--tt-ink);
+}
+
+.tt .ti-search { min-height: 48px; }
+.tt .t-quote { font-size: 14px; line-height: 1.5; color: var(--tt-ink-2); border-left: 3px solid #D9D5FF; padding-left: 10px; }
+.tt .t-quote i { color: var(--tt-ink); }
+.tt .ti-unit { font-size: 15px; font-weight: 600; letter-spacing: 0; color: var(--tt-ink-3); }
+.tt .ti-row { padding: 12px 0; }
+.tt .ti-row:last-of-type { border-bottom: 1px solid var(--tt-line); }
+
+.tt .g-sub { font-size: 14px; line-height: 1.4; color: var(--tt-ink-3); margin-top: 6px; }
+.tt .g-q { font-size: 14px; color: var(--tt-ink-3); }
+.tt .g-reason { font-size: 15px; font-style: italic; color: var(--tt-g-ink); }
+.tt .g-def { display: flex; align-items: baseline; gap: 8px; padding: 0 0 10px; font-size: 15px; }
+.tt .g-def__k { color: var(--tt-ink-2); font-weight: 650; flex: none; }
+.tt .g-def__lead { flex: 1 1 auto; border-bottom: 1.5px dotted #D3D8DE; transform: translateY(-4px); min-width: 12px; }
+.tt .g-def__v { font-weight: 650; }
+.tt .g-holdline { font-size: 14px; line-height: 1.5; color: var(--tt-ink-2); margin-top: 4px; }
+.tt .ss-stage[data-layout='compact'] :is(.g-sub, .g-q, .ti-unit) { font-size: 14px; }

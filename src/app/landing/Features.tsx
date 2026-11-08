@@ -1,6 +1,7 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { NoSign, Phone } from "./bits";
+import { InvestStoryFigure } from "./stories/Stories";
 
 type Side = "guard" | "teen";
 
@@ -11,11 +12,16 @@ function Aud({ side }: { side: Side }) {
     : <p className="l-aud"><span className="l-dot l-dot--small" />On Zoe&apos;s phone</p>;
 }
 
-function Feat({ side, frames, two, children }: { side: Side; frames: ReactNode; two?: boolean; children: ReactNode }) {
+/** `wide`: the copy on top and an animated story across the whole band under it, on both phones. */
+function AudBoth() {
+  return <p className="l-aud"><span className="l-dot l-dot--small" />On Zoe&apos;s phone, then Amara&apos;s</p>;
+}
+
+function Feat({ side, frames, two, wide, children }: { side: Side; frames: ReactNode; two?: boolean; wide?: boolean; children: ReactNode }) {
   return (
-    <article className={`l-feat l-feat--${side}`}>
+    <article className={`l-feat l-feat--${side}${wide ? " l-feat--wide" : ""}`}>
       <div className="l-feat__in">
-        <div className="l-feat__text">{children}<Aud side={side} /></div>
+        <div className="l-feat__text">{children}{wide ? <AudBoth /> : <Aud side={side} />}</div>
         <div className={two ? "l-frames l-frames--two" : "l-frames"}>{frames}</div>
       </div>
     </article>
@@ -95,7 +101,7 @@ export function Features() {
           <p>Whatever Zoe doesn&apos;t spend is savings, and it stays in Amara&apos;s PayPal. Four weeks of keeping her own savings promise moves her up a level: more money a week, more shops.</p>
         </Feat>
 
-        <Feat side="teen" frames={<Phone src="zoe-fund-top" width={272} alt="A fund page: Vanguard Morningstar Total Stock Market ETF (VTI), one share costs $361.93, what's inside: NVIDIA 6.4%, Apple 5.9%, Alphabet 5.2%." />}>
+        <Feat side="teen" wide frames={<InvestStoryFigure />}>
           <h3>Investing with facts, not hype.</h3>
           <p>From Level 2, Zoe can look up funds or stocks and propose a dollar amount from her savings. Tether recommends nothing, and leveraged products can&apos;t be proposed at all. Amara approves each one.</p>
           <ul className="l-facts"><li>What&apos;s inside a fund, or what the company does</li><li>One line against the whole market</li><li>Three questions she answers in her own words</li></ul>

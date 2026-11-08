@@ -64,3 +64,22 @@ test("landing: the problem in numbers, each with Tether's answer, and a link to 
   await expect(page.getByRole("link", { name: "Sources and sample sizes" }))
     .toHaveAttribute("href", "https://github.com/tmoody1973/tether/blob/main/docs/research/problem.md");
 });
+
+test("landing: the two animated stories show their payoff as the still under reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  // Client-only stages, loaded after hydration; under reduced motion each shows its poster and never plays.
+  const shop = page.locator("figure.l-story--shop");
+  await shop.scrollIntoViewIfNeeded();
+  await expect(shop).toHaveAttribute("aria-label", /Zoe is asking for \$25\.30 at Best Buy/);
+  await expect(shop.getByText("Approved and paid — $25.30 at Best Buy. The receipt is in the record.")).toBeVisible();
+  await expect(shop.getByText("Matches PayPal")).toBeVisible();
+  await expect(shop.getByText("Sent. Amara will see it, with what you have left this week.")).toBeVisible();
+
+  const invest = page.locator("figure.l-story--invest");
+  await invest.scrollIntoViewIfNeeded();
+  await expect(invest).toHaveAttribute("aria-label", /Zoe proposes investing \$5\.00 in VTI/);
+  await expect(invest.getByText("0.0138 share")).toBeVisible();
+  await expect(invest.getByText("Bought.")).toBeVisible();
+  await expect(invest.getByText(/Too soon to tell: investments like this are for years, not days\./).first()).toBeVisible();
+});

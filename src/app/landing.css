@@ -381,4 +381,13 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 .l-story { margin: 0; container-type: inline-size; }
 .l-story--shop { margin-bottom: 44px; border-bottom: 1px solid var(--l-line); } /* the crop sits on a shelf, not in mid-air */
 .l-story--shop .l-story__space { height: min(680px, 68cqw); }
+.l-story--invest .l-story__space { height: min(660px, 75cqw); }
 @container (max-width: 719px) { .l-story--shop .l-story__space { height: 178.8cqw; } }
+@container (max-width: 619px) { .l-story--invest .l-story__space { height: 178.8cqw; } }
+
+/* The investing feature: copy on top, the story across the band, bleeding off its foot */
+.l-feat--wide .l-feat__in, .l-feat--teen.l-feat--wide .l-feat__in { grid-template-columns: minmax(0, 1fr); gap: clamp(24px, 4vw, 40px); }
+.l-feat--wide .l-feat__text { padding-bottom: 0; max-width: 640px; }
+.l-feat--teen.l-feat--wide .l-frames { order: 0; }
+.l-feat--wide .l-frames { display: block; align-self: stretch; margin: 0; }
+@media (max-width: 560px) { .l-feat--wide .l-frames { margin-inline: -22px; } }
