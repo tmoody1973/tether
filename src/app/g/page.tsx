@@ -17,10 +17,10 @@ import { approvalShort, formatCents, formatDay, listWords } from "@/ui/grantWord
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
-import { savingsSub } from "@/ui/savingsWords";
 import { advanceClockAction } from "./actions";
 import { AskBox } from "./AskBox";
 import { PaymentRow } from "./PaymentRow";
+import { PromisedCard } from "./PromisedCard";
 import { FirstRun, WayBackIn } from "./FirstRun";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
@@ -145,17 +145,9 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             <div className="g-muted"><Money cents={h.spentThisWeekCents} /> spent · week ends {formatDay(weekEnd(now))}</div>
           </section>
 
-          <section className="g-card" aria-labelledby="saved-h">
-            <h2 className="g-label" id="saved-h">{h.goal ? `${zoe}'s savings goal` : `${zoe}'s savings`}</h2>
-            {h.goal && <div className="g-goal__name">{h.goal.title}</div>}
-            <div className="g-figure" style={{ fontSize: 19 }}>
-              <Money cents={h.savingsCents} /> <small>{h.goal ? <>of <Money cents={h.goal.targetCents} /> saved</> : "saved"}</small>
-            </div>
-            {h.goal && <Bar goal value={h.savingsCents} max={h.goal.targetCents}
-              label={`${formatCents(h.savingsCents)} saved of ${formatCents(h.goal.targetCents)}`} />}
-            <div className="g-card__sub">{savingsSub(zoe)}</div>
+          <PromisedCard teen={zoe} cents={h.savingsCents} goal={h.goal}>
             <p className="g-more"><Link className="g-textlink" href="/g/savings">See {zoe}&apos;s savings</Link></p>
-          </section>
+          </PromisedCard>
 
           <section className="g-card" aria-labelledby="glance-h">
             <h2 className="g-label" id="glance-h">{w.Her} rules at a glance</h2>

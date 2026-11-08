@@ -72,11 +72,13 @@ test("home shows this week, what needs you, recent payments and her rules at a g
   for (const b of ["Advance 1 day", "Advance to end of week", "Advance to end of month"]) await expect(page.getByRole("button", { name: b })).toBeVisible();
 });
 
-test("home labels the savings goal with its name", async ({ page }) => {
+test("home labels the amount promised and the goal by name, never as money held", async ({ page }) => {
   await enter(page, E2E.grantKey);
-  const goal = page.getByRole("region", { name: "Zoe's savings goal" });
-  await expect(goal).toContainText("Space One Pro headphones");
-  await expect(goal).toContainText("$0.00 of $169.99 saved");
+  const goal = page.getByRole("region", { name: "Promised to Zoe" });
+  await expect(goal).toContainText("Zoe's goal: Space One Pro headphones");
+  await expect(goal).toContainText("$0.00 of $169.99 goal");
+  await expect(goal).toContainText("This is your recorded commitment, not a separate PayPal balance. Tether has not reserved or transferred this money.");
+  await expect(page.getByRole("main")).not.toContainText(/stays in your PayPal|withdraw/i);
 });
 
 test("Zoe's link: send and reset live in Settings", async ({ page }) => {

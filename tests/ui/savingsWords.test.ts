@@ -1,44 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { savingsFacts, savingsSub } from "@/ui/savingsWords";
+import {
+  CHANGE_OR_STOP, ONBOARDING_MONEY, PROMISED_SUB, SAVINGS_INTRO, promisedLabel, recordPayment, savingsFacts,
+} from "@/ui/savingsWords";
 
-// Pins the Savings page's explainer (decision 028). Each sentence states what the code does; change the code and the
-// words together, never one alone.
-describe("what savings means, in fixed sentences", () => {
-  const text = (demo: boolean) => savingsFacts("Maya", { demo }).map((f) => [f.q, ...f.a].join("\n")).join("\n\n");
+// Pins the parent's savings words (decision 028): an amount promised, never money held. Change the code and the words
+// together, never one alone.
+describe("savings words never read as money held", () => {
+  it("the figure, the onboarding line, the Savings page's opening and the payout action say exactly this", () => {
+    expect(promisedLabel("Maya")).toBe("Promised to Maya");
+    expect(PROMISED_SUB).toBe("This is your recorded commitment, not a separate PayPal balance. Tether has not reserved or transferred this money.");
+    expect(ONBOARDING_MONEY).toBe("Tether does not hold money or create a savings account. Unspent allowance is recorded as an amount you promise your teen. You remain responsible for paying it.");
+    expect(SAVINGS_INTRO).toBe("Tether tracks allowance and savings promises. It doesn't hold or set aside money. Purchases charge your saved PayPal when they happen.");
+    expect(recordPayment("Maya")).toBe("Record payment to Maya");
+    expect(CHANGE_OR_STOP).toBe("What happens if I change the amount or stop?");
+  });
 
-  it("says exactly this for a family started with PayPal", () => {
-    expect(savingsSub("Maya")).toBe("What Maya didn't spend. It stays in your PayPal; Tether keeps count.");
-    expect(text(false)).toBe(`It's a record, not separate money
-Tether counts what Maya didn't spend each week.
-The dollars stay in your PayPal, mixed with the rest of your balance, until you send them to Maya yourself (Venmo, PayPal or cash) and tap "I've sent it".
-Tether can't see or prove that transfer.
+  it("the what-ifs: paying the teen, a low balance, investing; changing the amount and stopping live on the rules page", () => {
+    expect(savingsFacts("Maya").map((f) => [f.q, ...f.a].join("\n")).join("\n\n")).toBe(`Paying Maya
+You pay Maya yourself (Venmo, PayPal or cash), then tap "Record payment to Maya".
+Tether can't see or prove that payment.
 
 If your PayPal balance runs low
-Tether never checks or holds your balance, so the savings number doesn't change.
+Tether never checks or holds your balance, so the amount promised doesn't change.
 Purchases are charged only when they're made.
 If PayPal declines one, nothing is charged and the money goes back to Maya's week.
-
-If you change the weekly amount
-Closed weeks keep their amount.
-A change applies to the whole current week: the rules in force when the week ends are the ones that count.
-A change to Maya's savings promise starts next week.
-
-If you stop
-"Stop Maya's rules" ends spending at once and removes your saved PayPal.
-This week counts no savings.
-Past savings stay on the record and are still yours to pay out.
 
 Investing is different
 Money Maya invests, with your OK, does move: into Maya's own investing account.
 In this demo, that's a simulated sandbox deposit.`);
   });
 
-  it("on the shared demo family, Stop keeps the saved PayPal (the demo's own rule), and says so", () => {
-    expect(text(true)).toContain(`"Stop Maya's rules" ends spending at once and keeps the saved PayPal on this shared demo family, so the next person can try it.`);
-    expect(text(true)).not.toContain("removes your saved PayPal");
-  });
-
-  it("names the teen and never says her or his", () => {
-    expect(text(false)).not.toMatch(/\b(her|his|she|he)\b/i);
+  it("no sentence says the money stays, is held or can be withdrawn, and none says her or his", () => {
+    const all = [PROMISED_SUB, ONBOARDING_MONEY, SAVINGS_INTRO, ...savingsFacts("Maya").flatMap((f) => [f.q, ...f.a])].join("\n");
+    expect(all).not.toMatch(/stays? in your PayPal|withdraw|keeps count/i);
+    expect(all).not.toMatch(/\b(her|his|she|he)\b/i);
   });
 });

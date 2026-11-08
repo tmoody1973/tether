@@ -86,6 +86,7 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   await page.getByLabel("Teen 2's first name").fill("Maya");
   await page.getByLabel("Maya's age").fill("13");
   await page.getByLabel("I'm Zoe and Maya's parent or guardian").check();
+  await expect(page.getByText("Tether does not hold money or create a savings account.", { exact: false })).toBeVisible();
   await hideDevBadge();
   await page.screenshot({ path: shots("onboarding-two-teens.png"), fullPage: true });
   await page.getByRole("button", { name: "Create our family" }).click();
@@ -171,7 +172,11 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   // Savings: Kofi's own page, with what "savings" means.
   await nav.getByRole("link", { name: "Savings" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Kofi's savings" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Tether counts what Kofi didn't spend each week.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Promised to Kofi" })).toContainText("Tether has not reserved or transferred this money.");
+  await expect(page.getByText("Tether tracks allowance and savings promises. It doesn't hold or set aside money.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "What happens if I change the amount or stop?" })).toHaveAttribute("href", "/g/rules");
+  await expect(page.getByRole("link", { name: "Statement" })).toHaveAttribute("href", "/g/statement");
+  await expect(page.getByRole("main")).not.toContainText(/stays in your PayPal|withdraw/i);
   await expect(nav.getByRole("link", { name: "Savings" })).toHaveAttribute("aria-current", "page");
 
   // A phone: five tabs, a Settings gear, the switcher at the top, nothing scrolls sideways.

@@ -7,13 +7,15 @@ import { getDb } from "@/db/client";
 import * as t from "@/db/schema";
 import { guardianHome, needsCount } from "@/flows/home";
 import { monthReviewView } from "@/flows/month";
-import { formatCents, formatDay } from "@/ui/grantWords";
-import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
-import { savingsFacts, savingsSub } from "@/ui/savingsWords";
+import { formatDay } from "@/ui/grantWords";
+import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
+import { CHANGE_OR_STOP, SAVINGS_INTRO, recordPayment, savingsFacts } from "@/ui/savingsWords";
+import { PromisedCard } from "../PromisedCard";
 import { ReleaseCard } from "../ReleaseCard";
 
-// Savings (decision 028): the teen's savings figure and goal, the release owed now, past releases, and what "savings"
-// means on Tether. A promise kept on the record, not money moved, so it gets its own page apart from Investing.
+// Savings (decision 028): the amount promised to the teen and the goal, the release owed now, payments recorded, and
+// what "savings" means on Tether. A promise on the record, never money held, so it gets its own page apart from Investing.
+// Changing the amount and stopping are explained on the rules page; /g/statement is the closing statement (another branch).
 export default function SavingsPage({ searchParams }: PageProps<"/g/savings">) {
   return (
     <Suspense fallback={<GuardianLoading />}>
@@ -38,50 +40,45 @@ async function Savings({ searchParams }: { searchParams: Promise<Record<string, 
   return (
     <GuardianShell active="savings" teenName={zoe} needs={needsCount(h)} familyId={familyId}>
       <h1 className="g-title">{zoe}&apos;s savings</h1>
-      {sent && <p className="g-flash" role="status">Recorded as sent by you. Tether can&apos;t see the money move, and the record says so.</p>}
+      {sent && <p className="g-flash" role="status">Payment to {zoe} recorded. Tether can&apos;t see the money move, and the record says so.</p>}
 
       <div className="g-two">
         <div className="g-stack">
-          <section className="g-card" aria-labelledby="saved-h">
-            <h2 className="g-label" id="saved-h">{h.goal ? `${zoe}'s savings goal` : "Saved so far"}</h2>
-            {h.goal && <div className="g-goal__name">{h.goal.title}</div>}
-            <div className="g-figure" style={{ fontSize: 19 }}>
-              <Money cents={h.savingsCents} /> <small>{h.goal ? <>of <Money cents={h.goal.targetCents} /> saved</> : "saved"}</small>
-            </div>
-            {h.goal && <Bar goal value={h.savingsCents} max={h.goal.targetCents}
-              label={`${formatCents(h.savingsCents)} saved of ${formatCents(h.goal.targetCents)}`} />}
-            <div className="g-card__sub">{savingsSub(zoe)}</div>
-          </section>
+          <PromisedCard teen={zoe} cents={h.savingsCents} goal={h.goal}>
+            <p className="g-more"><Link className="g-textlink" href="/g/statement">Statement</Link></p>
+          </PromisedCard>
 
           {review.release && <ReleaseCard zoe={zoe} release={review.release} back="savings" />}
 
           <section className="g-card" aria-labelledby="past-h">
-            <h2 className="g-label" id="past-h">Paid out to {zoe}</h2>
-            {past.length === 0 ? <p className="g-muted">Nothing paid out yet. A release comes when {zoe} moves up a level.</p> : (
+            <h2 className="g-label" id="past-h">Payments to {zoe}</h2>
+            {past.length === 0 ? <p className="g-muted">No payments recorded yet. A release comes when {zoe} moves up a level.</p> : (
               <ul className="g-rows">
                 {past.map((r) => (
                   <li key={r.id}>
                     <b><Money cents={r.savedCents + r.matchCents} /></b>{" "}
-                    <span className="g-muted"><Money cents={r.savedCents} /> saved + <Money cents={r.matchCents} /> your match · sent {formatDay(r.confirmedAt!)}</span>
+                    <span className="g-muted"><Money cents={r.savedCents} /> saved + <Money cents={r.matchCents} /> your match · recorded {formatDay(r.confirmedAt!)}</span>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="g-note" style={{ marginTop: 8 }}>&ldquo;Sent&rdquo; is the day you tapped &ldquo;I&apos;ve sent it&rdquo;.</p>
+            <p className="g-note" style={{ marginTop: 8 }}>&ldquo;Recorded&rdquo; is the day you tapped &ldquo;{recordPayment(zoe)}&rdquo;.</p>
           </section>
         </div>
 
         <section className="g-card" aria-labelledby="means-h">
           <h2 className="g-label" id="means-h">What &ldquo;savings&rdquo; means</h2>
-          <div className="g-whatifs">
-            {savingsFacts(zoe, { demo: h.isDemo }).map((f, i) => (
-              <details key={f.q} open={i === 0}>
+          <p style={{ marginTop: 8 }}>{SAVINGS_INTRO}</p>
+          <div className="g-whatifs" style={{ marginTop: 8 }}>
+            {savingsFacts(zoe).map((f) => (
+              <details key={f.q}>
                 <summary>{f.q}</summary>
                 {f.a.map((line) => <p key={line}>{line}</p>)}
                 {f.q === "Investing is different" && <p><Link className="g-textlink" href="/g/invest">See {zoe}&apos;s investing</Link></p>}
               </details>
             ))}
           </div>
+          <p className="g-more"><Link className="g-textlink" href="/g/rules">{CHANGE_OR_STOP}</Link></p>
         </section>
       </div>
     </GuardianShell>

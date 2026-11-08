@@ -1,48 +1,45 @@
-// What "savings" means on Tether, in fixed sentences (decision 028). Facts, not advice. Each one is checked against the
-// code that makes it true (noted beside it) and pinned by tests/ui/savingsWords.test.ts.
+// What "savings" means on Tether, in fixed sentences (decision 028). Facts, not advice, and never money held: Tether
+// records an amount the parent promises; it holds nothing. Pinned by tests/ui/savingsWords.test.ts.
 
-/** Home's savings card and the Savings page say this under the figure. */
-export const savingsSub = (teen: string) => `What ${teen} didn't spend. It stays in your PayPal; Tether keeps count.`;
+/** The savings figure's label, on Home's card and the Savings page. */
+export const promisedLabel = (teen: string) => `Promised to ${teen}`;
+
+/** Under the figure, wherever it appears. */
+export const PROMISED_SUB = "This is your recorded commitment, not a separate PayPal balance. Tether has not reserved or transferred this money.";
+
+/** Where money is first explained: the teen form. */
+export const ONBOARDING_MONEY =
+  "Tether does not hold money or create a savings account. Unspent allowance is recorded as an amount you promise your teen. You remain responsible for paying it.";
+
+/** The Savings page's opening lines. */
+export const SAVINGS_INTRO =
+  "Tether tracks allowance and savings promises. It doesn't hold or set aside money. Purchases charge your saved PayPal when they happen.";
+
+/** The payout action, everywhere it's named. Never "withdraw". */
+export const recordPayment = (teen: string) => `Record payment to ${teen}`;
+
+/** Changing the amount and stopping are explained on the rules page, which owns that behaviour. */
+export const CHANGE_OR_STOP = "What happens if I change the amount or stop?";
 
 export type SavingsFact = { q: string; a: string[] };
 
-export function savingsFacts(teen: string, opts: { demo: boolean }): SavingsFact[] {
+export function savingsFacts(teen: string): SavingsFact[] {
   return [
     {
-      // ledger: week_close journals allowance minus spent; nothing moves at PayPal. confirmRelease only records "sent".
-      q: "It's a record, not separate money",
+      // confirmRelease only records that she says she paid; nothing moves at PayPal.
+      q: `Paying ${teen}`,
       a: [
-        `Tether counts what ${teen} didn't spend each week.`,
-        `The dollars stay in your PayPal, mixed with the rest of your balance, until you send them to ${teen} yourself (Venmo, PayPal or cash) and tap "I've sent it".`,
-        "Tether can't see or prove that transfer.",
+        `You pay ${teen} yourself (Venmo, PayPal or cash), then tap "${recordPayment(teen)}".`,
+        "Tether can't see or prove that payment.",
       ],
     },
     {
       // purchase.ts R37: declined ⇒ reversal + failed. No balance check anywhere before a charge.
       q: "If your PayPal balance runs low",
       a: [
-        "Tether never checks or holds your balance, so the savings number doesn't change.",
+        "Tether never checks or holds your balance, so the amount promised doesn't change.",
         "Purchases are charged only when they're made.",
         `If PayPal declines one, nothing is charged and the money goes back to ${teen}'s week.`,
-      ],
-    },
-    {
-      // week.ts: each week closes against the grant signed before it ended; pendingCommitmentCents applies after a close.
-      q: "If you change the weekly amount",
-      a: [
-        "Closed weeks keep their amount.",
-        "A change applies to the whole current week: the rules in force when the week ends are the ones that count.",
-        `A change to ${teen}'s savings promise starts next week.`,
-      ],
-    },
-    {
-      // grant.ts revoke: grant revoked at once; vault deleted at PayPal, except the shared demo family (C1). week.ts: a
-      // stopped grant gives 0 allowance, so this week saves nothing. Journal rows are never deleted.
-      q: "If you stop",
-      a: [
-        `"Stop ${teen}'s rules" ends spending at once and ${opts.demo ? "keeps the saved PayPal on this shared demo family, so the next person can try it" : "removes your saved PayPal"}.`,
-        "This week counts no savings.",
-        "Past savings stay on the record and are still yours to pay out.",
       ],
     },
     {

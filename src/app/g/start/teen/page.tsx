@@ -7,6 +7,7 @@ import { GuardianLoading } from "@/ui/guardian";
 import { PaypalLoginButton } from "@/ui/PaypalLogin";
 import { SandboxLogin } from "@/ui/SandboxLogin";
 import { demoLinks } from "../../../demoLinks";
+import { ONBOARDING_MONEY } from "@/ui/savingsWords";
 import { StartForm } from "./StartForm";
 
 // After Log in with PayPal, for a PayPal with no family yet (mockup 02c, minus "Your PayPal is saved": saving the
@@ -71,6 +72,7 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
         <h1>Start your own family</h1>
         {trouble}
         <p>First, log in with PayPal. Tether pays from your PayPal, and only for purchases that pass the rules you sign.</p>
+        <p className="g-note">{ONBOARDING_MONEY}</p>
         <div className="s-actions s-center"><PaypalLoginButton /></div>
         <SandboxLogin />
       </Gate>
@@ -84,6 +86,7 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
       <h2>{ticket.add ? "Your other teen" : "Now, your teen"}</h2>
       {ticket.add && <p className="g-note">Each teen gets their own rules, budget, record, investing and link. You save your PayPal once for each teen.</p>}
       <StartForm add={ticket.add} />
+      <p className="g-note" style={{ marginTop: 14 }}>{ONBOARDING_MONEY}</p>
       <p className="g-note" style={{ marginTop: 14 }}>Next time, Log in with PayPal: the same PayPal is your way back in.</p>
       <p className="g-note">The family relationship is simulated — PayPal has no notion of it. Sandbox only; no real money moves.</p>
     </Gate>

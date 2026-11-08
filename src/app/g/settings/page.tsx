@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { BROWSER_FAMILY_COOKIE, PAYPAL_WHO_COOKIE, openBrowserFamilies, openPaypalWho } from "@/auth/start";
@@ -105,6 +106,12 @@ async function Settings({ searchParams }: { searchParams: Promise<Record<string,
               </>
             )}
             <p className="g-note" style={{ marginTop: 8 }}>Sandbox only; no real money moves.</p>
+          </section>
+
+          <section className="g-card" aria-labelledby="records-h">
+            <h2 className="g-label" id="records-h">Records</h2>
+            <p style={{ marginTop: 6 }}><Link className="g-textlink" href="/g/statement">{teen}&apos;s statement</Link></p>
+            <p className="g-note" style={{ marginTop: 6 }}>Spending, the amount promised to {teen}, and payments you&apos;ve recorded.</p>
           </section>
 
           {h.isDemo && (
