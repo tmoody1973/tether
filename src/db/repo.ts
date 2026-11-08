@@ -150,6 +150,8 @@ export const cartItems = (cart: PurchaseRow["cart"]): ReceiptItem[] =>
 export interface MonthReceipt {
   at: Date; shop: string; items: ReceiptItem[]; amountCents: number; status: PurchaseStatus; ruleVersion: number; amaraApproved: boolean;
   purchaseId: string; captureId: string; grantId: string; cartHash: string; approvalId: string | null;
+  /** Wall-clock time the receipt was written, i.e. when PayPal took the money (`at` is the demo clock). */
+  paidAt: Date;
   /** Set aside by a demo reset: still a real PayPal charge on the record, but it counts in no total (R44). */
   setAside: boolean;
 }
@@ -171,7 +173,7 @@ export async function receiptsForMonth(db: Db, familyId: string, month: string):
       at, shop: m?.name ?? "unknown shop", items: cartItems(p.cart), amountCents: p.cart.totalCents,
       status: p.status, ruleVersion: r.grantVersion, amaraApproved: a?.result === "approved",
       purchaseId: p.id, captureId: r.captureId, grantId: r.grantId, cartHash: r.cartHash, approvalId: r.approvalId,
-      setAside: !counts,
+      paidAt: r.createdAt, setAside: !counts,
     }));
 }
 

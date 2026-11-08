@@ -168,7 +168,7 @@ function Proof({ p, rec }: { p: RecordReceipt; rec: Reconciliation | "checking" 
           Issued {formatWhen(p.slip.issuedAt)}, valid until {formatWhen(p.slip.expiresAt)}.<br />
           Cart fingerprint: <code>{p.slip.cartHash}</code>
         </dd>
-        <dt>Checked against PayPal</dt><dd className={check.ok ? "g-ok" : "g-warntext"}>{check.text}</dd>
+        <dt>Checked against PayPal</dt><dd className={check.ok ? "g-ok" : check.waiting ? "g-muted" : "g-warntext"}>{check.text}</dd>
         <dd className="g-proofbox__wide"><div className="g-clause"><span className="g-clause__lbl">Rules v{p.ruleVersion}, as signed</span>{p.slip.clause}</div></dd>
       </dl>
     </details>
