@@ -196,13 +196,13 @@ describe("week close and commitment", () => {
     expect(await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, familyId))).toHaveLength(0);
   });
 
-  it("a week under stopped rules saves nothing (I2)", async () => {
+  it("the week rules were stopped in still saves (029); the week after a stop saves nothing (I2)", async () => {
     const { familyId } = await seed("2026-11-04T12:00:00Z");
     await revoke(deps(), familyId);
-    nowMs = new Date("2026-11-10T09:00:00Z").getTime();
+    nowMs = new Date("2026-11-17T09:00:00Z").getTime();
     await closeWeek(deps(), familyId);
-    expect(await savingsCents(db, familyId)).toBe(0);
-    expect((await weekRecords(db, familyId))[0]).toMatchObject({ allowanceCents: 0 });
+    expect(await savingsCents(db, familyId)).toBe(2000);
+    expect((await weekRecords(db, familyId)).map((w) => w.allowanceCents)).toEqual([2000, 0]);
   });
 
   it("closeWeek is idempotent", async () => {

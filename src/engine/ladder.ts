@@ -16,9 +16,26 @@ export const LEVELS: Record<Level, LevelDef> = {
 /** The lowest level that can invest; every "Investing opens at Level N" line reads this. */
 export const INVESTING_FROM: Level = ([1, 2, 3] as const).find((l) => LEVELS[l].investing)!;
 
-export interface WeekRecord { weekKey: string; allowanceCents: Cents; spentCents: Cents; commitmentCents: Cents }
+/** stopped: Amara stopped the rules during this week (decision 029). It still saves, but never counts as kept. */
+export interface WeekRecord { weekKey: string; allowanceCents: Cents; spentCents: Cents; commitmentCents: Cents; stopped?: boolean }
 
-export const commitmentKept = (w: WeekRecord): boolean => w.allowanceCents - w.spentCents >= w.commitmentCents;
+export const commitmentKept = (w: WeekRecord): boolean => !w.stopped && w.allowanceCents - w.spentCents >= w.commitmentCents;
+
+/** What a week adds to savings: the allowance she didn't spend. The one formula week close and the statement share. */
+export const unspentCents = (allowanceCents: Cents, spentCents: Cents): Cents => Math.max(0, allowanceCents - spentCents);
+
+/**
+ * The grant as it stands at `at` (decision 029): before `thisWeek.until`, its weekly amount, weekly budget and
+ * per-purchase cap are the amount kept from the rules it replaced. Everything else (shops, approvals) is the new rules.
+ */
+export function asOf(g: Grant, at: Date): Grant {
+  if (!g.thisWeek || at.getTime() >= Date.parse(g.thisWeek.until)) return g;
+  const cents = g.thisWeek.weeklyCents;
+  return {
+    ...g, weeklyCents: cents,
+    constraints: g.constraints.map((c) => (c.type === "payment.budget" || c.type === "payment.amount_range" ? { ...c, maxCents: cents } : c)),
+  };
+}
 
 /** Consecutive kept weeks ending at the last element (chronological input). */
 export function streak(weeks: WeekRecord[]): number {

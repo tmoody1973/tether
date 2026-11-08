@@ -23,6 +23,7 @@ import { advanceClockAction } from "./actions";
 import { AskBox } from "./AskBox";
 import { PaymentRow } from "./PaymentRow";
 import { PromisedCard } from "./PromisedCard";
+import { RetirementNotice } from "@/ui/RetirementNotice";
 import { PushAliasRefresh } from "./NotifyCard";
 import { pushAliasFor } from "@/flows/notify";
 import { FirstRun, WayBackIn } from "./FirstRun";
@@ -108,6 +109,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
         </p>
       )}
 
+      <RetirementNotice removesAt={h.removesAt} statementLink />
       {process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID && <PushAliasRefresh appId={process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID} alias={await pushAliasFor(db, familyId)} />}
       <div className="g-two g-home">
         <div className="g-stack">

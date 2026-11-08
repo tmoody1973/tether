@@ -16,6 +16,16 @@ Built for the **PayPal AI Hackathon 2026** (Devpost). Submission deadline: **Thu
 **Live app:** https://tether-five-beta.vercel.app (sandbox only, no real money moves)
 **Demo video:** _link coming with the submission_
 
+## Tether: Delegated spending, built for trust
+
+AI shopping is making it easier for software to act on a consumer's behalf. But what happens when the shopper is a teenager and the person who controls the money is a parent?
+
+Tether demonstrates one answer.
+
+A parent establishes spending rules. A teenager shops with an AI agent. Deterministic software evaluates the proposed purchase, and PayPal processes authorized payments with a record of the applicable rules and permission.
+
+The result is an approach to supervised family commerce that could extend PayPal's role from payment processing into managing trusted, delegated purchasing experiences.
+
 ## The problem
 
 | Who | One cited number | Tether's answer |
@@ -128,6 +138,38 @@ someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpa
 | **Financial Datasets** | Only what Alpaca lacks (decision 021): what's inside a fund (its SEC filing) and, for Amara's assistant only, headlines. Narrow, cached, capped calls: market headlines, or only what's on Zoe's list and the companies inside her funds. Fund holdings 40 a family a day, headlines 20 a day and at most two per question. |
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
+
+## Why it matters for PayPal
+
+Tether demonstrates how PayPal could let one person make purchasing decisions under spending authority granted by another.
+
+PayPal is already building for AI shoppers. Its [agentic commerce services](https://developer.paypal.com/agentic-commerce-services/about) help customers find products, manage carts and complete purchases through AI assistants, and [Agent Ready](https://developer.paypal.com/agent-ready/overview) supports "both supervised and automatic shopping scenarios" using delegated payment tokens. Tether works on the question those services leave open: what happens when the person shopping isn't the person whose money it is?
+
+- **A permission layer for agent-assisted commerce.** An agent proposes; the payer's signed rules decide. Every payment carries the rules version and a single-use, cart-bound permission slip, so anyone can trace why it was allowed. Families are the first case. The same model fits other delegated purchases, such as an employee buying on a company account.
+- **More use of the parent's PayPal.** Supervised purchases run on the wallet the parent already has: no separate teen account, no card handed over.
+- **A record both sides can trust.** The parent sees why each payment was allowed; the teen sees what's left. Neither has to take the other's word for it.
+
+**Tether is the decision layer PayPal's agent payments already expect.** When an AI platform pays a PayPal merchant through Agent Ready, Braintree checks the one-time payment token's limits: the merchant, a maximum amount, the currency and an expiry ([PayPal's ACP guide](https://developer.paypal.com/agent-ready/agentic-commerce-protocol)). Tether's single-use permission slip (`src/engine/token.ts`) carries the same limits (the merchant, the exact amount, a two-minute expiry) plus the exact cart. PayPal checks a token's limits at payment time; Tether decides whether the token should exist at all, and with what limits, under rules signed by someone other than the shopper.
+
+What PayPal would need to settle before real money moves:
+- **Who may start a payment.** PayPal accounts are for adults, so Tether keeps the account in the parent's name. PayPal would still need to approve a teen initiating purchases on it.
+- **Real merchant checkout and refunds.** PayPal's agentic commerce services are by application and onboarding today, not an open checkout API; the sandbox pays one stand-in merchant.
+- **How savings is shown.** Tether's savings is a promise the parent makes, never money set aside, and every screen has to say so.
+
+**Next: Give, through PayPal Giving Fund.** The same permission layer extends to giving: the teen picks a cause, the parent approves, and [PayPal Giving Fund's Charity Search API](https://www.paypal.com/us/paypal-giving-fund/partner) supplies over a million vetted charities. A donation would follow the same path as a purchase (rules check, parent's OK, single-use permission slip, a PayPal order marked as a donation), and the parent stays the donor of record. Spend, Save and Invest work today; Give is next.
+
+## How Channel3 is used
+
+Channel3 is the shopping agent's only source of products, and the parent's signed rules decide what Channel3 may return (`src/adapters/channel3/client.ts`).
+
+| When | Channel3 call | What Tether does with it |
+|---|---|---|
+| Zoe asks for something | Product search, with `website_ids` set to the shops Amara allowed | The agent only ever sees Zoe's shops. Out-of-stock offers are dropped. |
+| Zoe pastes a product link | Lookup | Turns the link into a Channel3 product, then keeps it only if one of her shops sells it. |
+| Amara adds a shop | Website search | Finds the store, whose domain then becomes a search filter. |
+| Right before PayPal is charged | Product details (free) | Fetches every item's price at that shop again (`src/flows/purchase.ts`, `reprice`). Gone: refused. Price changed: the cart no longer matches its single-use permission slip, so nothing is charged. |
+
+Channel3's buy links are affiliate-tracked, and Tether never shows them to Zoe: every purchase has to pass the rules and be paid from Amara's PayPal.
 
 ## The AI: two agents, three checked calls
 
@@ -302,6 +344,7 @@ Built, reviewed task by task, and running in production: the rule engine and per
 | In this build | In production |
 |---|---|
 | Every purchase pays **one Tether sandbox business account**; the receipt records which shop it was for. A saved PayPal wallet can only be charged by the business that saved it (verified: `BILLING_AGREEMENT_NOT_FOUND`). | Tether pays shops as a PayPal platform partner, or through shops' own agent checkouts. |
+| Prices are the item price Channel3's search returns; shipping and tax aren't in the total yet, because Channel3 gives neither. | Real store checkout, PayPal first, with the parent's approved total as the hard spending cap in every stage. **Possible today:** hand off to the store's own checkout through Channel3's tracked link, with the parent paying there with PayPal. **Next:** PayPal's [agentic commerce services](https://developer.paypal.com/agentic-commerce-services/about) (Store Sync and Agent Ready merchants), which are by request for merchants, through a partnership. **Later:** card-network agent tokens in the PayPal wallet (Mastercard Agent Pay), with Channel3's coming [checkout](https://channel3.ai/docs/checkout) or Crossmint's Agent Checkout for other stores; either gives each store's real total. |
 | Zoe's investments sit in an **ordinary Alpaca sandbox account**, labelled on screen as a stand-in. The sandbox refuses custodial accounts. One setting (`ALPACA_CUSTODIAL_ENABLED=true`) switches to the custodial request. | A custodial account Amara manages for Zoe. |
 | Savings release: Amara sends the money herself and taps "I've sent it". | Same. Tether never holds money. |
 | A demo clock moves time forward so a month fits in a video. | Real time. |

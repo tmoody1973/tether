@@ -148,3 +148,8 @@ export function tileWords(tile: ShopTile, guardian: string): { label: string; li
   if (tile.kind === "ask") return { label: "Ask first", line: `${guardian} says yes the first time` };
   return { label: "Locked", line: tile.opensAt ? `Opens at Level ${tile.opensAt}` : `Not on your list. Ask ${guardian} to add it` };
 }
+
+/** Decision 029: savings is a promise Tether keeps count of, not money set aside. */
+export const SAVINGS_LABEL = "Savings promised";
+export const savingsPromisedLine = (guardian: string): string =>
+  `${guardian} has promised you this amount. Tether tracks it; the money isn't set aside.`;

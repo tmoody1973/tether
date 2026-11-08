@@ -18,6 +18,11 @@ export interface Grant {
   id: string; familyId: string; version: number; level: 1 | 2 | 3;
   weeklyCents: Cents; commitmentFloorPct: number; matchPct: number;
   constraints: Constraint[]; fundAllowlist: string[]; signedAt: string; expiresAt: string;
+  /**
+   * Decision 029: a weekly-amount change waits for next week. Until `until` (the next Monday 00:00 UTC after signing)
+   * the weekly amount is still `weeklyCents` from the rules these replaced. Read a grant through `asOf`, never directly.
+   */
+  thisWeek?: { weeklyCents: Cents; until: string };
 }
 
 export interface LedgerView {

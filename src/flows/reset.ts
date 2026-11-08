@@ -58,6 +58,9 @@ export async function resetDemo(
       .where(and(eq(t.approvals.familyId, familyId), isNull(t.approvals.result), isNull(t.approvals.expiredAt)));
     await tx.delete(t.levelChanges).where(and(eq(t.levelChanges.familyId, familyId), gte(t.levelChanges.at, seeded)));
     await tx.delete(t.weeks).where(and(eq(t.weeks.familyId, familyId), gt(t.weeks.closedAt, seeded)));
+    // Decision 029: an earlier judge's Stop must not mark the next judge's week stopped. The rules stay revoked (and
+    // superseded by the re-install below); without a stop time they cover no week, as before 029.
+    await tx.update(t.grants).set({ revokedAt: null }).where(and(eq(t.grants.familyId, familyId), gte(t.grants.revokedAt, seeded)));
     // ponytail: the seed makes no releases or fund proposals, so every one of them is post-seed activity. A CONFIRMED
     // release stays: it is Amara's record that she sent money (its journal row is set aside with the rest).
     await tx.delete(t.releases).where(and(eq(t.releases.familyId, familyId), isNull(t.releases.confirmedAt)));

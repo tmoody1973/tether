@@ -5,7 +5,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getPurchase, type PurchaseRow } from "@/db/repo";
 import { counted, ledgerView, weekKey, weekRecords } from "@/ledger/ledger";
-import { commitmentFloorCents, streak, type Level, type WeekRecord } from "@/engine/ladder";
+import { asOf, commitmentFloorCents, streak, type Level, type WeekRecord } from "@/engine/ladder";
 import type { Cart, Decision, Grant } from "@/engine/types";
 import type { Product } from "@/adapters/channel3/client";
 import { liftableOverage, requestApproval } from "@/flows/approvals";
@@ -53,7 +53,8 @@ export async function teenWeek(db: Db, familyId: string, now: Date): Promise<Tee
   ]);
   const state: TeenState = !latest ? "none" : latest.status === "revoked" ? "paused"
     : active && active.expiresAt > now ? "active" : "ended";
-  const body: Grant | null = (active ?? latest)?.body ?? null;
+  const signed = (active ?? latest)?.body;
+  const body: Grant | null = signed ? asOf(signed, now) : null; // this week's amount (029)
   const weeklyCents = body?.weeklyCents ?? 0;
   const ended = active ?? latest;
   return {
@@ -234,7 +235,7 @@ export async function askAmara(deps: Pick<Deps, "db" | "now" | "notify">, family
   }
   if (kind !== "message") throw new TeenError(`purchase is ${p.status}`);
   const [names, ledger] = await Promise.all([shopNames(deps.db, [p.cart]), ledgerView(deps.db, familyId, await deps.now(familyId))]);
-  const left = Math.max(0, g.body.weeklyCents - ledger.spentThisWeekCents);
+  const left = Math.max(0, asOf(g.body, await deps.now(familyId)).weeklyCents - ledger.spentThisWeekCents);
   const what = `${titleOf(p.cart)}, ${formatCents(p.cart.totalCents)} at ${names.get(p.cart.merchantId) ?? "a shop"} (${formatCents(left)} left this week)`;
   await nudge(deps, familyId, reason ? `${what} — “${reason}”` : what);
   return "message";

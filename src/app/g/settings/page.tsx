@@ -10,6 +10,7 @@ import { guardianHome, needsCount } from "@/flows/home";
 import { pushAliasFor } from "@/flows/notify";
 import { settingsTeens } from "@/flows/start";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
+import { RetirementNotice } from "@/ui/RetirementNotice";
 import { appBaseUrl } from "../connect-paypal/setup";
 import { NotifyCard } from "../NotifyCard";
 import { ResetDemo } from "../ResetDemo";
@@ -48,6 +49,7 @@ async function Settings({ searchParams }: { searchParams: Promise<Record<string,
   return (
     <GuardianShell active="settings" teenName={teen} needs={needsCount(h)} familyId={familyId}>
       <h1 className="g-title">Settings</h1>
+      <RetirementNotice removesAt={h.removesAt} statementLink />
       {note && <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">{note.text}</p>}
 
       <div className="g-two">

@@ -4,6 +4,7 @@ import "./landing.css";
 import { demoLinks } from "./demoLinks";
 import { Agents } from "./landing/Agents";
 import { AiCanCant } from "./landing/AiCanCant";
+import { Faq } from "./landing/Faq";
 import { Features } from "./landing/Features";
 import { Footer } from "./landing/Footer";
 import { Hero } from "./landing/Hero";
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   openGraph: {
     title: TITLE, description: DESCRIPTION, type: "website", siteName: "Tether",
-    images: [{ url: "/og-landing.png", width: 1200, height: 630, alt: "Tether: a parent signs the rules, an AI agent proposes, code decides, PayPal pays. Amara's and Zoe's phones side by side." }],
+    images: [{ url: "/og-landing.png", width: 1200, height: 630, alt: "Tether: Let your teen shop. Keep the boundaries you agreed on. Amara's and Zoe's phones side by side." }],
   },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: ["/og-landing.png"] },
 };
@@ -45,6 +46,7 @@ export default function Landing() {
         <AiCanCant />
         <PayPal />
         <StandIns />
+        <Faq />
         <TryIt links={links} />
       </main>
       <Footer />

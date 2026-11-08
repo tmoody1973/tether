@@ -15,7 +15,7 @@ import { ReleaseCard } from "../ReleaseCard";
 
 // Savings (decision 028): the amount promised to the teen and the goal, the release owed now, payments recorded, and
 // what "savings" means on Tether. A promise on the record, never money held, so it gets its own page apart from Investing.
-// Changing the amount and stopping are explained on the rules page; /g/statement is the closing statement (another branch).
+// Changing the amount and stopping are explained on the rules page (decision 029); /g/statement is the closing statement.
 export default function SavingsPage({ searchParams }: PageProps<"/g/savings">) {
   return (
     <Suspense fallback={<GuardianLoading />}>

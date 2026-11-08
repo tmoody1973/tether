@@ -2,6 +2,7 @@
 
 import { FamilyField } from "@/ui/FamilyField";
 import { useState } from "react";
+import { STOP_CONFIRM, STOP_CONFIRM_DEMO } from "@/ui/grantWords";
 import { revokeAction } from "../actions";
 
 /** Stop Zoe's rules, with the same plain confirm step as signing. */
@@ -17,11 +18,8 @@ export function StopRules({ teenName, demo }: { teenName: string; demo: boolean 
   return (
     <form action={revokeAction} role="group" aria-label="Confirm stop">
       <FamilyField />
-      <p style={{ marginBottom: 10, fontWeight: 600 }}>
-        Stop {teenName}&apos;s rules now? She can&apos;t spend anything until you sign new ones{demo
-          ? ". Demo: your saved PayPal is kept so the next person can try it."
-          : ", and Tether asks PayPal to remove your saved wallet."}
-      </p>
+      <p style={{ marginBottom: 6, fontWeight: 600 }}>Stop {teenName}&apos;s rules now?</p>
+      <p style={{ marginBottom: 10 }}>{demo ? STOP_CONFIRM_DEMO : STOP_CONFIRM}</p>
       <div className="g-btnrow">
         <button type="submit" className="g-btn" autoFocus>Yes, stop them</button>
         <button type="button" className="g-btn g-btn--ghost" onClick={() => setConfirming(false)}>Keep them</button>

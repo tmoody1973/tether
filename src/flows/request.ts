@@ -3,7 +3,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getPurchase } from "@/db/repo";
 import { availableSavingsCents, ledgerView, weekRecords } from "@/ledger/ledger";
-import { commitmentKept } from "@/engine/ladder";
+import { asOf, commitmentKept } from "@/engine/ladder";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
 
 export interface RequestView {
@@ -42,7 +42,7 @@ export async function requestView(db: Db, familyId: string, approvalId: string, 
       getActiveGrant(db, familyId), ledgerView(db, familyId, now),
       db.select({ name: t.merchants.name }).from(t.merchants).where(eq(t.merchants.id, a.cart.merchantId)),
     ]);
-    const leftCents = Math.max(0, (grant?.body.weeklyCents ?? 0) - ledger.spentThisWeekCents);
+    const leftCents = Math.max(0, (grant ? asOf(grant.body, now).weeklyCents : 0) - ledger.spentThisWeekCents);
     return {
       ...base,
       purchase: {

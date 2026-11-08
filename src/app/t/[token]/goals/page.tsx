@@ -5,11 +5,11 @@ import { GOAL_TITLE_MAX, teenGoals } from "@/flows/teenGoals";
 import { formatCents, matchWords } from "@/ui/grantWords";
 import { PendingButton } from "@/ui/PendingButton";
 import { Bar, LinkGone, Money, TeenLoading, TeenShell } from "@/ui/teen";
-import { weeksToGoal } from "@/ui/teenWords";
+import { SAVINGS_LABEL, savingsPromisedLine, weeksToGoal } from "@/ui/teenWords";
 import { goalAction } from "./actions";
 import { PromiseEditor } from "./PromiseEditor";
 
-// Mock 3 (adapted): the one number is weeks to goal (D12). Savings stay in Amara's PayPal until she releases them (D1/D3).
+// Mock 3 (adapted): the one number is weeks to goal (D12). Savings is what Amara has promised; nothing is set aside (D1/D3, 029).
 export default function GoalsPage({ params, searchParams }: PageProps<"/t/[token]/goals">) {
   return (
     <Suspense fallback={<TeenLoading />}>
@@ -61,9 +61,15 @@ async function Goals({ params, searchParams }: { params: Promise<{ token: string
             <h1 className="t-h2">{w.goal.title}</h1>
             <span className="t-muted" style={{ fontWeight: 650 }}>of <Money cents={w.goal.targetCents} /></span>
           </div>
-          <Bar value={w.savingsCents} max={w.goal.targetCents} label={`${formatCents(w.savingsCents)} saved of ${formatCents(w.goal.targetCents)}`} gold />
-          <div className="t-barlabels"><span>saved <Money cents={w.savingsCents} /></span><span>{pct}%</span></div>
-          <p className="t-small" style={{ marginTop: 10 }}>Your savings stay in {w.guardianName}&apos;s PayPal until she releases them. It&apos;s her promise, and Tether keeps count.</p>
+          <Bar value={w.savingsCents} max={w.goal.targetCents} label={`${SAVINGS_LABEL}: ${formatCents(w.savingsCents)} of ${formatCents(w.goal.targetCents)}`} gold />
+          <div className="t-barlabels"><span>{SAVINGS_LABEL} <Money cents={w.savingsCents} /></span><span>{pct}%</span></div>
+          <p className="t-small" style={{ marginTop: 10 }}>{savingsPromisedLine(w.guardianName)}</p>
+        </section>
+      )}
+      {!w.goal && (
+        <section className="t-card" aria-label={SAVINGS_LABEL}>
+          <p className="t-small"><b>{SAVINGS_LABEL}</b> <b><Money cents={w.savingsCents} /></b></p>
+          <p className="t-small" style={{ marginTop: 6 }}>{savingsPromisedLine(w.guardianName)}</p>
         </section>
       )}
 

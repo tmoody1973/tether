@@ -63,7 +63,7 @@ describe("a form left open on another teen changes nothing", () => {
 
   it("the same Stop, from Maya's own page, goes through", async () => {
     session = maya.id;
-    await expect(revokeAction(form({ familyId: maya.id }))).rejects.toThrow("REDIRECT /g/rules?stopped=wallet-removed");
+    await expect(revokeAction(form({ familyId: maya.id }))).rejects.toThrow("REDIRECT /g/statement?stopped=wallet-removed"); // 029: Stop lands on the statement
     expect((await repo.getLatestGrant(testDb, maya.id))?.status).toBe("revoked");
     expect(paypalDeletes).toEqual(["PT-MAYA"]);
   });

@@ -174,8 +174,8 @@ test("goals shows weeks to goal", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("status")).toHaveText("Saved your goal.");
   await expect(page.locator(".t-hero")).toHaveText("28"); // ($89 − $34) / $2, rounded up
   await expect(page.getByText("weeks to Headphones")).toBeVisible();
-  await expect(page.getByRole("img", { name: "$34.00 saved of $89.00" })).toBeVisible(); // the one bar
-  await expect(page.getByText(/stay in Amara's PayPal until she releases them/)).toBeVisible();
+  await expect(page.getByRole("img", { name: "Savings promised: $34.00 of $89.00" })).toBeVisible(); // the one bar
+  await expect(page.getByText("Amara has promised you this amount. Tether tracks it; the money isn't set aside.")).toBeVisible(); // 029
   await expect(page.getByRole("main")).not.toContainText(/Venmo/);
 });
 

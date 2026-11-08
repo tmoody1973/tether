@@ -7,7 +7,7 @@ import { now as clockNow } from "@/clock/clock";
 import { removalDate, settingsTeens } from "@/flows/start";
 import { ledgerView, weekKey } from "@/ledger/ledger";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
-import type { Level } from "@/engine/ladder";
+import { asOf, type Level } from "@/engine/ladder";
 
 export type NeedsYou =
   | { kind: "rules"; nudged?: true } // no grant in force: Zoe can't spend until Amara signs (nudged: she asked for it)
@@ -50,7 +50,7 @@ export async function guardianHome(db: Db, familyId: string, now: Date): Promise
   return {
     guardianName: fam.guardianName, teenName: fam.teenName, teenToken: fam.teenToken,
     level: grant ? (grant.level as Level) : null, grantVersion: grant?.version ?? null,
-    weeklyCents: grant?.body.weeklyCents ?? 0, expiresAt: grant?.expiresAt ?? null, grantEnded,
+    weeklyCents: grant ? asOf(grant.body, now).weeklyCents : 0, expiresAt: grant?.expiresAt ?? null, grantEnded, // weekly: this week's (029)
     spentThisWeekCents: ledger.spentThisWeekCents, savingsCents: ledger.savingsCents,
     goal: goal ? { title: goal.title, targetCents: goal.targetCents } : null,
     paypalSaved: vault !== null,

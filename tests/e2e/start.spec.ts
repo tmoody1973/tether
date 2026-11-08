@@ -189,6 +189,10 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   await expect(page.getByText("Tether tracks allowance and savings promises. It doesn't hold or set aside money.", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "What happens if I change the amount or stop?" })).toHaveAttribute("href", "/g/rules");
   await expect(page.getByRole("link", { name: "Statement" })).toHaveAttribute("href", "/g/statement");
+  await page.getByRole("link", { name: "Statement" }).click(); // review MEDIUM-2: the statement exists now (decision 029)
+  await expect(page.getByRole("heading", { level: 1, name: "Statement for Kofi" })).toBeVisible({ timeout: 60_000 });
+  await nav.getByRole("link", { name: "Savings" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Kofi's savings" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("main")).not.toContainText(/stays in your PayPal|withdraw/i);
   await expect(nav.getByRole("link", { name: "Savings" })).toHaveAttribute("aria-current", "page");
 
