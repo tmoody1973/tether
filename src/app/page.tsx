@@ -4,6 +4,7 @@ import "./landing.css";
 import { demoLinks } from "./demoLinks";
 import { Agents } from "./landing/Agents";
 import { AiCanCant } from "./landing/AiCanCant";
+import { Faq } from "./landing/Faq";
 import { Features } from "./landing/Features";
 import { Footer } from "./landing/Footer";
 import { Hero } from "./landing/Hero";
@@ -45,6 +46,7 @@ export default function Landing() {
         <AiCanCant />
         <PayPal />
         <StandIns />
+        <Faq />
         <TryIt links={links} />
       </main>
       <Footer />

@@ -11,6 +11,7 @@ export function Top() {
       <nav aria-label="Page">
         <a href="#how">How it works</a>
         <a href="#ai">What the AI can&apos;t do</a>
+        <a href="#faq">FAQ</a>
         <a href={REPO_URL}>GitHub</a>
         <a className="l-btn l-btn--ink" href="#try">Try the demo</a>
       </nav>

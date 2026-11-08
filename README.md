@@ -129,6 +129,19 @@ someone else's behalf ([decision 023](docs/decisions/023-investing-stays-on-alpa
 
 Why charges use PayPal's REST API directly: the Agent Toolkit doesn't cover charging a vaulted wallet (or payouts), and Tether deliberately gives no model a tool that moves money. The toolkit is used where it fits: read-only questions about the month.
 
+## How Channel3 is used
+
+Channel3 is the shopping agent's only source of products, and the parent's signed rules decide what Channel3 may return (`src/adapters/channel3/client.ts`).
+
+| When | Channel3 call | What Tether does with it |
+|---|---|---|
+| Zoe asks for something | Product search, with `website_ids` set to the shops Amara allowed | The agent only ever sees Zoe's shops. Out-of-stock offers are dropped. |
+| Zoe pastes a product link | Lookup | Turns the link into a Channel3 product, then keeps it only if one of her shops sells it. |
+| Amara adds a shop | Website search | Finds the store, whose domain then becomes a search filter. |
+| Right before PayPal is charged | Product details (free) | Fetches every item's price at that shop again (`src/flows/purchase.ts`, `reprice`). Gone: refused. Price changed: the cart no longer matches its single-use permission slip, so nothing is charged. |
+
+Channel3's buy links are affiliate-tracked, and Tether never shows them to Zoe: every purchase has to pass the rules and be paid from Amara's PayPal.
+
 ## The AI: two agents, three checked calls
 
 Tether uses AI where judgement helps and keeps it away from anything that decides or moves money. Only two pieces are agents (a model that loops, calling tools); the other three are single model calls whose output is checked by code. Every one has a plain code fallback, so the app works with the model switched off.
@@ -302,6 +315,7 @@ Built, reviewed task by task, and running in production: the rule engine and per
 | In this build | In production |
 |---|---|
 | Every purchase pays **one Tether sandbox business account**; the receipt records which shop it was for. A saved PayPal wallet can only be charged by the business that saved it (verified: `BILLING_AGREEMENT_NOT_FOUND`). | Tether pays shops as a PayPal platform partner, or through shops' own agent checkouts. |
+| Prices are the item price Channel3's search returns; shipping and tax aren't in the total yet, because Channel3 gives neither. | [Channel3 checkout](https://channel3.ai/docs/checkout) (announced, "coming soon" as of 8 Nov 2026) gives each store's real total and places the order at the store. The permission slip and the rules check stay the same; only where the money goes changes. |
 | Zoe's investments sit in an **ordinary Alpaca sandbox account**, labelled on screen as a stand-in. The sandbox refuses custodial accounts. One setting (`ALPACA_CUSTODIAL_ENABLED=true`) switches to the custodial request. | A custodial account Amara manages for Zoe. |
 | Savings release: Amara sends the money herself and taps "I've sent it". | Same. Tether never holds money. |
 | A demo clock moves time forward so a month fits in a video. | Real time. |
