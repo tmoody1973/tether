@@ -57,6 +57,10 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
 .l-h-ai { color: var(--l-teen); }
 .l-h-code { color: var(--l-brand-deep); }
 .l-hero .l-lede { margin: 22px auto 0; max-width: 46ch; }
+.l-bond { text-align: center; margin-top: 56px; }
+.l-page .l-bond h2 { font-size: clamp(26px, 3.2vw, 38px); max-width: 20em; margin: 0 auto; text-wrap: balance; }
+.l-bond .l-lede { margin: 16px auto 0; max-width: 52ch; }
+.l-thesis { font-size: clamp(26px, 3.4vw, 42px); line-height: 1.1; letter-spacing: -0.03em; font-weight: 800; max-width: 16em; margin: 56px auto 0; text-align: center; color: var(--l-brand-ink); text-wrap: balance; }
 
 .l-stage { position: relative; display: grid; grid-template-columns: 1fr 1fr; margin: clamp(32px, 4vw, 48px) auto 0; max-width: 1240px; padding: 0 clamp(12px, 2vw, 32px); }
 .l-side { position: relative; overflow: hidden; min-height: 540px; padding: 40px 32px 0; display: grid; grid-template-columns: 1fr auto; gap: 24px; text-align: left; }

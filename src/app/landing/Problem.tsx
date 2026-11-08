@@ -62,6 +62,11 @@ export function Problem() {
           ))}
         </ul>
         <p className="l-numbers__src"><a href={`${REPO_URL}/blob/main/docs/research/problem.md`}>Sources and sample sizes</a></p>
+        {/* The technical thesis, one line under the family headline: how Tether answers the numbers above. */}
+        <p className="l-thesis">
+          <span className="l-h-g">A parent signs the rules.</span> <span className="l-h-ai">An AI agent proposes.</span>{" "}
+          <span className="l-h-code">Code decides.</span> <span>PayPal pays.</span>
+        </p>
       </div>
     </section>
   );

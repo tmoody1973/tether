@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { E2E } from "./fixtures";
 
-const PITCH = "A parent signs the rules. An AI agent proposes. Code decides. PayPal pays.";
+const PITCH = "Let your teen shop. Keep the boundaries you agreed on.";
+const THESIS = "A parent signs the rules. An AI agent proposes. Code decides. PayPal pays.";
 
 test("landing → Open Zoe's view lands on her week", async ({ page }) => {
   await page.goto("/");
@@ -63,6 +64,15 @@ test("landing: the problem in numbers, each with Tether's answer, and a link to 
   for (const fact of await facts.all()) await expect(fact.getByText("Tether's answer:")).toBeVisible();
   await expect(page.getByRole("link", { name: "Sources and sample sizes" }))
     .toHaveAttribute("href", "https://github.com/tmoody1973/tether/blob/main/docs/research/problem.md");
+  // the technical thesis answers the numbers, under the family headline rather than as it
+  await expect(page.locator("section.l-problem").getByText(THESIS)).toBeVisible();
+});
+
+test("landing: savings is explained as a promise Tether tracks, not money it holds", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("Tether tracks allowance and savings promises. It doesn't hold or set aside money.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("list", { name: "What happens to Zoe's savings if" }).getByRole("listitem")).toHaveCount(2);
+  await expect(page.getByText(/money stays in/i)).toHaveCount(0); // the old, too-reassuring claim is gone
 });
 
 test("landing: the two animated stories show their payoff as the still under reduced motion", async ({ page }) => {

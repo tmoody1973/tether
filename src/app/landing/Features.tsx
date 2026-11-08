@@ -98,7 +98,11 @@ export function Features() {
           <Phone src="zoe-goals" width={250} alt="Zoe's Goals: 12 weeks to noise-cancelling headphones, $53.96 saved of $169.99." />
         </>}>
           <h3>Freedom she earns, not a limit someone raises.</h3>
-          <p>Whatever Zoe doesn&apos;t spend is savings, and it stays in Amara&apos;s PayPal. Four weeks of keeping her own savings promise moves her up a level: more money a week, more shops.</p>
+          <p>What Zoe doesn&apos;t spend is recorded as savings: an amount Amara promises her, paid when Amara chooses. Tether tracks allowance and savings promises. It doesn&apos;t hold or set aside money. Purchases charge the parent&apos;s saved PayPal when they happen. Four weeks of keeping her own savings promise moves her up a level: more money a week, more shops.</p>
+          <ul className="l-facts" aria-label="What happens to Zoe's savings if">
+            <li>Amara&apos;s balance runs low? Nothing was reserved, so the promise doesn&apos;t change. A purchase PayPal declines charges nothing.</li>
+            <li>She stops? Purchases stop at once and her saved PayPal is disconnected. Savings already recorded stay hers to pay.</li>
+          </ul>
         </Feat>
 
         <Feat side="teen" wide frames={<InvestStoryFigure />}>
