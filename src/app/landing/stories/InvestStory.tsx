@@ -230,7 +230,7 @@ function ZoeHolding({ s }: { s: S }) {
               <span className="t-muted">{INVEST.since}</span>
             </div>
             <div className="t-big money">
-              $5.00 <span className="ti-unit">worth today</span>
+              {INVEST.put} <span className="ti-unit">worth today</span>
             </div>
             <div className="t-row ti-row">
               <span>You own</span>
@@ -254,7 +254,6 @@ function ZoeHolding({ s }: { s: S }) {
 }
 
 function AmaraRequest({ s }: { s: S }) {
-  const [a, left, b, amount, c] = INVEST.consequence
   return (
     <div className="tt-page" data-on={!s.bought || undefined}>
       <div className="g-col">
@@ -266,11 +265,11 @@ function AmaraRequest({ s }: { s: S }) {
         </div>
         <section className="g-card">
           <p>
-            <span>{a}</span>
-            <b className="money">{left}</b>
-            <span>{b}</span>
-            <b className="money">{amount}</b>
-            <span>{c}</span>
+            <span>She has </span>
+            <b className="money">{INVEST.saved}</b>
+            <span> available to invest. This moves </span>
+            <b className="money">{INVEST.put}</b>
+            <span> into her investing account. Once it&apos;s there it belongs to her and can&apos;t be taken back.</span>
           </p>
         </section>
         <section className="g-card">
@@ -287,7 +286,7 @@ function AmaraRequest({ s }: { s: S }) {
         </section>
         <div className="g-decide">
           <Button className="g-btn" variant="primary" data-target="approve">
-            {s.approving ? 'Working…' : 'Approve $5.00'}
+            {s.approving ? 'Working…' : INVEST.approve}
           </Button>
           <Button className="g-btn g-btn--ghost">Not this time</Button>
         </div>
@@ -306,7 +305,7 @@ function AmaraBought({ s }: { s: S }) {
           <div className="g-def">
             <span className="g-def__k">VTI</span>
             <span className="g-def__lead" />
-            <span className="g-def__v">$5.00</span>
+            <span className="g-def__v">{INVEST.put}</span>
           </div>
           <p className="g-holdline">{INVEST.herSentence}</p>
           <p className="g-note">{INVEST.tooSoon}</p>
@@ -349,9 +348,9 @@ function TetherNote(props: { 'data-target'?: string }) {
   )
 }
 
-export default function TetherInvestStory() {
+export default function TetherInvestStory({ paused = false }: { paused?: boolean }) {
   return (
-    <Stage<S> width={880} height={660} compact={{ below: 620, width: 358, height: 640 }} initial={START} poster={POSTER} script={script} cursor={{ at: REST, style: 'touch' }} className="tt tt-invest">
+    <Stage<S> paused={paused} width={880} height={660} compact={{ below: 620, width: 358, height: 640 }} initial={START} poster={POSTER} script={script} cursor={{ at: REST, style: 'touch' }} className="tt tt-invest">
       {(s, _rect, layout) => {
         const compact = layout === 'compact'
         const width = compact ? COMPACT.phone : WIDE.phone
@@ -360,7 +359,7 @@ export default function TetherInvestStory() {
         const pan = compact && s.focus === 'amara' ? -COMPACT.step : 0
         return (
           <div className="tt-track" style={{ transform: `translateX(${pan}px)` }}>
-            <Phone width={width} time="8:54" className="tt-phone" data-target="zoe-phone" style={{ left: compact ? COMPACT.left : WIDE.zoe, top }}>
+            <Phone width={width} time={INVEST.time} className="tt-phone" data-target="zoe-phone" style={{ left: compact ? COMPACT.left : WIDE.zoe, top }}>
               <div className="tt-app tt-app--teen" data-target="zoe-app">
                 <ZoeFund s={s} />
                 <ZoeSent s={s} />
@@ -369,8 +368,8 @@ export default function TetherInvestStory() {
               </div>
             </Phone>
 
-            <Phone width={width} time="8:54" dark={!s.open} wallpaper={WALLPAPER} className="tt-phone" style={{ left: compact ? COMPACT.left + COMPACT.step : WIDE.amara, top: amaraTop }}>
-              <LockScreen time="8:54" date="" stack="top" size="satellite">
+            <Phone width={width} time={INVEST.time} dark={!s.open} wallpaper={WALLPAPER} className="tt-phone" style={{ left: compact ? COMPACT.left + COMPACT.step : WIDE.amara, top: amaraTop }}>
+              <LockScreen time={INVEST.time} date="" stack="top" size="satellite">
                 <div className="tt-note" data-on={s.note || undefined}>
                   <TetherNote data-target="note" />
                 </div>
