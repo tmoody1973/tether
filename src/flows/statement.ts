@@ -29,6 +29,8 @@ export interface Statement {
   /** A release worked out at a level-up and not yet recorded as paid: still inside the remaining amount. */
   waiting: { savedCents: number; matchCents: number } | null;
   investedCents: number;
+  /** Decision 030: refunds that came back after their week closed (added to what's promised). */
+  refundedCents: number;
   /** = the savings figure Zoe and Amara see (closed weeks only). */
   remainingCents: number;
   /**
@@ -73,6 +75,7 @@ export async function closingStatement(db: Db, familyId: string, now: Date): Pro
     paidCents: parts.paidCents,
     waiting: open ? { savedCents: open.savedCents, matchCents: open.matchCents } : null,
     investedCents: parts.investedCents,
+    refundedCents: parts.refundedCents,
     remainingCents: parts.savingsCents,
     owedCents: parts.savingsCents + (open?.matchCents ?? 0) + (state === "none" ? 0 : unspentCents(allowanceCents, ledger.spentThisWeekCents)),
     removesAt: fam.paypalSub !== null ? removalDate(fam.createdAt) : null,

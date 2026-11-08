@@ -392,3 +392,9 @@ button.g-switcher__row:hover { background: #F1F2F5; }
 .g-whatifs details:first-child { border-top: 0; padding-top: 4px; }
 .g-whatifs summary { cursor: pointer; font-weight: 700; min-height: 32px; display: flex; align-items: center; }
 .g-whatifs p { margin-top: 6px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+
+/* Decision 030: money and percent fields inline in a sentence; product photos at a fixed size (no layout shift). */
+.g-input.g-input--money { display: inline-block; width: 6.5em; padding: 6px 8px; }
+.g-photo { width: 72px; height: 72px; flex: 0 0 72px; border-radius: var(--r-md); object-fit: contain; background: #fff; border: 1px solid var(--g-line); }
+.g-photo--none { display: grid; place-items: center; color: var(--ink-2); font-weight: 700; background: #F3F4F6; }
+.g-pause { display: grid; gap: 8px; }

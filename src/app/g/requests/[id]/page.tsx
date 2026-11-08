@@ -1,5 +1,6 @@
 import { FamilyField } from "@/ui/FamilyField";
 import { Suspense } from "react";
+import { ProductPhoto } from "@/ui/ProductPhoto";
 import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
@@ -14,7 +15,7 @@ import { companyFacts, fundInside } from "@/adapters/financialdatasets/client";
 import { isLeveragedProduct, LEVERAGED_TEXT } from "@/engine/invest";
 import { CompanyLine, InsideLineCard } from "@/ui/InvestCards";
 import { pennyLine, requestShareWords } from "@/ui/investWords";
-import { formatCents, formatDay } from "@/ui/grantWords";
+import { formatCents, formatDay, ESTIMATES_NOTE } from "@/ui/grantWords";
 import { closedWords, requestTitle as title } from "@/ui/approveWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { FundFactsLine } from "../../invest/FundFacts";
@@ -139,9 +140,15 @@ function Consequence({ v }: { v: RequestView }) {
         {v.purchase.liftsBudget && overCents > 0 && (
           <p style={{ color: "var(--ink-2)", marginTop: 6 }}>A one-off: this week won&apos;t count toward her next level.</p>
         )}
-        <p className="g-note" style={{ marginTop: 6 }}>
-          {v.purchase.items.map((i) => `${i.qty > 1 ? `${i.qty} × ` : ""}${i.title}`).join(", ")}
-        </p>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 10 }}>
+          <ProductPhoto src={v.purchase.imageUrl} title={v.purchase.items[0]?.title ?? "Item"} className="g-photo" />
+          <div>
+            <p className="g-note">{v.purchase.items.map((i) => `${i.qty > 1 ? `${i.qty} × ` : ""}${i.title}`).join(", ")}</p>
+            {v.purchase.condition && <span className="g-chip" style={{ marginTop: 4 }}>{v.purchase.condition}</span>}
+            <p className="g-note" style={{ marginTop: 4 }}>{v.purchase.cost}</p>
+            {v.purchase.cost.startsWith("Item ") && <p className="g-note" style={{ marginTop: 4 }}>{ESTIMATES_NOTE}</p>}
+          </div>
+        </div>
       </section>
     );
   }

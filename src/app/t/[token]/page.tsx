@@ -7,7 +7,7 @@ import { teenPurchase, teenWeek, type TeenWeek } from "@/flows/teen";
 import { formatCents } from "@/ui/grantWords";
 import { PendingButton } from "@/ui/PendingButton";
 import { Bar, LinkGone, Money, TeenLoading, TeenShell } from "@/ui/teen";
-import { buyFlash, daysToReset, levelLine, reflection, resetsWords, setsBack, whatChanged, type BuyFlash } from "@/ui/teenWords";
+import { buyFlash, daysToReset, levelLine, reflection, resetsWords, setsBack, whatChanged, type BuyFlash, pausedLine } from "@/ui/teenWords";
 import { levelSeenAction, nudgeAction } from "./actions";
 import { RefusalSheet } from "./RefusalSheet";
 import { NotShopping } from "./NotShopping";
@@ -51,7 +51,8 @@ async function Week({ params, searchParams }: { params: Promise<{ token: string 
         <Bar value={w.spentCents} max={w.weeklyCents} label={`${formatCents(w.spentCents)} spent of ${formatCents(w.weeklyCents)}`} />
         <div className="t-barlabels"><span>spent <Money cents={w.spentCents} /> of <Money cents={w.weeklyCents} /></span><span>{resetsWords(daysToReset(w.now, w.endsAt))}</span></div>
       </div>
-      {w.level && <div className="t-pill">{levelLine(w.level, g)}</div>}
+      {w.level && <div className="t-pill">{levelLine(w.level, g, w.spending)}</div>}
+      {w.pausedBy && <p className="t-flash" role="status" data-testid="paused">{pausedLine(w.pausedBy)}</p>}
 
       {flash && (
         <p className={flash.warn ? "t-flash t-flash--warn" : "t-flash"} role="status">

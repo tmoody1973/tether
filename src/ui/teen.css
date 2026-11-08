@@ -147,3 +147,11 @@ details.t-card > summary { cursor: pointer; font-weight: 650; min-height: 32px; 
 .t-hl__pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--ink-2); }
 .t-quote { font-size: 14px; color: var(--ink-2); border-left: 3px solid #D9D5FF; padding-left: 10px; }
 .t-quote i { color: var(--ink); }
+
+/* Decision 030: product photo on a result card, fixed size (no layout shift); the estimated full cost under it. */
+.t-result__row { display: flex; gap: 12px; align-items: flex-start; }
+.t-result__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.t-photo { width: 72px; height: 72px; flex: 0 0 72px; border-radius: var(--r-md, 12px); object-fit: contain; background: #fff; border: 1px solid rgba(0,0,0,.08); }
+.t-photo--none { display: grid; place-items: center; font-weight: 700; color: var(--ink-2); background: #F3F4F6; }
+.t-chip--note { align-self: flex-start; }
+.t-result__cost { margin: 0; }

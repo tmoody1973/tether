@@ -1,7 +1,7 @@
 // Zoe's words. Deterministic: numbers come from the engine and ledger, never from a model (the refusal sentence
 // itself is src/ai/explain.ts, which falls back to its own template).
-import { LEVELS, commitmentKept, type Level, type WeekRecord } from "@/engine/ladder";
-import type { Cents, Decision } from "@/engine/types";
+import { LEVELS, askOverCents, commitmentKept, type Level, type WeekRecord } from "@/engine/ladder";
+import type { Cents, Decision, SpendingMode } from "@/engine/types";
 import { formatCents } from "@/ui/grantWords";
 import { CHARGE_FAILED_MESSAGE } from "@/flows/purchase";
 import type { PurchaseStatus } from "@/db/repo";
@@ -14,7 +14,9 @@ export type CardKind = "fits" | "needs" | "over" | "refused";
 /** The label every result card carries (D6 / F5): what the rules would do, never a rating. */
 export function cardOutcome(d: Decision, guardian: string): { kind: CardKind; label: string } {
   if (d.outcome === "ALLOW") return { kind: "fits", label: "Fits your week" };
-  if (d.outcome === "NEEDS_APPROVAL") return { kind: "needs", label: `Needs ${guardian}'s OK` };
+  if (d.outcome === "NEEDS_APPROVAL") {
+    return { kind: "needs", label: d.reasons.some((r) => r.constraint === "approval.paused") ? pausedWords(guardian) : `Needs ${guardian}'s OK` };
+  }
   return d.reasons.some((r) => r.constraint === "payment.budget")
     ? { kind: "over", label: "Over budget" } : { kind: "refused", label: "Not this time" };
 }
@@ -61,13 +63,16 @@ export function reflection(
   return parts.join(" ");
 }
 
-function asking(level: Level, guardian: string): string {
+function asking(level: Level, guardian: string, spending?: SpendingMode): string {
   const def = LEVELS[level];
-  if (def.approvalOverCents === null) return "nothing inside your shops needs asking";
-  return `over ${formatCents(def.approvalOverCents)}${def.firstTimeApproval ? " or a new shop" : ""} needs ${guardian}'s OK`;
+  if (spending?.mode === "every") return `every purchase needs ${guardian}'s OK`; // decision 030: Amara's mode, when set
+  const over = askOverCents(level, spending);
+  if (over === null) return def.firstTimeApproval ? `a new shop needs ${guardian}'s OK` : "nothing inside your shops needs asking";
+  return `over ${formatCents(over)}${def.firstTimeApproval ? " or a new shop" : ""} needs ${guardian}'s OK`;
 }
 
-export const levelLine = (level: Level, guardian: string): string => `Level ${level} · ${asking(level, guardian)}`;
+/** Her level and what needs Amara's OK: the level's rule, or Amara's spending mode when she set one (030). */
+export const levelLine = (level: Level, guardian: string, spending?: SpendingMode): string => `Level ${level} · ${asking(level, guardian, spending)}`;
 
 export function levelProgress(streak: number, level: Level): string {
   if (level === 3) return "You're at the top level.";
@@ -153,3 +158,15 @@ export function tileWords(tile: ShopTile, guardian: string): { label: string; li
 export const SAVINGS_LABEL = "Savings promised";
 export const savingsPromisedLine = (guardian: string): string =>
   `${guardian} has promised you this amount. Tether tracks it; the money isn't set aside.`;
+
+/** Decision 030: investing switched off by Amara. */
+export const investingOffWords = (guardian: string): string => `${guardian} has turned investing off`;
+export const INVESTING_OFF_LINE = "What you've already invested stays yours and isn't sold. You can still see how it's doing below.";
+
+/** Decision 030: what Zoe sees while Amara has paused spending. */
+export const pausedWords = (guardian: string): string => `Paused by ${guardian}`;
+export const pausedLine = (guardian: string): string =>
+  `${pausedWords(guardian)}. You can still find things and ask ${guardian}; nothing is bought without her OK. Your week and your savings promise carry on.`;
+
+/** Decision 030: totals on her cards include Tether's estimates. */
+export const TEEN_ESTIMATES = "Totals include an estimate of tax and shipping. A real shop's checkout would give the exact amount, and if it were more, it would come back to you.";

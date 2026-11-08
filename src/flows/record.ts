@@ -65,6 +65,7 @@ export async function guardianRecord(db: Db, familyId: string, month: string, no
       const clause = g ? clauseText(grantClause({
         teenName: home.teenName, level: g.level as Level, shops: payees(g.body).map((id) => name.get(id) ?? id),
         floorPct: g.body.commitmentFloorPct, matchPct: g.body.matchPct, expiresAt: g.expiresAt,
+        spending: g.body.spending, investing: g.body.investing, costs: g.body.costs, // decision 030: as signed in that version
       })) : "";
       // The token was minted at the moment the money left the budget (same demo-clock `now` as the spend row).
       return { ...r, slip: { clause, cartHash: r.cartHash, issuedAt: r.at, expiresAt: new Date(r.at.getTime() + TOKEN_TTL_MS) } };

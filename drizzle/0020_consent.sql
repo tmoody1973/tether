@@ -1,0 +1,2 @@
+ALTER TABLE "families" ADD COLUMN "paused_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "journal_refund_ref_uq" ON "journal" USING btree ("ref") WHERE "journal"."kind" in ('refund', 'refund_promised');

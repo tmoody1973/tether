@@ -13,6 +13,8 @@ const malformed = (type: string): Reason =>
 export const APPROVAL_CONSTRAINTS: ReadonlySet<string> = new Set([
   "approval.over_amount",
   "approval.first_time_merchant",
+  "approval.every_purchase", // decision 030: Amara asked to approve each purchase
+  "approval.paused", // decision 030: Amara paused spending; only her yes lets a purchase through
 ]);
 
 /**
@@ -63,6 +65,10 @@ export function evaluate(constraint: Constraint, cart: Cart, ledger: LedgerView,
     case "approval.first_time_merchant":
       return ledger.merchantsUsed.has(cart.merchantId) ? null
         : { constraint: type, detail: `First purchase from ${cart.merchantId}` };
+    case "approval.every_purchase":
+      return { constraint: type, detail: "Every purchase needs the guardian's approval" };
+    case "approval.paused":
+      return { constraint: type, detail: "Spending is paused by the guardian" };
     case "checkout.semantic_category":
       return ids(c.merchantIds) ? null : malformed(type);
     default:

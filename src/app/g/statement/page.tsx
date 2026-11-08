@@ -47,7 +47,7 @@ async function StatementView({ searchParams }: { searchParams: Promise<Record<st
         <div className="g-statement__total"><span>You owe {zoe}</span><Money cents={s.owedCents} /></div>
         <p className="g-muted" style={{ marginTop: 6 }}>{owedParts(s)}</p>
         <p className="g-note" style={{ marginTop: 4 }}>
-          Savings recorded so far: {formatCents(s.recordedCents)} from closed weeks − {formatCents(s.paidCents)} paid to {zoe} − {formatCents(s.investedCents)} moved
+          Savings recorded so far: {formatCents(s.recordedCents)} from closed weeks{s.refundedCents > 0 && <> + {formatCents(s.refundedCents)} refunded after their week closed</>} − {formatCents(s.paidCents)} paid to {zoe} − {formatCents(s.investedCents)} moved
           to investing = {formatCents(s.remainingCents)}, the figure {zoe} sees.
         </p>
       </section>

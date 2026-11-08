@@ -9,7 +9,7 @@ import type { Product } from "@/adapters/channel3/client";
 import { cartHash } from "@/engine/hash";
 import type { Cart } from "@/engine/types";
 import { liftableOverage, proposeShop, requestApproval } from "@/flows/approvals";
-import { renewGrant, setCommitment, signGrant } from "@/flows/grant";
+import { renewGrant, setCommitment, setCosts, signGrant } from "@/flows/grant";
 import { ensureAccount } from "@/flows/invest";
 import { proposePurchase, settlePurchase, type Deps } from "@/flows/purchase";
 import { GOAL_TITLE_MAX } from "@/flows/teenGoals";
@@ -58,6 +58,8 @@ export interface SeedResult {
 }
 
 const short = (id: string) => `${id.slice(0, 6)}…`;
+/** Decision 030: the shared demo family's cost estimates, shown on the rules page as a demo value. */
+export const DEMO_COSTS = { salesTaxBps: 800, shippingCents: 599 } as const;
 const cartOf = (p: Product, merchantId: string): Cart =>
   ({ merchantId, items: [{ sku: p.id, title: p.title, qty: 1, unitCents: p.priceCents }], totalCents: p.priceCents });
 const merchantFor = (domain: string) => DEMO_MERCHANTS.find((m) => m.domain === domain)!.id;
@@ -132,6 +134,9 @@ export async function seedDemo(deps: SeedDeps, keys: DemoKeys & { vaultId: strin
   await at(DEMO_NOW);
   const askPurchaseId = await openOverBudgetAsk(deps, fam.id, log);
   await proposeShop(deps, fam.id, SHOP.domain, SHOP.reason);
+  // Decision 030: the demo's cost estimates start now. The history above was charged under rules without them and stays
+  // as recorded; the open ask keeps the cart it was asked with. New carts use the new total.
+  await setCosts(deps, fam.id, DEMO_COSTS);
 
   const grant = await getActiveGrant(db, fam.id);
   const [askRow] = askPurchaseId ? await db.select().from(t.purchases).where(eq(t.purchases.id, askPurchaseId)) : [];

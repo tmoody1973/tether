@@ -155,6 +155,7 @@ test("with no rules in force, her rules page signs them (Sign and send, then Yes
   await expect(page.getByText("Stopped. Sign new rules below when you're ready.")).toBeVisible();
   await expect(page.getByLabel(/Level 1/)).toBeChecked(); // she keeps her level after a stop
   await page.getByLabel("You match").selectOption("50");
+  await page.getByLabel(/Sales tax where you live/).fill("8"); // decision 030: required to sign
   await page.getByRole("button", { name: "Sign and send" }).click();
   await page.getByRole("button", { name: "Yes, sign" }).click();
   await expect(page).toHaveURL(/\/g\?signed=2$/);

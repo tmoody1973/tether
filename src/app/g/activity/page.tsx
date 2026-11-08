@@ -12,7 +12,7 @@ import { resumePayingPurchases } from "@/flows/purchase";
 import { INVESTING_FROM, LEVELS, type Level } from "@/engine/ladder";
 import { TOKEN_TTL_MS } from "@/engine/token";
 import { checkWords, herReason, hiddenNote, monthEnd, shownReceipts } from "@/ui/activityWords";
-import { approvalWords, formatCents, formatDay, formatMonth, formatWhen } from "@/ui/grantWords";
+import { approvalWords, costLine, formatCents, formatDay, formatMonth, formatWhen } from "@/ui/grantWords";
 import { INVEST_STATUS } from "@/ui/investWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { Seam } from "@/ui/Seam";
@@ -129,7 +129,7 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
               </div>
             </li>
           ))}
-          {shown.slice().reverse().map((p) => <PaymentRow key={p.captureId} p={p} proof={<Proof p={p} rec={rec} />} />)}
+          {shown.slice().reverse().map((p) => <PaymentRow key={p.captureId} p={p} proof={<Proof p={p} rec={rec} teen={r.home.teenName} />} />)}
         </ul>
       )}
       {orphans.length > 0 && (
@@ -154,13 +154,14 @@ function Purchases({ r, thisMonth, rec }: { r: RecordView; thisMonth: string; re
 }
 
 /** The evidence packet behind one payment, folded under its row. No secrets. */
-function Proof({ p, rec }: { p: RecordReceipt; rec: Reconciliation | "checking" | "down" }) {
-  const check = checkWords(rec, p.captureId);
+function Proof({ p, rec, teen }: { p: RecordReceipt; rec: Reconciliation | "checking" | "down"; teen: string }) {
+  const check = checkWords(rec, p.captureId, undefined, teen);
   return (
     <details className="g-proof">
       <summary>Proof<span className="g-sr"> for {formatCents(p.amountCents)} at {p.shop}, {formatDay(p.at)}</span></summary>
       <dl className="g-proofbox">
         <dt>PayPal ID</dt><dd><code>{p.captureId}</code></dd>
+        <dt>Charged</dt><dd>{costLine({ totalCents: p.amountCents, ...p.split })}</dd>
         <dt>Allowed by</dt><dd>Rules v{p.ruleVersion}, signed by you{p.amaraApproved && <>, and you approved it{p.approvalId && <> (<code>{p.approvalId}</code>)</>}</>}</dd>
         <dt>Permission slip</dt>
         <dd>

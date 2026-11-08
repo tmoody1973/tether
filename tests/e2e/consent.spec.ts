@@ -1,0 +1,51 @@
+import { expect, test, type Page } from "@playwright/test";
+import { E2E } from "./fixtures";
+
+// Decision 030: Amara chooses how Zoe spends, and can pause spending at once. Each test has its own family.
+const enter = (page: Page, key: string) => page.goto(`/g/enter/${key}`);
+const card = (page: Page, name: RegExp) => page.getByRole("article", { name });
+
+test("'Ask me before every purchase' → a $1 cart asks Amara", async ({ page }) => {
+  test.setTimeout(90_000); // cold dev compile of several pages
+  await enter(page, E2E.consentKey);
+  await page.goto("/g/rules");
+  await page.getByLabel("Ask me before every purchase").check();
+  await page.getByRole("button", { name: "Apply" }).first().click();
+  await expect(page.getByText("What comes to you first for Zoe changes from over $10.00, or a shop she hasn't used to every purchase, starting now.")).toBeVisible();
+  await page.getByRole("button", { name: "Yes, change it" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /^Saved\./ })).toBeVisible();
+  await page.goto(`/t/${E2E.consentTeen}/shop`);
+  await page.getByLabel("Paste a product link").fill("https://www.target.com/p/pencil/-/sku-100");
+  await page.getByRole("button", { name: "Check it" }).click();
+  await expect(card(page, /\$1\.00 at Target: Needs Amara's OK/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ask Amara" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Buy for/ })).toHaveCount(0);
+});
+
+test("pause → Zoe sees 'Paused by Amara' and can only ask; resume puts Buy back", async ({ page }) => {
+  test.setTimeout(90_000);
+  await enter(page, E2E.pauseKey);
+  await page.goto("/g/rules");
+  await page.getByRole("button", { name: "Pause Zoe's spending" }).click();
+  await expect(page.getByText(/^Pause Zoe's spending now\? Nothing is bought without your OK until you resume\./)).toBeVisible();
+  await page.getByRole("button", { name: "Yes, pause" }).click();
+  await expect(page.getByText(/^Zoe's spending is paused since /)).toBeVisible();
+
+  await page.goto(`/t/${E2E.pauseTeen}`);
+  await expect(page.getByTestId("paused")).toHaveText(/^Paused by Amara\./);
+  await page.goto(`/t/${E2E.pauseTeen}/shop`);
+  await expect(page.getByTestId("paused")).toBeVisible();
+  await page.getByLabel("Paste a product link").fill("https://www.target.com/p/notebook/-/sku-500");
+  await page.getByRole("button", { name: "Check it" }).click();
+  await expect(card(page, /Paused by Amara/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ask Amara" })).toBeVisible();
+
+  await page.goto("/g/rules");
+  await page.getByRole("button", { name: "Resume Zoe's spending" }).click();
+  await expect(page.getByRole("button", { name: "Pause Zoe's spending" })).toBeVisible();
+  await page.goto(`/t/${E2E.pauseTeen}/shop`);
+  await expect(page.getByTestId("paused")).toHaveCount(0);
+  await page.getByLabel("Paste a product link").fill("https://www.target.com/p/notebook/-/sku-500");
+  await page.getByRole("button", { name: "Check it" }).click();
+  await expect(card(page, /Notebook.*Fits your week/)).toBeVisible();
+});

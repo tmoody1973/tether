@@ -105,8 +105,9 @@ describe("reconcileMonth (R35)", () => {
     const r = await reconcileMonth({ db, paypal }, familyId, "2026-11", realNow);
     expect([...r.flags].sort((a, b) => a.captureId.localeCompare(b.captureId))).toEqual([
       { kind: "unconfirmed", captureId: `CAP-D${n}`, amountCents: 600, shop: "Target", paidAt: expect.any(Date) },
-      { kind: "refunded", captureId: `CAP-E${n}`, amountCents: 700, shop: "Target" },
-      { kind: "refunded", captureId: `CAP-F${n}`, amountCents: 800, shop: "Target" },
+      // Decision 030: both purchases' week is still open, so the money goes back into it (a refund row, once).
+      { kind: "refunded", captureId: `CAP-E${n}`, amountCents: 700, shop: "Target", refund: { weekCents: 700, promisedCents: 0 } },
+      { kind: "refunded", captureId: `CAP-F${n}`, amountCents: 800, shop: "Target", refund: { weekCents: 800, promisedCents: 0 } },
     ]);
   });
 

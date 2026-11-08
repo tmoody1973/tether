@@ -77,6 +77,7 @@ export async function resetDemo(
       clockOffsetMs: seeded.getTime() - Date.now(), teenToken: keys.teenToken,
       commitmentCents: s.commitmentCents, pendingCommitmentCents: null,
       teenNudgeAt: null, teenNudgeNote: null, teenSeenLevelAt: null,
+      pausedAt: null, // decision 030: a judge's pause is theirs; the next judge starts unpaused
       ledgerVoidTo: sql`now()`, // DB time, the same clock journal.created_at is written with
     }).where(eq(t.families.id, familyId));
     const expiresAt = new Date(seeded.getTime() + WEEK_MS).toISOString();
@@ -114,7 +115,7 @@ async function reopen(deps: Deps, familyId: string, s: DemoSnapshot): Promise<vo
   if (s.ask) {
     const merchant = await getMerchant(deps.db, s.ask.cart.merchantId);
     const fresh = merchant?.channel3WebsiteId
-      ? await reprice(deps.channel3, s.ask.cart, merchant.channel3WebsiteId).catch(() => null) : null;
+      ? await reprice(deps.channel3, s.ask.cart, merchant.channel3WebsiteId, s.grant.costs).catch(() => null) : null;
     const cart = fresh ?? s.ask.cart;
     const { purchaseId, decision } = await proposePurchase(deps, familyId, cart);
     if (decision.outcome === "REFUSE" && liftableOverage(decision) !== null) {

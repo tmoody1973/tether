@@ -4,6 +4,7 @@ import { FamilyField, useFamilyId } from "@/ui/FamilyField";
 import { connectPaypalHref } from "@/ui/connectPaypalHref";
 import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
+import type { CostTerms, SpendingMode } from "@/engine/types";
 import { INVESTING_FROM, LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
 import { approvalShort, formatCents, formatDay, grantClause, matchWords, weekChangeWords } from "@/ui/grantWords";
 import { editDraft, type Draft } from "@/ui/rulesDraft";
@@ -11,7 +12,7 @@ import { setLevelAction, signGrantAction, type LevelState, type SignState } from
 
 const FLOORS = [10, 15, 20, 25, 50];
 const MATCHES = [0, 50, 100];
-const SIGN_FORM = "g-sign";
+import { SIGN_FORM } from "./consentForm";
 
 export interface GrantEditorProps {
   teenName: string; currentLevel: Level | null; floorPct: number; matchPct: number;
@@ -25,6 +26,8 @@ export interface GrantEditorProps {
   week: { thisWeekCents: number | null; spentCents: number; startsOn: string; commitmentCents: number };
   /** Server-rendered sections placed in the layout: Shops (left, after the level), Stop + Zoe's link (right). */
   shopsSlot: ReactNode; sideSlot: ReactNode;
+  /** Decision 030: how she spends, investing, cost estimates (after Saving), and the signed values the clause shows. */
+  consentSlot?: ReactNode; signed?: { spending?: SpendingMode; investing?: boolean; costs?: CostTerms };
 }
 
 type Confirm = "sign" | "level" | "saving" | null;
@@ -57,6 +60,7 @@ export function GrantEditor(p: GrantEditorProps) {
   const clause = grantClause({
     teenName: zoe, level, shops: p.shops[level], floorPct, matchPct,
     expiresAt: unchanged && p.inForceUntil ? new Date(p.inForceUntil) : expires,
+    ...p.signed, // decision 030
   });
   const signForm = p.inForce ? undefined : SIGN_FORM; // with no rules in force, every control belongs to the one sign form
   const def = LEVELS[level];
@@ -204,10 +208,12 @@ export function GrantEditor(p: GrantEditorProps) {
           ) : savingRows}
         </section>
 
+        {p.consentSlot}
+
         <section className="g-card g-section" aria-labelledby="bylevel-h">
           <div className="g-section__head"><h2 id="bylevel-h">Set by the level</h2></div>
           <div>
-            <Def k="Asks you first" v={approvalShort(level)} />
+            <Def k="Asks you first" v={approvalShort(level, level === cur ? p.signed?.spending : undefined)} />
             <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : `opens at Level ${INVESTING_FROM}`}
               sub={def.investing ? "her investments and your investing list" : "funds or stocks she proposes, you approve"} />
             <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href={connectPaypalHref(familyId)}>save your PayPal</a>} sub="sandbox: no real money" />

@@ -16,6 +16,7 @@ import { teenDeps } from "../../teenDeps";
 import { pageHoldings } from "@/app/g/flowDeps";
 import { YourInvestments, type FreshInvestments } from "./YourInvestments";
 import { investGate, UNAVAILABLE } from "./Gate";
+import { INVESTING_OFF_LINE, investingOffWords } from "@/ui/teenWords";
 import { Seam } from "@/ui/Seam";
 
 // F17 / D13: the whole market, ordered by match to what she typed (never popularity). No movers, no daily moves.
@@ -37,7 +38,7 @@ async function Invest({ params, searchParams }: { params: Promise<{ token: strin
   if (!session) return <LinkGone />;
   const { db, fam } = session;
   const w = await teenWeek(db, fam.id, await clockNow(db, fam.id));
-  const gate = investGate(token, w);
+  const gate = investGate(token, w, true); // decision 030: with investing off this page still shows her investments
   if (gate) return gate;
   const available = await availableSavingsCents(db, fam.id);
   const sp = await searchParams;
@@ -50,12 +51,18 @@ async function Invest({ params, searchParams }: { params: Promise<{ token: strin
         <p className="t-h2" style={{ marginTop: 6 }}>Search the whole market</p>
         <p className="t-small" style={{ marginTop: 4 }}>You have <b className="money">{formatCents(available)}</b> available to invest{available !== w.savingsCents && <> (<span className="money">{formatCents(w.savingsCents)}</span> saved, some of it on its way to you as your release)</>}. You propose, {w.guardianName} decides. Tether recommends nothing.</p>
       </div>
-      <form action={`/t/${token}/invest`} method="get" className="t-form" role="search">
-        <label className="t-label" htmlFor="invest-q">A fund or company</label>
-        <input id="invest-q" name="q" type="search" className="t-input" maxLength={60} defaultValue={q} required />
-        <button type="submit" className="t-btn t-btn--ghost">Search</button>
-      </form>
-      {q && <Results token={token} q={q} />}
+      {w.investingOff ? (
+        <div className="t-card" role="status"><b>{investingOffWords(w.guardianName)}.</b> <span className="t-small">{INVESTING_OFF_LINE}</span></div>
+      ) : (
+        <>
+          <form action={`/t/${token}/invest`} method="get" className="t-form" role="search">
+            <label className="t-label" htmlFor="invest-q">A fund or company</label>
+            <input id="invest-q" name="q" type="search" className="t-input" maxLength={60} defaultValue={q} required />
+            <button type="submit" className="t-btn t-btn--ghost">Search</button>
+          </form>
+          {q && <Results token={token} q={q} />}
+        </>
+      )}
       <Investments db={db} familyId={fam.id} guardian={w.guardianName} />
     </TeenShell>
   );

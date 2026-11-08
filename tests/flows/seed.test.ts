@@ -9,7 +9,7 @@ import type { Channel3Adapter, Product } from "@/adapters/channel3/client";
 import type { AlpacaBroker } from "@/adapters/alpaca/broker";
 import { approveAndSettle, type ApproveDeps } from "@/flows/approve";
 import { advanceDemoClock } from "@/flows/demo";
-import { resetTeenLink, revoke, signGrant } from "@/flows/grant";
+import { resetTeenLink, revoke, setPaused, signGrant } from "@/flows/grant";
 import { addShop, removeShop } from "@/flows/shops";
 import { guardianHome } from "@/flows/home";
 import { DEMO_STALE_MS, DemoResetError, freshenDemoIfStale, resetDemo } from "@/flows/reset";
@@ -278,6 +278,15 @@ describe("decision 029 on the shared demo family", () => {
     expect(st.waiting).toEqual({ savedCents: 5650, matchCents: 5650 });
     expect(st.current.state).toBe("in_force");
     expect(st.owedCents).toBe(5650 + 5650 + st.current.addsCents);
+  });
+
+  it("decision 030: the seed ends with the demo cost estimates; a reset keeps them and clears a judge's pause", async () => {
+    const { r, keys } = await seeded();
+    expect((await getActiveGrant(db, r.familyId))!.body.costs).toEqual({ salesTaxBps: 800, shippingCents: 599 });
+    await setPaused(d(), r.familyId, true);
+    await resetDemo(d(), r.familyId, keys);
+    expect((await getFamily(db, r.familyId))!.pausedAt).toBeNull();
+    expect((await getActiveGrant(db, r.familyId))!.body.costs).toEqual({ salesTaxBps: 800, shippingCents: 599 });
   });
 
   it("an earlier judge's Stop doesn't mark the next judge's week stopped or not kept (review MEDIUM 2)", async () => {

@@ -1,6 +1,6 @@
-import { Channel3 } from "@channel3/sdk";
+import { Channel3, type Channel3Api } from "@channel3/sdk";
 import { isE2eLocal } from "@/adapters/paypal/http";
-import type { Cents } from "@/engine/types";
+import type { Cents, ItemCondition } from "@/engine/types";
 
 export interface Product {
   id: string;
@@ -11,6 +11,10 @@ export interface Product {
   available: boolean;
   /** Only set by lookup: the URL the teen pasted. Offer URLs are affiliate-tracked and never exposed. */
   sourceUrl?: string;
+  /** Decision 030: the chosen offer's condition ("unknown" when Channel3 doesn't say). Always set by this adapter. */
+  condition?: ItemCondition;
+  /** Decision 030: the product's main photo (Channel3's cleaned image when there is one), https only. Never an offer URL. */
+  imageUrl?: string;
 }
 
 export interface Channel3Adapter {
@@ -23,16 +27,20 @@ export interface Channel3Adapter {
   shopsSelling(query: string, limit?: number): Promise<{ domain: string; products: number }[]>;
 }
 
+// The SDK's own field types (decision 030: don't guess field names). Condition is "new" | "used" | null in SDK 4.8;
+// "refurbished" is deprecated there and arrives as null, so Tether can only say "Used" or "Condition not stated".
 interface RawOffer {
   domain: string;
   price?: { price: number; currency: string } | null;
   availability?: string;
+  condition?: Channel3Api.ProductOffer["condition"];
 }
 interface RawProduct {
   id: string;
   title: string;
   category?: { slug: string } | null;
   offers?: RawOffer[];
+  images?: Pick<Channel3Api.ProductImage, "url" | "cleaned_url" | "is_main_image">[];
 }
 
 /** The slice of the @channel3/sdk client that we call; the real client must satisfy it (checked at compile time below). */
@@ -64,17 +72,30 @@ function statusOf(e: unknown): number | undefined {
   return typeof n === "number" ? n : undefined;
 }
 
+/** https only: an image URL is shown in Zoe's and Amara's browsers, so nothing else (no data:, no http:) gets through. */
+const httpsUrl = (u: string | null | undefined): string | undefined => {
+  if (!u || u.length > 2000) return undefined;
+  try { return new URL(u).protocol === "https:" ? u : undefined; } catch { return undefined; }
+};
+
+/** The main photo, else the first; Channel3's cleaned (square, background-removed) version when it has one. */
+function photoOf(raw: RawProduct): string | undefined {
+  const img = raw.images?.find((i) => i.is_main_image) ?? raw.images?.[0];
+  return httpsUrl(img?.cleaned_url) ?? httpsUrl(img?.url);
+}
+
 /** Cheapest in-stock USD offer from an allowed shop, or null. Offer URLs are deliberately dropped. */
 function toProduct(raw: RawProduct, allowed: string[]): Product | null {
   const best = (raw.offers ?? [])
     .flatMap((o) =>
       o.price && Number.isFinite(o.price.price) && o.price.currency === "USD" &&
       allowed.includes(o.domain) && o.availability === "InStock"
-        ? [{ domain: o.domain, price: o.price.price }]
+        ? [{ domain: o.domain, price: o.price.price, condition: o.condition }]
         : [],
     )
     .sort((a, b) => a.price - b.price)[0];
   if (!best) return null;
+  const imageUrl = photoOf(raw);
   return {
     id: raw.id,
     title: raw.title,
@@ -82,6 +103,8 @@ function toProduct(raw: RawProduct, allowed: string[]): Product | null {
     domain: best.domain,
     ...(raw.category?.slug ? { category: raw.category.slug } : {}),
     available: true, // ponytail: only InStock offers are kept, so always true
+    condition: best.condition === "new" || best.condition === "used" ? best.condition : "unknown",
+    ...(imageUrl ? { imageUrl } : {}),
   };
 }
 
