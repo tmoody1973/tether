@@ -18,6 +18,9 @@ import { ledgerView } from "@/ledger/ledger";
 import { appendJournal, insertPurchase, receiptsForMonth } from "@/db/repo";
 import { readRecord } from "@/ai/monthAssistant";
 import { confirmRelease } from "@/flows/month";
+import { closingStatement } from "@/flows/statement";
+import { commitmentKept } from "@/engine/ladder";
+import { weekRecords } from "@/ledger/ledger";
 
 let db: Db;
 beforeAll(async () => { db = createDb("pglite:memory"); await migrateDb(db); });
@@ -245,6 +248,34 @@ describe("resetDemo (Task 19, R43)", () => {
     expect((await ledgerView(db, r.familyId, at)).merchantsUsed.has("m_barnesandnoble")).toBe(true);
     await resetDemo(d(), r.familyId, keys);
     expect((await ledgerView(db, r.familyId, at)).merchantsUsed.has("m_barnesandnoble")).toBe(false);
+  });
+});
+
+describe("decision 029 on the shared demo family", () => {
+  it("after a reset, the statement's payments agree with its paid total and Remaining (review HIGH 1)", async () => {
+    const { r, keys } = await seeded();
+    const { review } = await advanceDemoClock(d(), r.familyId, "endOfMonth"); // promotes, opens a release
+    await confirmRelease(d(), review!.release!.releaseId, r.familyId); // judge 1 records paying Zoe
+    let st = await closingStatement(db, r.familyId, await clockNow(db, r.familyId));
+    expect(st.payments.map((p) => p.savedCents)).toEqual([5650]);
+    expect(st.paidCents).toBe(5650);
+
+    await resetDemo(d(), r.familyId, keys); // judge 2 arrives: the release stays on record, its journal row is set aside
+    st = await closingStatement(db, r.familyId, await clockNow(db, r.familyId));
+    expect(st).toMatchObject({ payments: [], paidCents: 0, recordedCents: 5650, remainingCents: 5650 });
+    expect(st.payments.reduce((sum, p) => sum + p.savedCents, 0)).toBe(st.paidCents);
+    expect(st.remainingCents).toBe((await ledgerView(db, r.familyId, await clockNow(db, r.familyId))).savingsCents);
+  });
+
+  it("an earlier judge's Stop doesn't mark the next judge's week stopped or not kept (review MEDIUM 2)", async () => {
+    const { r, keys } = await seeded();
+    await revoke(d(), r.familyId); // judge 1 stops in W53
+    await resetDemo(d(), r.familyId, keys); // the stop time is cleared with the rest of judge 1's play
+    await advanceDemoClock(d(), r.familyId, "endOfWeek"); // judge 2 closes W53
+    const w53 = (await weekRecords(db, r.familyId)).find((w) => w.weekKey === "2026-W53")!;
+    expect(w53).toMatchObject({ allowanceCents: 3000, spentCents: 1200, commitmentCents: DEMO_COMMITMENT_CENTS });
+    expect(w53.stopped).toBeUndefined();
+    expect(commitmentKept(w53)).toBe(true);
   });
 });
 

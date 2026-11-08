@@ -4,11 +4,16 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getVault, type GrantRow } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
-import { asOf, grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
+import { asOf, commitmentFloorCents, grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
+import { ledgerView } from "@/ledger/ledger";
 import type { Constraint, Grant } from "@/engine/types";
 import type { Deps } from "@/flows/purchase";
 
 const WEEK_MS = 7 * 86_400_000;
+
+export class GrantError extends Error {
+  constructor(message: string, readonly minCents?: number) { super(message); this.name = "GrantError"; }
+}
 
 /** Monday 00:00 UTC of the ISO week containing d. */
 export const weekStart = (d: Date): Date =>
@@ -27,6 +32,31 @@ export function thisWeeksCents(latest: GrantRow | null, now: Date): number | nul
   return latest && coversWeek(latest, weekStart(now)) ? asOf(latest.body, now).weeklyCents : null;
 }
 
+/** This week's numbers behind "Change this week too": the words are weekChangeWords(these). */
+export interface WeekChange { fromCents: number; toCents: number; spentCents: number; promisedCents: number }
+
+/** "Change this week too" was confirmed on numbers that are no longer true (she spent since, or the week moved). Nothing changed. */
+export class WeekChangedError extends GrantError {
+  constructor(readonly change: WeekChange) { super("this week's numbers changed since they were shown"); this.name = "WeekChangedError"; }
+}
+
+/**
+ * false: a different weekly amount waits for next week. true: apply it this week (no check; tests and internal use).
+ * The rules page sends what Amara was shown; it applies only if this week's amount and her spending are still those.
+ */
+export type ApplyNow = boolean | { shownFromCents: number; shownSpentCents: number };
+
+async function checkShown(tx: Db, familyId: string, latest: GrantRow | null, body: Grant, now: Date, shown: { shownFromCents: number; shownSpentCents: number }) {
+  const fromCents = thisWeeksCents(latest, now);
+  const spentCents = (await ledgerView(tx, familyId, now)).spentThisWeekCents;
+  if (fromCents === shown.shownFromCents && spentCents === shown.shownSpentCents) return;
+  const [fam] = await tx.select({ c: t.families.commitmentCents }).from(t.families).where(eq(t.families.id, familyId));
+  throw new WeekChangedError({
+    fromCents: fromCents ?? body.weeklyCents, toCents: body.weeklyCents, spentCents,
+    promisedCents: Math.max(fam?.c ?? 0, commitmentFloorCents(body.weeklyCents, body.commitmentFloorPct)), // as week close judges it
+  });
+}
+
 /**
  * The amount this week keeps when `body` replaces the rules covering it (029): set unless Amara chose to change this
  * week too, or the weekly amount is the same. Renewals and shop changes copy the body, so they keep it as it is.
@@ -35,10 +65,6 @@ function keepThisWeek(body: Grant, latest: GrantRow | null, now: Date, applyNow:
   const kept = thisWeeksCents(latest, now);
   if (applyNow || kept === null || kept === body.weeklyCents) return body;
   return { ...body, thisWeek: { weeklyCents: kept, until: nextMonday(now).toISOString() } };
-}
-
-export class GrantError extends Error {
-  constructor(message: string, readonly minCents?: number) { super(message); this.name = "GrantError"; }
 }
 
 /** A level change without a reason: only Amara can change a level, and it goes on the record. */
@@ -154,7 +180,7 @@ export async function shopsForLevel(db: Db, familyId: string, level: Level, now:
 
 /** New grant at `level`, keeping the latest grant's settings (or defaults), even after a revoke. Caller holds the family lock. */
 export async function installLevel(
-  tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>, keep?: { latest: GrantRow | null; applyNow: boolean },
+  tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>, keep?: { latest: GrantRow | null; applyNow: ApplyNow },
 ): Promise<Grant> {
   const cur = (await getLatestGrant(tx, familyId))?.body;
   const base: Settings = {
@@ -164,7 +190,9 @@ export async function installLevel(
   };
   return installGrant(tx, familyId, async (version) => {
     const body = await buildForLevel(tx, familyId, level, version, base, now);
-    return keep ? keepThisWeek(body, keep.latest, now, keep.applyNow) : body; // no `keep`: an engine level-up applies now
+    if (!keep) return body; // an engine level-up applies now
+    if (typeof keep.applyNow === "object") await checkShown(tx, familyId, keep.latest, body, now, keep.applyNow); // before any write
+    return keepThisWeek(body, keep.latest, now, keep.applyNow !== false);
   }, now);
 }
 
@@ -175,7 +203,7 @@ export async function installLevel(
  * A different weekly amount starts next Monday unless `applyNow` ("Change this week too"); shops and approvals apply now.
  */
 export async function signGrant(
-  deps: Pick<Deps, "db" | "now">, familyId: string, draft: { level: Level; reason?: string; applyNow?: boolean } & Partial<Settings>,
+  deps: Pick<Deps, "db" | "now">, familyId: string, draft: { level: Level; reason?: string; applyNow?: ApplyNow } & Partial<Settings>,
 ): Promise<Grant> {
   const why = typeof draft.reason === "string" ? draft.reason.trim() : "";
   return withFamilyLock(deps, familyId, async (tx, now) => {
@@ -184,7 +212,7 @@ export async function signGrant(
     if (changesLevel && !why) throw new ReasonRequiredError();
     const body = await installLevel(tx, familyId, draft.level, now, {
       commitmentFloorPct: draft.commitmentFloorPct, matchPct: draft.matchPct, fundAllowlist: draft.fundAllowlist,
-    }, { latest: cur, applyNow: draft.applyNow === true });
+    }, { latest: cur, applyNow: draft.applyNow ?? false });
     if (changesLevel) {
       await tx.insert(t.levelChanges).values({
         id: crypto.randomUUID(), familyId, fromLevel: cur.level, toLevel: draft.level, by: "guardian", reason: why, at: now,
@@ -210,7 +238,7 @@ export async function renewGrant(deps: Deps, familyId: string): Promise<Grant> {
 }
 
 export async function guardianSetLevel(
-  deps: Pick<Deps, "db" | "now">, familyId: string, level: Level, reason: string, applyNow = false,
+  deps: Pick<Deps, "db" | "now">, familyId: string, level: Level, reason: string, applyNow: ApplyNow = false,
 ): Promise<Grant> {
   const why = typeof reason === "string" ? reason.trim() : "";
   if (!why) throw new ReasonRequiredError();

@@ -56,6 +56,8 @@ export async function savingsParts(db: Db, familyId: string) {
   return {
     recordedCents: of("week_close"), paidCents: of("release"), investedCents: of("invest") - of("invest_reversal"),
     savingsCents: sum(rows, SAVINGS_SIGN),
+    /** Payments to her that count (a demo reset sets earlier ones aside): release id and the saved amount that left savings. */
+    releases: rows.filter((r) => r.kind === "release" && r.ref).map((r) => ({ releaseId: r.ref as string, savedCents: r.amountCents })),
     /** What each closed week added, by week key. */
     byWeek: new Map(rows.filter((r) => r.kind === "week_close" && r.ref).map((r) => [r.ref as string, r.amountCents])),
   };

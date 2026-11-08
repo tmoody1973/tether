@@ -8,7 +8,7 @@ import * as t from "@/db/schema";
 import type { Cart } from "@/engine/types";
 import { asOf, commitmentKept, streak } from "@/engine/ladder";
 import { proposePurchase, type Deps } from "@/flows/purchase";
-import { guardianSetLevel, revoke, signGrant } from "@/flows/grant";
+import { WeekChangedError, guardianSetLevel, revoke, signGrant } from "@/flows/grant";
 import { closeWeek } from "@/flows/week";
 import { confirmRelease, runMonthReview } from "@/flows/month";
 import { guardianHome } from "@/flows/home";
@@ -117,25 +117,56 @@ describe("a weekly change waits for next week (029)", () => {
 });
 
 describe("Change this week too (029)", () => {
-  it("applies now, and the week adds exactly what the confirm said", async () => {
+  const MON = new Date("2026-11-09T00:00:00Z");
+
+  it("applies now, the week adds exactly what the confirm said, and it says the week won't count toward a level-up", async () => {
     const s = await seed(2);
+    await db.update(t.families).set({ commitmentCents: 1000 }).where(eq(t.families.id, s.familyId)); // she promised $10 a week
     at(WED);
     await spend(s.familyId, 1200);
-    const words = weekChangeWords({ teenName: "Zoe", fromCents: 3000, toCents: 2000, spentCents: 1200, startsOn: new Date("2026-11-09T00:00:00Z") });
-    expect(words.now).toBe("This week becomes $20.00. Zoe has spent $12.00, so she has $8.00 left, and this week adds $8.00 to what you've promised instead of $18.00.");
+    const words = weekChangeWords({ teenName: "Zoe", fromCents: 3000, toCents: 2000, spentCents: 1200, promisedCents: 1000, startsOn: MON });
+    expect(words.now).toBe("This week becomes $20.00. Zoe has spent $12.00, so she has $8.00 left, and this week adds $8.00 to what you've promised "
+      + "instead of $18.00. That's less than the $10.00 she promised to save, so this week won't count toward her next level.");
     expect(words.later).toBe("From Mon 9 Nov: $20.00/week. This week stays $30.00.");
-    await guardianSetLevel(deps(), s.familyId, 1, "slow down", true);
+    await guardianSetLevel(deps(), s.familyId, 1, "slow down", { shownFromCents: 3000, shownSpentCents: 1200 });
     const g = await active(s.familyId);
     expect(g.body.thisWeek).toBeUndefined();
     expect((await teenWeek(db, s.familyId, new Date(nowMs))).leftCents).toBe(800);
     at("2026-11-10T09:00:00Z");
     await closeWeek(deps(), s.familyId);
     expect(await savingsCents(db, s.familyId)).toBe(800);
+    const [w] = await weekRecords(db, s.familyId);
+    expect(w.commitmentCents).toBe(1000);
+    expect(commitmentKept(w)).toBe(false); // what the words said
   });
 
-  it("spent past the new amount: $0 left, adds $0", () => {
-    expect(weekChangeWords({ teenName: "Zoe", fromCents: 3000, toCents: 2000, spentCents: 2500, startsOn: new Date("2026-11-09T00:00:00Z") }).now)
-      .toBe("This week becomes $20.00. Zoe has spent $25.00, so she has $0.00 left, and this week adds $0.00 to what you've promised instead of $5.00.");
+  it("enough left for her promise: no level-up sentence", () => {
+    expect(weekChangeWords({ teenName: "Zoe", fromCents: 2000, toCents: 3000, spentCents: 500, promisedCents: 300, startsOn: MON }).now)
+      .toBe("This week becomes $30.00. Zoe has spent $5.00, so she has $25.00 left, and this week adds $25.00 to what you've promised instead of $15.00.");
+  });
+
+  it("spent past the new amount: says how far over, $0 left, adds $0, and the week won't count", () => {
+    expect(weekChangeWords({ teenName: "Zoe", fromCents: 3000, toCents: 2000, spentCents: 2500, promisedCents: 1000, startsOn: MON }).now)
+      .toBe("This week becomes $20.00. Zoe has already spent $25.00, $5.00 more than that, so she has $0.00 left, and this week adds $0.00 "
+        + "to what you've promised instead of $5.00. That's less than the $10.00 she promised to save, so this week won't count toward her next level.");
+  });
+
+  it("refuses, changing nothing, when she spent since the numbers were shown; says what it means now (review MEDIUM 4)", async () => {
+    const s = await seed(2);
+    at(WED);
+    await spend(s.familyId, 1500); // the page showed $15 spent
+    await spend(s.familyId, 1000); // then Zoe bought a $10 item
+    const before = await active(s.familyId);
+    const err = await guardianSetLevel(deps(), s.familyId, 1, "slow down", { shownFromCents: 3000, shownSpentCents: 1500 }).catch((e) => e);
+    expect(err).toBeInstanceOf(WeekChangedError);
+    expect((err as WeekChangedError).change).toEqual({ fromCents: 3000, toCents: 2000, spentCents: 2500, promisedCents: 200 });
+    expect((await active(s.familyId)).version).toBe(before.version); // nothing changed
+    expect(await db.select().from(t.levelChanges).where(eq(t.levelChanges.familyId, s.familyId))).toHaveLength(0);
+    const err2 = await signGrant(deps(), s.familyId, { level: 1, reason: "x", applyNow: { shownFromCents: 3000, shownSpentCents: -1 } }).catch((e) => e);
+    expect(err2).toBeInstanceOf(WeekChangedError); // a missing number never matches
+    // Re-confirmed on the new numbers, it applies.
+    await guardianSetLevel(deps(), s.familyId, 1, "slow down", { shownFromCents: 3000, shownSpentCents: 2500 });
+    expect((await active(s.familyId)).level).toBe(1);
   });
 
   it("signing (no rules in force) after a stop this week also waits unless chosen", async () => {
@@ -209,7 +240,7 @@ describe("closing statement (029)", () => {
     expect(st.remainingCents).toBe(figure);
     expect(st.remainingCents).toBe((await teenWeek(db, s.familyId, now)).savingsCents);
     expect(st.remainingCents).toBe((await guardianHome(db, s.familyId, now)).savingsCents);
-    expect(st).toMatchObject({ recordedCents: 4000, paidCents: 1500, investedCents: 1000, remainingCents: 1500 });
+    expect(st).toMatchObject({ recordedCents: 4000, paidCents: 1500, investedCents: 1000, remainingCents: 1500, owedCents: 1500 + 1700 });
     expect(st.recordedCents - st.paidCents - st.investedCents).toBe(st.remainingCents);
     expect(st.weeks.map((w) => w.addedCents)).toEqual([2000, 2000]);
     expect(st.payments).toEqual([{ at: now, savedCents: 1500, matchCents: 1500 }]);
@@ -220,7 +251,20 @@ describe("closing statement (029)", () => {
     at("2026-11-23T09:00:00Z"); // the stop week closes: exactly the statement's "adds"
     await closeWeek(deps(), s.familyId);
     expect(await savingsCents(db, s.familyId)).toBe(1500 + 1700);
+    expect(await savingsCents(db, s.familyId)).toBe(st.owedCents); // the headline after a stop is what Zoe sees once the week closes (MEDIUM 5)
+    expect(st.payments.reduce((sum, p) => sum + p.savedCents, 0)).toBe(st.paidCents);
     expect((await closingStatement(db, s.familyId, new Date(nowMs))).current.state).toBe("none");
+  });
+
+  it("stopped in the first week with nothing spent: the headline owes $20, not $0 (review MEDIUM 5)", async () => {
+    const s = await seed(1);
+    at(WED);
+    await revoke(deps(), s.familyId);
+    const st = await closingStatement(db, s.familyId, new Date(nowMs));
+    expect(st).toMatchObject({ remainingCents: 0, owedCents: 2000, current: { state: "stopped", addsCents: 2000 } });
+    at("2026-11-10T09:00:00Z");
+    await closeWeek(deps(), s.familyId);
+    expect(await savingsCents(db, s.familyId)).toBe(st.owedCents);
   });
 
   it("a self-started family's statement says when it is removed", async () => {

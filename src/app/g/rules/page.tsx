@@ -3,7 +3,7 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { getLatestGrant } from "@/db/repo";
+import { getFamily, getLatestGrant } from "@/db/repo";
 import { nextMonday, shopsForLevel, thisWeeksCents } from "@/flows/grant";
 import { asOf } from "@/engine/ladder";
 import { guardianHome } from "@/flows/home";
@@ -43,10 +43,10 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
   if (!familyId) return <SignedOut />;
   const db = await getDb();
   const now = await clockNow(db, familyId);
-  const [h, cur, l1, l2, l3, shops] = await Promise.all([
+  const [h, cur, l1, l2, l3, shops, fam] = await Promise.all([
     guardianHome(db, familyId, now), getLatestGrant(db, familyId), // after a stop she keeps her level
     shopsForLevel(db, familyId, 1, now), shopsForLevel(db, familyId, 2, now), shopsForLevel(db, familyId, 3, now),
-    guardianShops(db, familyId, now),
+    guardianShops(db, familyId, now), getFamily(db, familyId),
   ]);
   const zoe = h.teenName;
   const note = flash(await searchParams, zoe);
@@ -55,7 +55,7 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
   const thisWeek = thisWeeksCents(cur, now); // this week's allowance under the rules covering it (null: none do)
   // A weekly change signed this week that waits for Monday (decision 029).
   const waiting = cur && thisWeek !== null && asOf(cur.body, now).weeklyCents !== cur.body.weeklyCents
-    ? weekChangeWords({ teenName: zoe, fromCents: thisWeek, toCents: cur.body.weeklyCents, spentCents: h.spentThisWeekCents, startsOn }).later
+    ? weekChangeWords({ teenName: zoe, fromCents: thisWeek, toCents: cur.body.weeklyCents, spentCents: h.spentThisWeekCents, promisedCents: 0, startsOn }).later
     : null;
   const sub = shops.inForce && h.expiresAt
     ? `In force until ${formatDay(h.expiresAt)}. Every change asks you to confirm, then applies at once.`
@@ -83,7 +83,7 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
         shops={{ 1: l1, 2: l2, 3: l3 }}
         expiresAt={new Date(now.getTime() + WEEK_MS).toISOString()}
         paypalSaved={h.paypalSaved}
-        week={{ thisWeekCents: thisWeek, spentCents: h.spentThisWeekCents, startsOn: startsOn.toISOString() }}
+        week={{ thisWeekCents: thisWeek, spentCents: h.spentThisWeekCents, startsOn: startsOn.toISOString(), commitmentCents: fam?.commitmentCents ?? 0 }}
         shopsSlot={<ShopsSection teenName={zoe} inForce={shops.inForce} shops={shops.shops} />}
         sideSlot={
           <>

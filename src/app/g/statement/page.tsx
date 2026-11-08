@@ -43,11 +43,12 @@ async function StatementView({ searchParams }: { searchParams: Promise<Record<st
       </div>
 
       <section className="g-card g-statement" aria-labelledby="remaining-h">
-        <h2 className="g-label" id="remaining-h">Still promised to {zoe}</h2>
-        <div className="g-statement__total"><span>Remaining</span><Money cents={s.remainingCents} /></div>
+        <h2 className="g-label" id="remaining-h">{owedLabel(s)}</h2>
+        <div className="g-statement__total"><span>You owe {zoe}</span><Money cents={s.owedCents} /></div>
         <p className="g-muted" style={{ marginTop: 6 }}>
-          {formatCents(s.recordedCents)} recorded − {formatCents(s.paidCents)} paid to {zoe} − {formatCents(s.investedCents)} moved to investing.
-          {s.current.addsCents > 0 && ` This week adds ${formatCents(s.current.addsCents)} more when it closes on ${formatDay(s.current.closesAt)}.`}
+          {formatCents(s.remainingCents)} recorded so far ({formatCents(s.recordedCents)} from closed weeks − {formatCents(s.paidCents)} paid
+          to {zoe} − {formatCents(s.investedCents)} moved to investing)
+          {s.current.state === "none" ? "." : ` + ${formatCents(s.current.addsCents)} this week adds when it closes on ${formatDay(s.current.closesAt)}.`}
         </p>
       </section>
 
@@ -64,6 +65,11 @@ async function StatementView({ searchParams }: { searchParams: Promise<Record<st
     </GuardianShell>
   );
 }
+
+/** After a stop the total is final; while rules are in force this week can still change as she spends. */
+const owedLabel = (s: Statement): string =>
+  s.current.state === "stopped" ? `Promised to ${s.teenName}, counting this week`
+    : s.current.state === "in_force" ? `Promised to ${s.teenName}, counting this week so far` : `Still promised to ${s.teenName}`;
 
 function CurrentWeek({ s }: { s: Statement }) {
   const c = s.current;

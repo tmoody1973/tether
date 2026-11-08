@@ -370,6 +370,8 @@ test("stopping her rules from her rules page asks first", async ({ page }) => {
     "Rules stopped. PayPal didn't confirm removing the saved wallet — remove Tether in PayPal settings: Settings → Payments → Automatic payments.");
   // Decision 029: the closing statement, with this week counted as promised.
   await expect(page.getByRole("heading", { level: 1, name: "Statement for Zoe" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Promised to Zoe, counting this week" })).toBeVisible(); // not "$0 owed"
+  await expect(page.locator(".g-statement__total")).toContainText(/^You owe Zoe\$\d+\.\d\d$/);
   await expect(page.getByText(/^Rules stopped on \w{3} \d{1,2} \w{3}\. This week still counts as promised\.$/)).toBeVisible();
   await expect(page.getByText(/^\$20\.00 this week − \$\d+\.\d\d Zoe spent = \$\d+\.\d\d recorded when it closes\.$/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Print or save as PDF" })).toBeVisible();

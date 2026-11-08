@@ -8,13 +8,15 @@ import { getDb } from "@/db/client";
 import { ApprovalError, decideApproval } from "@/flows/approvals";
 import { approveAndSettle } from "@/flows/approve";
 import { ADVANCES, advanceDemoClock, type Advance } from "@/flows/demo";
-import { GrantError, ReasonRequiredError, RulesStoppedError, guardianSetLevel, resetTeenLink, revoke, signGrant } from "@/flows/grant";
+import {
+  GrantError, ReasonRequiredError, RulesStoppedError, WeekChangedError, guardianSetLevel, nextMonday, resetTeenLink, revoke, signGrant, type ApplyNow,
+} from "@/flows/grant";
 import { confirmRelease } from "@/flows/month";
 import { DemoResetError, resetDemo } from "@/flows/reset";
 import { SHOP_QUERY_MAX, addShop, removeShop, searchShopSites, type FoundSite } from "@/flows/shops";
 import { DAILY_CAP_MESSAGE } from "@/flows/usage";
 import { getFamily } from "@/db/repo";
-import { SHOP_QUERY_WORDS, SHOP_SEARCH_DOWN, noShopsFound } from "@/ui/grantWords";
+import { SHOP_QUERY_WORDS, SHOP_SEARCH_DOWN, noShopsFound, weekChangeWords } from "@/ui/grantWords";
 import type { Level } from "@/engine/ladder";
 import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
 
@@ -31,6 +33,21 @@ const int = (v: FormDataEntryValue | null): number => (typeof v === "string" && 
 
 export type SignState = { error?: string };
 
+/** "Change this week too" (decision 029), with the numbers Amara was shown; a missing or bad number never matches. */
+function applyNowFrom(form: FormData): ApplyNow {
+  if (form.get("applyNow") !== "1") return false;
+  const cents = (k: string) => { const v = form.get(k); return typeof v === "string" && /^\d{1,7}$/.test(v) ? Number(v) : -1; };
+  return { shownFromCents: cents("shownFromCents"), shownSpentCents: cents("shownSpentCents") };
+}
+
+/** The week moved since the page was drawn: nothing changed. Re-draw the page and say what it means now. */
+async function weekChanged(db: Awaited<ReturnType<typeof getDb>>, familyId: string, err: WeekChangedError, startsOn: Date): Promise<string> {
+  const zoe = (await getFamily(db, familyId))?.teenName ?? "Her";
+  refresh();
+  const now = weekChangeWords({ teenName: zoe, ...err.change, startsOn }).now;
+  return `${zoe}'s week changed since this page opened, so nothing changed. Here's what it means now: ${now} Confirm again if that's still what you want.`;
+}
+
 /** Sign and send: validates the form, then the flow does the work (and refuses a level change without a reason). */
 export async function signGrantAction(_prev: SignState, form: FormData): Promise<SignState> {
   const g = await guardianDeps();
@@ -44,9 +61,9 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   if (!(matchPct >= 0 && matchPct <= 200)) return { error: "Choose a match." };
   let version: number;
   try {
-    const applyNow = form.get("applyNow") === "1"; // "Change this week too" (decision 029)
-    ({ version } = await signGrant(g.deps, g.familyId, { level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow }));
+    ({ version } = await signGrant(g.deps, g.familyId, { level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow: applyNowFrom(form) }));
   } catch (err) {
+    if (err instanceof WeekChangedError) return { error: await weekChanged(g.deps.db, g.familyId, err, nextMonday(await g.deps.now(g.familyId))) };
     if (err instanceof ReasonRequiredError) return { error: "Say why you're changing her level — it goes on the record." };
     if (err instanceof GrantError) return { error: "Those rules couldn't be signed. Nothing changed." };
     console.error("signGrant failed", err);
@@ -134,8 +151,9 @@ export async function setLevelAction(_prev: LevelState, form: FormData): Promise
   if (![1, 2, 3].includes(level)) return { error: "Choose a level." };
   if (!reason) return { error: "Say why — it goes on the record. Nothing changed." };
   try {
-    await guardianSetLevel(g.deps, g.familyId, level as Level, reason, form.get("applyNow") === "1");
+    await guardianSetLevel(g.deps, g.familyId, level as Level, reason, applyNowFrom(form));
   } catch (err) {
+    if (err instanceof WeekChangedError) return { error: await weekChanged(g.deps.db, g.familyId, err, nextMonday(await g.deps.now(g.familyId))) };
     if (err instanceof RulesStoppedError) return { error: "Her rules are stopped. Sign new rules to change her level." };
     console.error("guardianSetLevel failed", err);
     return { error: "The level couldn't be changed. Nothing changed." };

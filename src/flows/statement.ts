@@ -1,6 +1,6 @@
 // Amara's closing statement (decision 029): what Tether has recorded as promised to Zoe, and what is left to pay.
 // Every number comes from the ledger's own sums (savingsParts) and week close's own terms (weekTerms): no second formula.
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getFamily } from "@/db/repo";
@@ -21,13 +21,21 @@ export interface Statement {
     state: "in_force" | "stopped" | "none"; closesAt: Date; stoppedAt: Date | null;
     allowanceCents: number; spentCents: number; addsCents: number;
   };
-  /** Payments to Zoe Amara recorded (saved part left savings; the match is hers on top). */
+  /**
+   * Payments to Zoe Amara recorded (saved part left savings; the match is hers on top). Built from the same counted
+   * journal rows as paidCents, so a payment a demo reset set aside is in neither: sum(savedCents) === paidCents.
+   */
   payments: { at: Date; savedCents: number; matchCents: number }[]; paidCents: number;
   /** A release worked out at a level-up and not yet recorded as paid: still inside the remaining amount. */
   waiting: { savedCents: number; matchCents: number } | null;
   investedCents: number;
-  /** = the savings figure Zoe and Amara see. */
+  /** = the savings figure Zoe and Amara see (closed weeks only). */
   remainingCents: number;
+  /**
+   * The headline: remaining plus what this week adds when it closes (0 when no rules cover it). After a stop nothing
+   * more can be spent, so it is final and equals the savings figure once the week closes. Same unspentCents/weekTerms.
+   */
+  owedCents: number;
   /** Self-started families are retired (decision 026). */
   removesAt: Date | null;
 }
@@ -38,7 +46,7 @@ export async function closingStatement(db: Db, familyId: string, now: Date): Pro
   const [parts, records, grants, ledger, paid, [open]] = await Promise.all([
     savingsParts(db, familyId), weekRecords(db, familyId),
     db.select().from(t.grants).where(eq(t.grants.familyId, familyId)), ledgerView(db, familyId, now),
-    db.select().from(t.releases).where(and(eq(t.releases.familyId, familyId), isNotNull(t.releases.confirmedAt))),
+    db.select().from(t.releases).where(eq(t.releases.familyId, familyId)),
     db.select().from(t.releases).where(and(eq(t.releases.familyId, familyId), isNull(t.releases.confirmedAt))).limit(1),
   ]);
   const monday = weekStart(now);
@@ -57,12 +65,15 @@ export async function closingStatement(db: Db, familyId: string, now: Date): Pro
       state, closesAt: nextMonday(now), stoppedAt: state === "stopped" ? terms!.grant.revokedAt : null,
       allowanceCents, spentCents: ledger.spentThisWeekCents, addsCents: unspentCents(allowanceCents, ledger.spentThisWeekCents),
     },
-    payments: paid.sort((a, b) => a.confirmedAt!.getTime() - b.confirmedAt!.getTime())
-      .map((r) => ({ at: r.confirmedAt!, savedCents: r.savedCents, matchCents: r.matchCents })),
+    payments: parts.releases.flatMap(({ releaseId, savedCents }) => {
+      const r = paid.find((x) => x.id === releaseId);
+      return r?.confirmedAt ? [{ at: r.confirmedAt, savedCents, matchCents: r.matchCents }] : [];
+    }).sort((a, b) => a.at.getTime() - b.at.getTime()),
     paidCents: parts.paidCents,
     waiting: open ? { savedCents: open.savedCents, matchCents: open.matchCents } : null,
     investedCents: parts.investedCents,
     remainingCents: parts.savingsCents,
+    owedCents: parts.savingsCents + (state === "none" ? 0 : unspentCents(allowanceCents, ledger.spentThisWeekCents)),
     removesAt: fam.paypalSub !== null ? removalDate(fam.createdAt) : null,
   };
 }

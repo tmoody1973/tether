@@ -16,8 +16,11 @@ export interface GrantEditorProps {
   /** Rules active and not yet ended: changes apply to them. Otherwise every control feeds one "Sign and send". */
   inForce: boolean; inForceUntil: string | null;
   shops: Record<Level, string[]>; expiresAt: string; paypalSaved: boolean;
-  /** Decision 029: this week's allowance under the rules covering it (null: none do), what she has spent, next Monday. */
-  week: { thisWeekCents: number | null; spentCents: number; startsOn: string };
+  /**
+   * Decision 029: this week's allowance under the rules covering it (null: none do), what she has spent, next Monday,
+   * and the savings promise this week is judged on before the level's floor (the family's commitment).
+   */
+  week: { thisWeekCents: number | null; spentCents: number; startsOn: string; commitmentCents: number };
   /** Server-rendered sections placed in the layout: Shops (left, after the level), Stop + Zoe's link (right). */
   shopsSlot: ReactNode; sideSlot: ReactNode;
 }
@@ -56,7 +59,10 @@ export function GrantEditor(p: GrantEditorProps) {
   const def = LEVELS[level];
   // A different weekly amount waits for next week unless she chooses this week too (decision 029).
   const weekly = p.week.thisWeekCents !== null && p.week.thisWeekCents !== def.weeklyCents
-    ? weekChangeWords({ teenName: zoe, fromCents: p.week.thisWeekCents, toCents: def.weeklyCents, spentCents: p.week.spentCents, startsOn: new Date(p.week.startsOn) })
+    ? weekChangeWords({
+      teenName: zoe, fromCents: p.week.thisWeekCents, toCents: def.weeklyCents, spentCents: p.week.spentCents, startsOn: new Date(p.week.startsOn),
+      promisedCents: Math.max(p.week.commitmentCents, commitmentFloorCents(def.weeklyCents, floorPct)), // as week close judges it
+    })
     : null;
   const weekChoice = (form?: string) => weekly && (
     <div className="g-weekchoice" style={{ margin: "0 0 10px" }}>
@@ -64,6 +70,9 @@ export function GrantEditor(p: GrantEditorProps) {
         <>
           <p style={{ fontWeight: 600 }}>{weekly.now}</p>
           <input type="hidden" name="applyNow" value="1" form={form} />
+          {/* What she was shown: the server applies it only if this week is still exactly this (decision 029). */}
+          <input type="hidden" name="shownFromCents" value={p.week.thisWeekCents ?? ""} form={form} />
+          <input type="hidden" name="shownSpentCents" value={p.week.spentCents} form={form} />
           <button type="button" className="g-textlink" onClick={() => setApplyNow(false)}>Keep this week as it is</button>
         </>
       ) : (

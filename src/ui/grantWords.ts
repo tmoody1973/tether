@@ -87,14 +87,22 @@ export function parseDollars(input: string): Cents | null {
 
 /**
  * The two ways a weekly-amount change can land. `later` (the default): it starts at the next week. `now` ("Change this
- * week too"): the exact consequence for this week, from what she has spent so far.
+ * week too"): the exact consequence for this week, from what she has spent so far and the savings promise the week is
+ * judged on (`promisedCents`, as week close will use it). A week left below that promise can't count toward a level-up.
  */
-export function weekChangeWords(i: { teenName: string; fromCents: Cents; toCents: Cents; spentCents: Cents; startsOn: Date }) {
+export function weekChangeWords(i: {
+  teenName: string; fromCents: Cents; toCents: Cents; spentCents: Cents; promisedCents: Cents; startsOn: Date;
+}) {
   const left = unspentCents(i.toCents, i.spentCents);
+  const spent = i.spentCents > i.toCents
+    ? `${i.teenName} has already spent ${formatCents(i.spentCents)}, ${formatCents(i.spentCents - i.toCents)} more than that, so she has ${formatCents(left)} left`
+    : `${i.teenName} has spent ${formatCents(i.spentCents)}, so she has ${formatCents(left)} left`;
+  const level = left < i.promisedCents
+    ? ` That's less than the ${formatCents(i.promisedCents)} she promised to save, so this week won't count toward her next level.` : "";
   return {
     later: `From ${formatDay(i.startsOn)}: ${formatCents(i.toCents)}/week. This week stays ${formatCents(i.fromCents)}.`,
-    now: `This week becomes ${formatCents(i.toCents)}. ${i.teenName} has spent ${formatCents(i.spentCents)}, so she has ${formatCents(left)} left, `
-      + `and this week adds ${formatCents(left)} to what you've promised instead of ${formatCents(unspentCents(i.fromCents, i.spentCents))}.`,
+    now: `This week becomes ${formatCents(i.toCents)}. ${spent}, `
+      + `and this week adds ${formatCents(left)} to what you've promised instead of ${formatCents(unspentCents(i.fromCents, i.spentCents))}.${level}`,
   };
 }
 
