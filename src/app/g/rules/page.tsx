@@ -9,9 +9,6 @@ import { guardianShops } from "@/flows/shops";
 import type { Level } from "@/engine/ladder";
 import { formatDay } from "@/ui/grantWords";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
-import { appBaseUrl } from "../connect-paypal/setup";
-import { ResetLink } from "../ResetLink";
-import { TeenLink } from "../TeenLink";
 import { GrantEditor } from "./GrantEditor";
 import { StopRules } from "./RulesControls";
 import { ShopsSection } from "./ShopsSection";
@@ -36,7 +33,6 @@ function flash(sp: Record<string, string | string[] | undefined>, zoe: string): 
   if (sp.stopped === "demo-kept") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones. Demo: your saved PayPal is kept so the next person can try it.` };
   if (sp.stopped === "no-wallet") return { text: `Rules stopped. ${zoe} can't spend until you sign new ones. There was no saved PayPal to remove.` };
   if (typeof sp.level === "string" && /^[123]$/.test(sp.level)) return { text: `${zoe} is now at Level ${sp.level}. Your reason is on the record.` };
-  if (sp.link === "reset") return { text: "The old link has stopped working. Send the new one." };
   return null;
 }
 
@@ -79,6 +75,7 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
         paypalSaved={h.paypalSaved}
         shopsSlot={<ShopsSection teenName={zoe} inForce={shops.inForce} shops={shops.shops} />}
         sideSlot={
+          // The teen's link and its reset moved to Settings (decision 028).
           <>
             <section className="g-card g-section g-stopcard" aria-labelledby="stop-h">
               <div className="g-section__head"><h2 id="stop-h">Stop {zoe}&apos;s rules</h2></div>
@@ -90,11 +87,6 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
                   <StopRules teenName={zoe} demo={h.isDemo} />
                 </>
               )}
-            </section>
-            <section className="g-card" aria-labelledby="link-h">
-              <h2 className="g-label" id="link-h" style={{ display: "block", marginBottom: 8 }}>{zoe}&apos;s way in</h2>
-              <TeenLink url={`${appBaseUrl()}/t/${h.teenToken}`} teenName={zoe} />
-              <ResetLink teenName={zoe} />
             </section>
           </>
         }

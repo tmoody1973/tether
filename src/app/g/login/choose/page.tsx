@@ -41,6 +41,8 @@ async function Choose() {
             ))}
           </ul>
           {families.length === 0 && <p className="g-note">None of them can be opened any more. <a className="g-textlink" href="/g/login/paypal">Log in with PayPal</a> to start again.</p>}
+          {/* A plain <a>: this starts a PayPal redirect and must never be prefetched. */}
+          {families.length > 0 && <a className="g-btn g-btn--block" href="/g/login/paypal?add=1" style={{ marginTop: 14 }}>Add another teen</a>}
         </div>
       </main>
     </div>

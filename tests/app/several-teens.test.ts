@@ -1,0 +1,246 @@
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/db/client", async (orig) => ({ ...(await orig<typeof import("@/db/client")>()), getDb: async () => testDb }));
+let testDb: import("@/db/client").Db;
+// PayPal stand-in: "good" is the only code; userinfo answers with whoever `who` is.
+let who: import("@/adapters/paypal/identity").PaypalIdentity;
+vi.mock("@/adapters/paypal/identity", async (orig) => ({
+  ...(await orig<typeof import("@/adapters/paypal/identity")>()),
+  identityFromEnv: () => ({
+    authorizeUrl: (state: string) => `https://www.sandbox.paypal.com/connect?state=${state}`,
+    exchangeCode: async (code: string) => { if (code !== "good") throw new Error("invalid_grant"); return "AT"; },
+    userInfo: async () => who,
+  }),
+}));
+vi.mock("@/adapters/paypal/vault", async (orig) => ({ ...(await orig<typeof import("@/adapters/paypal/vault")>()), deletePaymentToken: async () => undefined }));
+import { eq } from "drizzle-orm";
+import { createDb, migrateDb } from "@/db/client";
+import * as repo from "@/db/repo";
+import * as t from "@/db/schema";
+import { GUARDIAN_COOKIE, signGuardianCookie, verifyGuardianCookie } from "@/auth/guardian";
+import {
+  BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, PAYPAL_WHO_COOKIE, START_COOKIE, STARTED_COOKIE, openBrowserFamilies, openLoginState,
+  openPaypalWho, openStart, sealBrowserFamilies, sealLoginState, sealPaypalWho, sealStarted, type PaypalWho,
+} from "@/auth/start";
+import { settingsTeens } from "@/flows/start";
+import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
+import { GET as login } from "@/app/g/login/paypal/route";
+import { GET as loginReturn } from "@/app/g/login/paypal/return/route";
+import { POST as create } from "@/app/g/start/teen/create/route";
+import { POST as switchTeen } from "@/app/g/settings/switch/route";
+
+process.env.TETHER_SIGNING_KEY = "test-key";
+process.env.APP_BASE_URL = "https://tether-five-beta.vercel.app";
+beforeAll(async () => { testDb = createDb("pglite:memory"); await migrateDb(testDb); });
+
+const cookieOf = (res: Response, name: string) => res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`));
+const valueOf = (res: Response, name: string) => { const c = cookieOf(res, name); return c ? decodeURIComponent(c.split(";")[0].slice(name.length + 1)) : undefined; };
+const where = (res: Response) => { const u = new URL(res.headers.get("location")!, "http://localhost"); return `${u.pathname}${u.search}`; };
+const jar = (c: Record<string, string | undefined>) => Object.entries(c).flatMap(([k, v]) => (v ? [`${k}=${encodeURIComponent(v)}`] : [])).join("; ");
+const signedInTo = (res: Response) => { const v = valueOf(res, GUARDIAN_COOKIE); return v ? verifyGuardianCookie(v, new Date()) : null; };
+
+let n = 0;
+const own = async (sub: string | null, teenName: string, opts: { retired?: boolean } = {}) => {
+  const f = await repo.insertFamily(testDb, { name: `P & ${teenName}`, teenToken: `t-${++n}-${teenName}`, guardianName: "Amara", teenName });
+  await testDb.update(t.families).set({
+    paypalSub: sub, ...(opts.retired ? { guardianToken: `${repo.ARCHIVED_PREFIX}${n}` } : {}),
+  }).where(eq(t.families.id, f.id));
+  return f;
+};
+
+/** Log in with PayPal end to end: step 1 (optionally `?add=1`), then PayPal's return carrying that browser's state cookie. */
+async function roundTrip(opts: { add?: boolean; returnQuery?: string; stateCookie?: (v: string) => string; browser?: string } = {}) {
+  const start = await login(new Request(`http://localhost/g/login/paypal${opts.add ? "?add=1" : ""}`));
+  const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+  const sealed = valueOf(start, LOGIN_STATE_COOKIE)!;
+  const cookie = jar({ [LOGIN_STATE_COOKIE]: opts.stateCookie ? opts.stateCookie(sealed) : sealed, [BROWSER_FAMILY_COOKIE]: opts.browser });
+  return loginReturn(new Request(`http://localhost/g/login/paypal/return?code=good&state=${state}${opts.returnQuery ?? ""}`, { headers: { cookie } }));
+}
+
+function createPost(start: string, extra: Record<string, string | undefined> = {}) {
+  return create(new Request("http://localhost/g/start/teen/create", {
+    method: "POST", body: new URLSearchParams({ teenName: "Kofi", age: "14", guardian: "on" }),
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: jar({ [START_COOKIE]: start, ...extra }) },
+  }));
+}
+
+function switchPost(target: string, c: { current?: string; who?: PaypalWho; browser?: string[]; origin?: string }) {
+  const now = new Date();
+  return switchTeen(new Request("http://localhost/g/settings/switch", {
+    method: "POST", body: new URLSearchParams({ familyId: target }),
+    headers: {
+      "content-type": "application/x-www-form-urlencoded", ...(c.origin ? { origin: c.origin } : {}),
+      cookie: jar({
+        [GUARDIAN_COOKIE]: c.current ? signGuardianCookie(c.current, now) : undefined,
+        [PAYPAL_WHO_COOKIE]: c.who ? sealPaypalWho(c.who, now) : undefined,
+        [BROWSER_FAMILY_COOKIE]: c.browser ? sealBrowserFamilies(c.browser, now) : undefined,
+      }),
+    },
+  }));
+}
+
+describe("Add another teen: the intent rides inside the sealed login state", () => {
+  it("survives the PayPal round trip: a parent who already has a teen goes to the teen form, not into that family", async () => {
+    who = { sub: "S-add-1", givenName: "Amara", email: "amara1@example.com" };
+    const zoe = await own("S-add-1", "Zoe");
+    const res = await roundTrip({ add: true });
+    expect(where(res)).toBe("/g/start/teen");
+    expect(signedInTo(res)).toBeNull();
+    expect(openStart(valueOf(res, START_COOKIE), new Date())).toMatchObject({ who: { sub: "S-add-1" }, add: true });
+    expect(openPaypalWho(valueOf(res, PAYPAL_WHO_COOKIE), new Date())).toEqual({ sub: "S-add-1", shared: false });
+
+    // The teen form makes a second family, even inside the one-per-browser-hour window, and signs her in to it.
+    const browser = sealBrowserFamilies([zoe.id], new Date());
+    const made = await createPost(valueOf(res, START_COOKIE)!, { [STARTED_COOKIE]: sealStarted(new Date()), [BROWSER_FAMILY_COOKIE]: browser });
+    expect(where(made)).toBe("/g?started=added");
+    const kofi = signedInTo(made)!;
+    expect(kofi).not.toBe(zoe.id);
+    expect(await repo.getFamily(testDb, kofi)).toMatchObject({ teenName: "Kofi", paypalSub: "S-add-1" });
+    expect(await repo.getVault(testDb, kofi)).toBeNull(); // her own saved PayPal, never Zoe's
+    expect(openBrowserFamilies(valueOf(made, BROWSER_FAMILY_COOKIE), new Date())).toEqual([zoe.id, kofi]);
+  });
+
+  it("without the add intent, the hourly per-browser limit still holds", async () => {
+    who = { sub: "S-add-2", email: "amara2@example.com" };
+    const res = await roundTrip();
+    expect(where(res)).toBe("/g/start/teen");
+    expect(openStart(valueOf(res, START_COOKIE), new Date())?.add).toBe(false);
+    const made = await createPost(valueOf(res, START_COOKIE)!, { [STARTED_COOKIE]: sealStarted(new Date()) });
+    expect(where(made)).toBe("/g/start/teen?e=browser");
+  });
+
+  it("is ignored when it only appears on the return URL: one family ⇒ signed straight in", async () => {
+    who = { sub: "S-add-3", email: "amara3@example.com" };
+    const zoe = await own("S-add-3", "Zoe");
+    const res = await roundTrip({ returnQuery: "&add=1&intent=add" });
+    expect(where(res)).toBe("/g");
+    expect(signedInTo(res)).toBe(zoe.id);
+  });
+
+  it("a tampered state cookie fails the whole login, add or not", async () => {
+    who = { sub: "S-add-4", email: "amara4@example.com" };
+    const flip = (v: string) => { const [d, e, s] = v.split("."); return `${Buffer.from(`add:${Buffer.from(d, "base64url")}`).toString("base64url")}.${e}.${s}`; };
+    const res = await roundTrip({ stateCookie: flip });
+    expect(where(res)).toBe("/g?login=failed");
+    expect(signedInTo(res)).toBeNull();
+    expect(cookieOf(res, START_COOKIE)).toBeUndefined();
+  });
+
+  it("the sealed state opens to the same state and intent; a plain one has no intent", () => {
+    const now = new Date();
+    expect(openLoginState(sealLoginState("abc_DEF-1", now, "add"), now)).toEqual({ state: "abc_DEF-1", intent: "add" });
+    expect(openLoginState(sealLoginState("abc_DEF-1", now), now)).toEqual({ state: "abc_DEF-1", intent: null });
+  });
+
+  it("the shared login with the add intent goes to the teen form even when this browser has a live family", async () => {
+    who = { sub: "S-shared-add", email: SANDBOX_LOGIN.email };
+    const mine = await own("S-shared-add", "Zoe");
+    const browser = sealBrowserFamilies([mine.id], new Date());
+    expect(signedInTo(await roundTrip({ browser }))).toBe(mine.id);
+    const res = await roundTrip({ add: true, browser });
+    expect(where(res)).toBe("/g/start/teen");
+    expect(openPaypalWho(valueOf(res, PAYPAL_WHO_COOKIE), new Date())).toEqual({ sub: "S-shared-add", shared: true });
+  });
+
+  it("the shared login signs in to the NEWEST live family this browser made", async () => {
+    who = { sub: "S-shared-new", email: SANDBOX_LOGIN.email };
+    const a = await own("S-shared-new", "Ama"), b = await own("S-shared-new", "Ben"), gone = await own("S-shared-new", "Cy", { retired: true });
+    expect(signedInTo(await roundTrip({ browser: sealBrowserFamilies([a.id, b.id, gone.id], new Date()) }))).toBe(b.id);
+  });
+});
+
+describe("POST /g/settings/switch", () => {
+  const ordinary: PaypalWho = { sub: "S-switch", shared: false };
+
+  it("signs her in to another live teen her PayPal owns", async () => {
+    const zoe = await own("S-switch", "Zoe"), kofi = await own("S-switch", "Kofi");
+    const res = await switchPost(kofi.id, { current: zoe.id, who: ordinary });
+    expect(where(res)).toBe("/g?switched=1");
+    expect(signedInTo(res)).toBe(kofi.id);
+  });
+
+  it("refuses a family her PayPal doesn't own, a retired one, or with no remembered PayPal", async () => {
+    const zoe = await own("S-switch-2", "Zoe");
+    const theirs = await own("S-someone-else", "Ola"), retired = await own("S-switch-2", "Old", { retired: true });
+    const me: PaypalWho = { sub: "S-switch-2", shared: false };
+    for (const res of [
+      await switchPost(theirs.id, { current: zoe.id, who: me }),
+      await switchPost(retired.id, { current: zoe.id, who: me }),
+      await switchPost("no-such-family", { current: zoe.id, who: me }),
+      await switchPost(zoe.id, { current: zoe.id }), // signed in, but no PayPal remembered
+    ]) {
+      expect(where(res)).toBe("/g/settings?switch=failed");
+      expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
+    }
+  });
+
+  it("refuses when she's signed in some other way: a remembered PayPal doesn't open teens from a guardian-link session", async () => {
+    const mine = await own("S-switch-3", "Zoe"), linked = await own(null, "Demo");
+    const res = await switchPost(mine.id, { current: linked.id, who: { sub: "S-switch-3", shared: false } });
+    expect(where(res)).toBe("/g/settings?switch=failed");
+    expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
+  });
+
+  it("shared login: only families THIS browser made; another browser's family is refused even though the PayPal owns it", async () => {
+    const shared: PaypalWho = { sub: "S-switch-shared", shared: true };
+    const a = await own("S-switch-shared", "Ama"), b = await own("S-switch-shared", "Ben"), otherBrowser = await own("S-switch-shared", "Kim");
+    expect(signedInTo(await switchPost(b.id, { current: a.id, who: shared, browser: [a.id, b.id] }))).toBe(b.id);
+    const res = await switchPost(otherBrowser.id, { current: a.id, who: shared, browser: [a.id, b.id] });
+    expect(where(res)).toBe("/g/settings?switch=failed");
+    expect(cookieOf(res, GUARDIAN_COOKIE)).toBeUndefined();
+  });
+
+  it("signed out ⇒ Home; a cross-site post ⇒ refused", async () => {
+    const zoe = await own("S-switch-4", "Zoe"), kofi = await own("S-switch-4", "Kofi");
+    expect(where(await switchPost(kofi.id, { who: { sub: "S-switch-4", shared: false } }))).toBe("/g");
+    const cross = await switchPost(kofi.id, { current: zoe.id, who: { sub: "S-switch-4", shared: false }, origin: "https://evil.example" });
+    expect(where(cross)).toBe("/g/settings?switch=failed");
+    expect(cookieOf(cross, GUARDIAN_COOKIE)).toBeUndefined();
+  });
+});
+
+describe("Settings: which teens she sees", () => {
+  it("ordinary PayPal: every live teen it owns, oldest first, the current one marked", async () => {
+    const zoe = await own("S-list", "Zoe"), kofi = await own("S-list", "Kofi");
+    await own("S-list", "Old", { retired: true });
+    await own("S-not-me", "Ola");
+    expect(await settingsTeens(testDb, { id: kofi.id, teenName: "Kofi" }, { sub: "S-list", shared: false }, [])).toEqual({
+      viaPaypal: true, teens: [{ id: zoe.id, teenName: "Zoe", current: false }, { id: kofi.id, teenName: "Kofi", current: true }],
+    });
+  });
+
+  it("shared login: only the live ones this browser made, never another browser's", async () => {
+    const a = await own("S-list-shared", "Ama"), b = await own("S-list-shared", "Ben");
+    await own("S-list-shared", "Kim"); // another judge's browser
+    const gone = await own("S-list-shared", "Cy", { retired: true });
+    expect(await settingsTeens(testDb, { id: a.id, teenName: "Ama" }, { sub: "S-list-shared", shared: true }, [a.id, b.id, gone.id])).toEqual({
+      viaPaypal: true, teens: [{ id: a.id, teenName: "Ama", current: true }, { id: b.id, teenName: "Ben", current: false }],
+    });
+  });
+
+  it("guardian link or the shared demo family (no PayPal proof): the current teen only", async () => {
+    const demo = await own(null, "Zoe");
+    await own("S-list-3", "Kofi");
+    const only = { viaPaypal: false, teens: [{ id: demo.id, teenName: "Zoe", current: true }] };
+    expect(await settingsTeens(testDb, { id: demo.id, teenName: "Zoe" }, null, [])).toEqual(only);
+    // A PayPal remembered from earlier doesn't widen a guardian-link session.
+    expect(await settingsTeens(testDb, { id: demo.id, teenName: "Zoe" }, { sub: "S-list-3", shared: false }, [])).toEqual(only);
+  });
+});
+
+describe("the remembered PayPal cookie", () => {
+  it("holds only her PayPal id and the shared flag, opens only for its own purpose, and expires", () => {
+    const now = new Date();
+    const v = sealPaypalWho({ sub: "S-x", shared: true }, now);
+    expect(Buffer.from(v.split(".")[0], "base64url").toString()).toBe("s:S-x");
+    expect(openPaypalWho(v, now)).toEqual({ sub: "S-x", shared: true });
+    expect(openPaypalWho(sealBrowserFamilies(["S-x"], now), now)).toBeNull();
+    expect(openPaypalWho(v, new Date(now.getTime() + 8 * 86_400_000))).toBeNull();
+  });
+
+  it("the browser's family list keeps the last 10", () => {
+    const now = new Date();
+    const ids = Array.from({ length: 12 }, (_, i) => `f${i}`);
+    expect(openBrowserFamilies(sealBrowserFamilies(ids, now), now)).toEqual(ids.slice(2));
+  });
+});

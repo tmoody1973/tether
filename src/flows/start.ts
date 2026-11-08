@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, isNotNull, isNull, lt, not, like, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, not, like, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { ARCHIVED_PREFIX, insertFamily, type Family } from "@/db/repo";
 import { safeErrorText, type PaypalHttp } from "@/adapters/paypal/http";
 import type { PaypalIdentity } from "@/adapters/paypal/identity";
+import type { PaypalWho } from "@/auth/start";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
 import { takePool } from "@/flows/usage";
 import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
@@ -58,18 +59,37 @@ export async function isSharedLogin(
   return hit !== undefined;
 }
 
-/** True when `familyId` is a live (not retired) family owned by this PayPal id. */
-export async function ownsLiveFamily(db: Db, sub: string, familyId: string): Promise<boolean> {
-  const [hit] = await db.select({ id: t.families.id }).from(t.families)
-    .where(and(eq(t.families.id, familyId), eq(t.families.paypalSub, sub), live)).limit(1);
-  return hit !== undefined;
-}
-
 /** The families this PayPal identity owns and can still open, oldest first: the "Which teen?" list. */
 export async function ownedFamilies(db: Db, sub: string): Promise<{ id: string; teenName: string }[]> {
   return db.select({ id: t.families.id, teenName: t.families.teenName }).from(t.families)
     .where(and(eq(t.families.paypalSub, sub), live))
     .orderBy(asc(t.families.createdAt));
+}
+
+/**
+ * The teens this browser may open and switch between (decision 028), oldest first. An ordinary PayPal: every live family
+ * it owns. The shared sandbox login: only the families THIS browser made (its cookie list) that it still owns and are
+ * live; never another browser's, never a list from paypal_sub alone.
+ */
+export async function switchableFamilies(db: Db, who: PaypalWho, browserFamilies: readonly string[]): Promise<{ id: string; teenName: string }[]> {
+  if (who.shared && browserFamilies.length === 0) return [];
+  return db.select({ id: t.families.id, teenName: t.families.teenName }).from(t.families)
+    .where(and(eq(t.families.paypalSub, who.sub), live, who.shared ? inArray(t.families.id, [...browserFamilies]) : undefined))
+    .orderBy(asc(t.families.createdAt));
+}
+
+export type SettingsTeens = { viaPaypal: boolean; teens: { id: string; teenName: string; current: boolean }[] };
+
+/**
+ * Settings' "Your teens". Signed in through PayPal (the remembered PayPal can open the current family): every teen she
+ * can switch to. Signed in another way (a private guardian link, the shared demo family): the current teen only.
+ */
+export async function settingsTeens(
+  db: Db, current: { id: string; teenName: string }, who: PaypalWho | null, browserFamilies: readonly string[],
+): Promise<SettingsTeens> {
+  const list = who ? await switchableFamilies(db, who, browserFamilies) : [];
+  if (!list.some((f) => f.id === current.id)) return { viaPaypal: false, teens: [{ ...current, current: true }] };
+  return { viaPaypal: true, teens: list.map((f) => ({ ...f, current: f.id === current.id })) };
 }
 
 /**

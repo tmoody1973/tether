@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { pushAlias } from "@/auth/guardian";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
@@ -20,9 +19,7 @@ import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
 import { advanceClockAction } from "./actions";
 import { AskBox } from "./AskBox";
-import { NotifyCard } from "./NotifyCard";
 import { PaymentRow } from "./PaymentRow";
-import { ResetDemo } from "./ResetDemo";
 import { FirstRun, WayBackIn } from "./FirstRun";
 
 export default function GuardianHomePage({ searchParams }: PageProps<"/g">) {
@@ -50,6 +47,8 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
   if (paypal === "different") return { text: "That PayPal is a different account from the one you logged in with, so nothing was saved.", warn: true, connectPaypal: true };
   if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.` };
+  if (one("switched") === "1") return { text: `Now showing ${names.teen}.` };
+  if (one("started") === "added") return { text: `${names.teen} is added. Three steps and ${names.teen} can start. Switch between your teens in Settings.` };
   const demo = one("demo");
   if (demo === "reset" || demo === "reset-paypal") {
     const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
@@ -97,8 +96,6 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
           {note.text}{note.connectPaypal && <> <a className="g-textlink" href="/g/connect-paypal">Save your PayPal</a></>}
         </p>
       )}
-      {/* Push is on only where OneSignal is set up; the alias is this family's opaque external id, never its raw id. */}
-      {process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID && <NotifyCard appId={process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID} alias={pushAlias(familyId)} teenName={zoe} />}
 
       <div className="g-two g-home">
         <div className="g-stack">
@@ -184,7 +181,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
                 Your family&apos;s own clock: moving it changes nothing for anyone else. This family is removed on <b>{formatDay(h.removesAt)}</b>, 7 days after you made it.
               </p>
             )}
-            {h.isDemo && <ResetDemo />}
+            {h.isDemo && <p className="g-note" style={{ marginTop: 8 }}>Reset demo is in <Link className="g-textlink" href="/g/settings">Settings</Link>.</p>}
           </details>
         </div>
       </div>

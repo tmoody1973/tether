@@ -15,7 +15,7 @@ window.OneSignalDeferred = { push: (fn) => fn(OneSignal) };
 queued.forEach((fn) => fn(OneSignal));
 `;
 
-test("Amara's Home offers notifications; OneSignal loads only on her page, only when she turns them on", async ({ page, context }) => {
+test("Amara's Settings offers notifications; OneSignal loads only on her page, only when she turns them on", async ({ page, context }) => {
   const sdk: string[] = [];
   await context.route("https://cdn.onesignal.com/**", (route) => {
     sdk.push(route.request().url());
@@ -30,9 +30,10 @@ test("Amara's Home offers notifications; OneSignal loads only on her page, only 
   await expect(page.locator('script[src*="onesignal"]')).toHaveCount(0);
   expect(sdk).toEqual([]);
 
-  // Amara's Home: the card. Headless Chromium starts with notifications denied, so it says how to allow them, and
+  // Amara's Settings: the card (decision 028 moved it off Home). Headless Chromium starts with notifications denied, so it says how to allow them, and
   // OneSignal is not loaded (it is only ever loaded once the browser allows notifications or she taps the button).
   await page.goto(`/g/enter/${E2E.guardianKey}`);
+  await page.goto("/g/settings");
   await expect(page.getByRole("heading", { name: "Get a buzz when Zoe asks." })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Notifications are blocked for this site" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Turn on notifications" })).toHaveCount(0);

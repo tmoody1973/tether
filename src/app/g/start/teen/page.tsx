@@ -25,6 +25,7 @@ const PROBLEM: Record<string, string> = {
   guardian: "Tick the box to say you're this teen's parent or guardian.",
   browser: "This browser started a family less than an hour ago. Log in with PayPal to open it, or try again later.",
   full: "Today's new families are used up. Try the shared demo family, or come back tomorrow.",
+  addfull: "Today's new families are used up, so no teen was added. Nothing changed. Try again tomorrow.",
 };
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -42,7 +43,8 @@ function Gate({ children }: { children: React.ReactNode }) {
 
 async function StartTeen({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await connection(); // the cookie's expiry reads the clock: request time only
-  const who = openStart((await cookies()).get(START_COOKIE)?.value, new Date())?.who;
+  const ticket = openStart((await cookies()).get(START_COOKIE)?.value, new Date());
+  const who = ticket?.who;
   const e = (await searchParams).e;
   const problem = typeof e === "string" ? PROBLEM[e] : undefined;
   const demo = demoLinks();
@@ -51,6 +53,15 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
       {problem}{e === "full" && demo && <> <a className="g-textlink" href={demo.amara}>Open the shared demo family</a></>}
     </p>
   );
+  if (e === "addfull") {
+    return (
+      <Gate>
+        <h1>No teen added</h1>
+        {trouble}
+        <div className="s-actions s-center"><a className="g-btn" href="/g">Back to Home</a></div>
+      </Gate>
+    );
+  }
   if (!who) {
     return (
       <Gate>
@@ -64,10 +75,11 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
   }
   return (
     <Gate>
-      <h1>Welcome{who.givenName ? `, ${who.givenName}` : ""}.</h1>
+      <h1>{ticket.add ? "Add another teen" : `Welcome${who.givenName ? `, ${who.givenName}` : ""}.`}</h1>
       <p className="g-note">{who.givenName ? "Your name came from PayPal." : "PayPal didn't share your name, so Tether will call you Parent."} Not you? <a className="g-textlink" href="/g/login/paypal">Start again</a></p>
       {trouble}
-      <h2>Now, your teen</h2>
+      <h2>{ticket.add ? "Your other teen" : "Now, your teen"}</h2>
+      {ticket.add && <p className="g-note">This teen gets their own rules, budget, record, investing and link. You save your PayPal once for each teen.</p>}
       <StartForm />
       <p className="g-note" style={{ marginTop: 14 }}>Next time, Log in with PayPal: the same PayPal is your way back in.</p>
       <p className="g-note">The family relationship is simulated — PayPal has no notion of it. Sandbox only; no real money moves.</p>

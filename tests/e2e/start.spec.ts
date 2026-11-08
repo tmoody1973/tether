@@ -63,3 +63,75 @@ test("signed out: the page offers Log in with PayPal, and a cancelled login says
   await expect(page.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/g/login/paypal");
   await expect(page.getByRole("link", { name: "Log in with PayPal" })).toBeVisible();
 });
+
+// Decision 028: a parent with several teens. Start a family, add a second teen through Log in with PayPal again, switch
+// back and forth in Settings; each teen's rules page is that teen's. The menu has five items and fits a 390px phone.
+test("several teens: add a second teen, switch between them, five menu items that fit a phone", async ({ page }) => {
+  test.setTimeout(300_000);
+  const nav = page.getByRole("navigation", { name: "Main" }).first();
+  const startTeen = async (name: string, age: string) => {
+    await page.getByLabel("Your teen's first name").fill(name);
+    await page.getByLabel(`${name}'s age`).fill(age);
+    await page.getByLabel(`I'm ${name}'s parent or guardian`).check();
+    await page.getByRole("button", { name: "Create our family" }).click();
+  };
+  const rulesSay = async (name: string) => {
+    await nav.getByRole("link", { name: `${name}'s rules` }).click();
+    await expect(page).toHaveURL(/\/g\/rules$/, { timeout: 60_000 });
+    await expect(page.getByRole("heading", { level: 1, name: `${name}'s rules` })).toBeVisible();
+  };
+  const teens = page.getByRole("region", { name: "Your teens" });
+
+  await page.goto("/g/login/paypal");
+  await expect(page).toHaveURL(/\/g\/start\/teen$/, { timeout: 60_000 });
+  await startTeen("Zoe", "15");
+  await expect(page).toHaveURL(/\/g\?started=1$/, { timeout: 60_000 });
+
+  for (const name of [/^Home/, "Zoe's rules", "Investing", "Activity", "Settings"]) await expect(nav.getByRole("link", { name })).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveCount(5);
+  await nav.getByRole("link", { name: "Investing" }).click();
+  await expect(page).toHaveURL(/\/g\/invest$/, { timeout: 60_000 });
+  await expect(nav.getByRole("link", { name: "Investing" })).toHaveAttribute("aria-current", "page");
+
+  await nav.getByRole("link", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/\/g\/settings$/, { timeout: 60_000 });
+  await expect(teens.getByText("Zoe", { exact: true })).toBeVisible();
+  await expect(teens.getByText("Open now")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send Zoe her link" })).toBeVisible(); // her link moved here from Rules
+  await teens.getByRole("link", { name: "Add another teen" }).click(); // PayPal again, the same parent
+
+  await expect(page).toHaveURL(/\/g\/start\/teen$/, { timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Add another teen" })).toBeVisible();
+  await startTeen("Kofi", "14"); // straight after Zoe: the one-per-browser-hour limit doesn't apply to adding a teen
+  await expect(page).toHaveURL(/\/g\?started=added$/, { timeout: 60_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Kofi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Get Kofi started" })).toBeVisible(); // his own first-run checklist
+  await rulesSay("Kofi");
+
+  for (const [to, from] of [["Zoe", "Kofi"], ["Kofi", "Zoe"], ["Zoe", "Kofi"]]) {
+    await nav.getByRole("link", { name: "Settings" }).click();
+    await expect(teens.getByRole("button", { name: `Switch to ${from}` })).toHaveCount(0); // the one she's on is marked, not a button
+    await teens.getByRole("button", { name: `Switch to ${to}` }).click();
+    await expect(page).toHaveURL(/\/g\?switched=1$/, { timeout: 60_000 });
+    await expect(page.getByText(`Now showing ${to}.`)).toBeVisible();
+    await rulesSay(to);
+  }
+
+  // A phone: the five tabs fit, nothing scrolls sideways.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bar = page.locator(".g-tabbar");
+  for (const path of ["/g", "/g/settings"]) {
+    await page.goto(path);
+    await expect(bar).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  }
+  for (const name of [/^Home/, "Rules", "Investing", "Activity", "Settings"]) await expect(bar.getByRole("link", { name })).toBeInViewport();
+  const widths = await bar.getByRole("link").evaluateAll((links) => links.map((a) => [a.scrollWidth, a.clientWidth]));
+  expect(widths).toHaveLength(5);
+  for (const [scroll, client] of widths) expect(scroll).toBeLessThanOrEqual(client); // no label cut off
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); // the dev badge, for the screenshots only
+  await page.screenshot({ path: test.info().outputPath("settings-390.png") });
+  await bar.screenshot({ path: test.info().outputPath("tabbar-390.png") });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: test.info().outputPath("settings-desktop.png"), fullPage: true });
+});

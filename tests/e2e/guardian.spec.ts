@@ -65,7 +65,7 @@ test("home shows this week, what needs you, recent payments and her rules at a g
   await expect(glance).toContainText(/Best Buy and Target|Target and Best Buy/);
   await expect(glance.getByRole("link", { name: "Change her rules" })).toHaveAttribute("href", "/g/rules");
   await expect(page.getByRole("region", { name: "Ask about Zoe's month" }).getByRole("button", { name: "What did Zoe buy this month?" })).toBeVisible();
-  // Zoe's link moved to her rules; demo controls are folded away.
+  // Zoe's link lives in Settings; demo controls are folded away.
   await expect(page.getByRole("button", { name: "Send Zoe her link" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Advance to end of month" })).toBeHidden();
   await page.getByText("Demo controls").click();
@@ -79,9 +79,9 @@ test("home labels the savings goal with its name", async ({ page }) => {
   await expect(goal).toContainText("$0.00 of $169.99 saved");
 });
 
-test("Zoe's link: send and reset live on her rules page", async ({ page }) => {
+test("Zoe's link: send and reset live in Settings", async ({ page }) => {
   await enter(page);
-  await page.goto("/g/rules");
+  await page.goto("/g/settings");
   await page.getByRole("button", { name: "Reset Zoe's link" }).click(); // asks first
   await expect(page.getByRole("button", { name: "Yes, reset" })).toBeVisible();
   await page.getByRole("button", { name: "Keep it" }).click();

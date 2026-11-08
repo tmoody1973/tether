@@ -1,7 +1,7 @@
 import { readCookie } from "@/auth/guardian";
 import {
-  BROWSER_FAMILY_COOKIE, START_COOKIE, STARTED_COOKIE, browserFamilyCookieOptions, openStart, openStarted, sealBrowserFamily, sealStarted,
-  startedCookieOptions,
+  BROWSER_FAMILY_COOKIE, START_COOKIE, STARTED_COOKIE, browserFamilyCookieOptions, openBrowserFamilies, openStart, openStarted,
+  sealBrowserFamilies, sealStarted, startedCookieOptions,
 } from "@/auth/start";
 import { safeErrorText } from "@/adapters/paypal/http";
 import { getDb } from "@/db/client";
@@ -18,7 +18,9 @@ export async function POST(req: Request): Promise<Response> {
   const form = await req.formData().catch(() => null);
   const parsed = form ? parseTeenForm(form) : { ok: false as const, error: "name" as const };
   if (!parsed.ok) return goTo(req, `/g/start/teen?e=${parsed.error}`);
-  if (openStarted(readCookie(req, STARTED_COOKIE), now)) return goTo(req, "/g/start/teen?e=browser"); // one per browser per hour
+  // One per browser per hour, except "Add another teen" (decision 028): a parent adding two teens back to back is the
+  // point. The site-wide daily cap in startFamily still applies to every family.
+  if (!ticket.add && openStarted(readCookie(req, STARTED_COOKIE), now)) return goTo(req, "/g/start/teen?e=browser");
 
   let fam: Family | null;
   try {
@@ -31,9 +33,11 @@ export async function POST(req: Request): Promise<Response> {
     console.error("start: creating the family failed", safeErrorText(err)); // never the query: it holds her PayPal email
     return goTo(req, "/g?login=failed");
   }
-  if (!fam) return goTo(req, "/g/start/teen?e=full", { dropStart: true }); // today's new families are used up; this cookie is spent
-  const res = signIn(goTo(req, "/g?started=1", { dropStart: true }), fam.id);
+  // Today's new families are used up; this cookie is spent. Adding a teen says so in its own words (she's still signed in).
+  if (!fam) return goTo(req, `/g/start/teen?e=${ticket.add ? "addfull" : "full"}`, { dropStart: true });
+  const res = signIn(goTo(req, ticket.add ? "/g?started=added" : "/g?started=1", { dropStart: true }), fam.id);
   res.cookies.set(STARTED_COOKIE, sealStarted(now), startedCookieOptions());
-  res.cookies.set(BROWSER_FAMILY_COOKIE, sealBrowserFamily(fam.id, now), browserFamilyCookieOptions());
+  const mine = openBrowserFamilies(readCookie(req, BROWSER_FAMILY_COOKIE), now).filter((id) => id !== fam.id);
+  res.cookies.set(BROWSER_FAMILY_COOKIE, sealBrowserFamilies([...mine, fam.id], now), browserFamilyCookieOptions());
   return res;
 }

@@ -19,7 +19,7 @@ async function resetDemo(page: Page) {
   await page.goto("/");
   await page.getByRole("link", { name: "Open Amara's view" }).first().click();
   await expect(page).toHaveURL(/\/g$/);
-  await openDemoControls(page);
+  await page.goto("/g/settings"); // Reset demo lives in Settings (decision 028)
   await page.getByRole("button", { name: "Reset demo" }).click();
   await page.getByRole("button", { name: "Yes, reset the demo" }).click();
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();

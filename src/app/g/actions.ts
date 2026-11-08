@@ -58,7 +58,7 @@ export async function resetTeenLinkAction(): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");
   await resetTeenLink(g.deps, g.familyId);
-  redirect("/g/rules?link=reset");
+  redirect("/g/settings?link=reset");
 }
 
 /** Demo clock (D10): moves this family's "today" forward, closes ended weeks and, at a month end, runs the review. */
