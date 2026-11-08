@@ -4,7 +4,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getVault, type GrantRow } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
-import { LEVELS, asOf, commitmentFloorCents, grantForLevel, validSpending, validateCommitment, withSpending, type Level } from "@/engine/ladder";
+import { LEVELS, asOf, carrySpending, commitmentFloorCents, grantForLevel, validSpending, validateCommitment, withSpending, type Level } from "@/engine/ladder";
 import { validCosts } from "@/engine/pricing";
 import { ledgerView } from "@/ledger/ledger";
 import type { Constraint, CostTerms, Grant, SpendingMode } from "@/engine/types";
@@ -186,9 +186,9 @@ export async function installLevel(
   tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>, keep?: { latest: GrantRow | null; applyNow: ApplyNow },
 ): Promise<Grant> {
   const cur = (await getLatestGrant(tx, familyId))?.body;
-  // Decision 030: "every purchase" survives a level change; an "up to" amount was chosen for that level's money, so a
-  // new level starts from its own rule unless Amara sets one again.
-  const keptSpending = cur?.spending && (cur.spending.mode === "every" || cur.level === level) ? cur.spending : undefined;
+  // Decision 030 (review HIGH 1): Amara's spending mode carries across every level change, the automatic level-up
+  // included, never looser than she chose; only she replaces it.
+  const keptSpending = carrySpending(cur?.spending, level);
   const base: Settings = {
     commitmentFloorPct: s?.commitmentFloorPct ?? cur?.commitmentFloorPct ?? 10,
     matchPct: s?.matchPct ?? cur?.matchPct ?? 100,

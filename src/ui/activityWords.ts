@@ -23,6 +23,9 @@ export function refundedWords(refund: RefundSplit | undefined, teen: string): st
   const parts = [
     ...(refund && refund.weekCents > 0 ? [`${formatCents(refund.weekCents)} back to ${teen}'s week`] : []),
     ...(refund && refund.promisedCents > 0 ? [`${formatCents(refund.promisedCents)} added to what you've promised`] : []),
+    // Review MEDIUM 2: a refund of money that week had spent past its allowance (you approved it) adds nothing.
+    ...(refund && refund.grossCents > refund.weekCents + refund.promisedCents
+      ? [`${formatCents(refund.grossCents - refund.weekCents - refund.promisedCents)} covered spending past that week's money`] : []),
   ];
   return ["Refunded in PayPal", ...parts].join(" · "); // the FAQ quotes this label (tests/app/landing-faq.test.ts)
 }

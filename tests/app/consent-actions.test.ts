@@ -28,6 +28,18 @@ beforeAll(async () => {
 const form = (fields: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(fields)) f.set(k, v); return f; };
 const grantOf = (id: string) => repo.getActiveGrant(testDb, id);
 
+describe("the shared demo family (review MEDIUM 4)", () => {
+  it("after a Stop, a judge can re-sign without typing a sales tax: the labelled demo estimates are used", async () => {
+    const demo = await repo.insertFamily(testDb, { name: "Demo", teenToken: "c-demo", guardianName: "Amara", teenName: "Zoe" });
+    await testDb.update(t.families).set({ demo: { now: new Date().toISOString() } as unknown as t.DemoSnapshot }).where(eq(t.families.id, demo.id));
+    await signGrant({ db: testDb, now: clockFor(testDb) }, demo.id, { level: 2 });
+    await testDb.update(t.grants).set({ status: "revoked" }).where(eq(t.grants.familyId, demo.id));
+    session = demo.id;
+    await expect(signGrantAction({}, form({ familyId: demo.id, level: "2", floorPct: "10", matchPct: "100" }))).rejects.toThrow(/^REDIRECT \/g\?signed=/);
+    expect((await grantOf(demo.id))!.body.costs).toEqual({ salesTaxBps: 800, shippingCents: 599 });
+  });
+});
+
 describe("consent controls refuse a form left open on another teen (028 + 030)", () => {
   it("pause, spending mode, investing and costs from Liam's tab change nothing on Maya", async () => {
     session = maya.id;

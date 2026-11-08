@@ -89,6 +89,16 @@ export const withSpending = (cs: Constraint[], level: Level, spending?: Spending
 export const withPause = (g: Grant, paused: boolean): Grant =>
   paused ? { ...g, constraints: [...g.constraints, { type: "approval.paused" }] } : g;
 
+/**
+ * Decision 030 (review HIGH 1): Amara's spending mode across a level change, never looser than she chose. "every" and
+ * "no limit" stay as they are; an "up to" amount stays, capped at the new level's weekly money. The server and the
+ * rules page's preview both use this, so the clause she confirms is the rule that's signed.
+ */
+export function carrySpending(spending: SpendingMode | undefined, level: Level): SpendingMode | undefined {
+  if (!spending || spending.mode === "every" || spending.upToCents === null) return spending;
+  return { mode: "upTo", upToCents: Math.min(spending.upToCents, LEVELS[level].weeklyCents) };
+}
+
 /** Amara's "up to" amount: whole cents, at least $1, at most the weekly amount (null: no limit, Level 3's default). */
 export const validSpending = (s: SpendingMode, weeklyCents: Cents): boolean =>
   s.mode === "every" || s.upToCents === null || (Number.isInteger(s.upToCents) && s.upToCents >= 100 && s.upToCents <= weeklyCents);

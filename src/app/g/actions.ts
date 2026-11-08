@@ -15,6 +15,7 @@ import { SHOP_QUERY_MAX, addShop, removeShop, searchShopSites, type FoundSite } 
 import { DAILY_CAP_MESSAGE } from "@/flows/usage";
 import { getFamily, getLatestGrant } from "@/db/repo";
 import { parseCosts, parseSpending } from "./rules/consentForm";
+import { DEMO_COSTS } from "@/engine/pricing";
 import { SHOP_QUERY_WORDS, SHOP_SEARCH_DOWN, noShopsFound, weekChangeWords } from "@/ui/grantWords";
 import type { Level } from "@/engine/ladder";
 import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
@@ -60,7 +61,9 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   // Required when signing rules that aren't in force; a savings-only change to rules in force keeps whatever they have.
   const latest = await getLatestGrant(g.deps.db, g.familyId);
   const inForce = latest?.status === "active" && latest.expiresAt > await g.deps.now(g.familyId);
-  if (!costs && !latest?.body.costs && !inForce) {
+  // The shared demo family falls back to its labelled demo estimates (review MEDIUM 4), so a judge who stopped can re-sign.
+  const demoCosts = !costs && !latest?.body.costs && !inForce && (await getFamily(g.deps.db, g.familyId))?.demo ? DEMO_COSTS : undefined;
+  if (!costs && !demoCosts && !latest?.body.costs && !inForce) {
     return { error: "Set the sales tax where you live first, under Estimated costs. Nothing changed." };
   }
   const spending = form.has("spendingMode") ? parseSpending(form) : undefined;
@@ -69,7 +72,7 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   let version: number;
   try {
     ({ version } = await signGrant(g.deps, g.familyId, {
-      level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow: applyNowFrom(form), costs, spending, investing,
+      level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow: applyNowFrom(form), costs: costs ?? demoCosts, spending, investing,
     }));
   } catch (err) {
     if (err instanceof WeekChangedError) return { error: await weekChanged(g.deps.db, g.familyId, err, nextMonday(await g.deps.now(g.familyId))) };

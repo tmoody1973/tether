@@ -3,7 +3,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { purchaseTokensForFamily, receiptsForMonth } from "@/db/repo";
 import type { PaypalHttp } from "@/adapters/paypal/http";
-import { searchTransactions } from "@/adapters/paypal/transactions";
+import { searchTransactions, type PaypalTx } from "@/adapters/paypal/transactions";
 import { clockFor } from "@/clock/clock";
 import { UNDO_CODE, applyRefunds, refundedByCapture, type RefundSplit } from "@/flows/refunds";
 
@@ -12,6 +12,28 @@ const DAY_MS = 86_400_000;
 // span more than 31 real days would miss late rows — split into several searches if that ever happens.
 const MAX_WINDOW_MS = 31 * DAY_MS;
 export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Review MEDIUM 3: a refund can land after the month's 31-day window (a purchase late in the month, refunded weeks
+ * later). Searched for: only this month's captures, from the window's end until now, at most 180 days after the window
+ * started (PayPal's usual refund limit), in 31-day searches, so at most 5 more searches, and none for the current
+ * month. A failed later search is skipped and tried again at the next check; the month's own result stands.
+ */
+export const REFUND_HORIZON_MS = 180 * DAY_MS;
+async function laterUndoRows(paypal: PaypalHttp, start: Date, from: Date, realNow: Date, captures: Set<string>): Promise<PaypalTx[]> {
+  const until = Math.min(realNow.getTime(), start.getTime() + REFUND_HORIZON_MS);
+  const out: PaypalTx[] = [];
+  for (let s = from.getTime(); s < until && captures.size > 0; s += MAX_WINDOW_MS) {
+    try {
+      const { rows } = await searchTransactions(paypal, new Date(s), new Date(Math.min(until, s + MAX_WINDOW_MS)));
+      out.push(...rows.filter((r) => r.amountCents < 0 && r.referenceId && captures.has(r.referenceId)));
+    } catch (err) {
+      console.error("reconcile: later refund search failed", err instanceof Error ? err.message : err);
+      break;
+    }
+  }
+  return out;
+}
 
 export type ReconFlag =
   /** PayPal charged this family (custom_field = one of its tokens) but Tether holds no receipt for that capture. */
@@ -79,7 +101,10 @@ export async function reconcileMonth(
   const [receipts, monthTokens] = await Promise.all([receiptsForMonth(db, familyId, month), slipsForMonth(db, familyId, month)]);
   const window = windowFor(monthTokens, receipts.length > 0, realNow);
   if (!window) return { receiptsChecked: 0, flags: [] };
-  const { rows, refreshedThrough } = await searchTransactions(deps.paypal, window.start, window.end);
+  const first = await searchTransactions(deps.paypal, window.start, window.end);
+  const { refreshedThrough } = first;
+  const later = await laterUndoRows(deps.paypal, window.start, window.end, realNow, new Set(receipts.map((r) => r.captureId)));
+  const rows = [...new Map([...first.rows, ...later].map((r) => [r.id, r])).values()]; // one row per PayPal id, whatever window found it
 
   const mine = new Set(monthTokens.map((tk) => tk.tokenId));
   const byId = new Map(rows.map((r) => [r.id, r]));

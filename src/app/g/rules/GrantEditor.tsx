@@ -5,8 +5,8 @@ import { connectPaypalHref } from "@/ui/connectPaypalHref";
 import { useActionState, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { CostTerms, SpendingMode } from "@/engine/types";
-import { INVESTING_FROM, LEVELS, commitmentFloorCents, type Level } from "@/engine/ladder";
-import { approvalShort, formatCents, formatDay, grantClause, matchWords, weekChangeWords } from "@/ui/grantWords";
+import { INVESTING_FROM, LEVELS, carrySpending, commitmentFloorCents, type Level } from "@/engine/ladder";
+import { spendingCarryWords, approvalShort, formatCents, formatDay, grantClause, matchWords, weekChangeWords } from "@/ui/grantWords";
 import { editDraft, type Draft } from "@/ui/rulesDraft";
 import { setLevelAction, signGrantAction, type LevelState, type SignState } from "../actions";
 
@@ -60,7 +60,7 @@ export function GrantEditor(p: GrantEditorProps) {
   const clause = grantClause({
     teenName: zoe, level, shops: p.shops[level], floorPct, matchPct,
     expiresAt: unchanged && p.inForceUntil ? new Date(p.inForceUntil) : expires,
-    ...p.signed, // decision 030
+    ...p.signed, spending: carrySpending(p.signed?.spending, level), // decision 030: the same carry rule the server signs
   });
   const signForm = p.inForce ? undefined : SIGN_FORM; // with no rules in force, every control belongs to the one sign form
   const def = LEVELS[level];
@@ -156,6 +156,7 @@ export function GrantEditor(p: GrantEditorProps) {
                           ? <>Move {zoe} to Level {level}? Her shops and approvals follow the new level now, keeping the shops you added or removed.</>
                           : <>Move {zoe} to Level {level}? Her weekly money becomes {formatCents(def.weeklyCents)} and her shops follow the
                             new level, keeping the shops you added or removed. It applies now.</>}
+                        {p.signed?.spending && <> {spendingCarryWords(p.signed.spending, level)}</>}
                       </p>
                       {weekChoice()}
                       <div className="g-btnrow">
@@ -213,7 +214,7 @@ export function GrantEditor(p: GrantEditorProps) {
         <section className="g-card g-section" aria-labelledby="bylevel-h">
           <div className="g-section__head"><h2 id="bylevel-h">Set by the level</h2></div>
           <div>
-            <Def k="Asks you first" v={approvalShort(level, level === cur ? p.signed?.spending : undefined)} />
+            <Def k="Asks you first" v={approvalShort(level, carrySpending(p.signed?.spending, level))} />
             <Def k="Investing" v={def.investing ? <Link className="g-textlink" href="/g/invest">open: she proposes, you approve</Link> : `opens at Level ${INVESTING_FROM}`}
               sub={def.investing ? "her investments and your investing list" : "funds or stocks she proposes, you approve"} />
             <Def k="Paid from" v={p.paypalSaved ? "your saved PayPal" : <a className="g-textlink" href={connectPaypalHref(familyId)}>save your PayPal</a>} sub="sandbox: no real money" />

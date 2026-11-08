@@ -24,6 +24,9 @@ export function costSplit(cart: Cart): { itemCents: Cents; taxCents: Cents; ship
   return { itemCents: cart.itemsCents, taxCents: cart.estTaxCents, shippingCents: cart.estShippingCents };
 }
 
+/** Decision 030: the shared demo family's cost estimates, shown on the rules page as a demo value. */
+export const DEMO_COSTS = { salesTaxBps: 800, shippingCents: 599 } as const;
+
 /** Validation for Amara's settings: tax 0–15% in basis points, shipping $0–$50 in whole cents. */
 export const MAX_TAX_BPS = 1_500;
 export const MAX_SHIPPING_CENTS = 5_000;

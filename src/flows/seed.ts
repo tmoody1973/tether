@@ -10,6 +10,7 @@ import { cartHash } from "@/engine/hash";
 import type { Cart } from "@/engine/types";
 import { liftableOverage, proposeShop, requestApproval } from "@/flows/approvals";
 import { renewGrant, setCommitment, setCosts, signGrant } from "@/flows/grant";
+import { DEMO_COSTS } from "@/engine/pricing";
 import { ensureAccount } from "@/flows/invest";
 import { proposePurchase, settlePurchase, type Deps } from "@/flows/purchase";
 import { GOAL_TITLE_MAX } from "@/flows/teenGoals";
@@ -58,8 +59,7 @@ export interface SeedResult {
 }
 
 const short = (id: string) => `${id.slice(0, 6)}…`;
-/** Decision 030: the shared demo family's cost estimates, shown on the rules page as a demo value. */
-export const DEMO_COSTS = { salesTaxBps: 800, shippingCents: 599 } as const;
+export { DEMO_COSTS } from "@/engine/pricing";
 const cartOf = (p: Product, merchantId: string): Cart =>
   ({ merchantId, items: [{ sku: p.id, title: p.title, qty: 1, unitCents: p.priceCents }], totalCents: p.priceCents });
 const merchantFor = (domain: string) => DEMO_MERCHANTS.find((m) => m.domain === domain)!.id;

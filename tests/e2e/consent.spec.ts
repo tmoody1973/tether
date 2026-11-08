@@ -18,6 +18,9 @@ test("'Ask me before every purchase' → a $1 cart asks Amara", async ({ page })
   await page.getByLabel("Paste a product link").fill("https://www.target.com/p/pencil/-/sku-100");
   await page.getByRole("button", { name: "Check it" }).click();
   await expect(card(page, /\$1\.00 at Target: Needs Amara's OK/)).toBeVisible();
+  // Review LOW 6: the fake catalogue's photo host doesn't exist, so the card shows the same-size placeholder, no broken image.
+  await expect(card(page, /\$1\.00 at Target/).locator(".t-photo--none")).toBeVisible();
+  await expect(card(page, /\$1\.00 at Target/).locator("img")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Ask Amara" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Buy for/ })).toHaveCount(0);
 });

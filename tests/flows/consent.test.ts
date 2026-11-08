@@ -13,7 +13,10 @@ import { costSplit, itemOf, pricedCart, taxCents } from "@/engine/pricing";
 import { orderAmount, usd } from "@/adapters/paypal/orders";
 import { requestApproval } from "@/flows/approvals";
 import { approveAndSettle, type ApproveDeps } from "@/flows/approve";
-import { GrantError, setCosts, setInvesting, setPaused, setSpending, signGrant } from "@/flows/grant";
+import { GrantError, guardianSetLevel, setCosts, setInvesting, setPaused, setSpending, signGrant } from "@/flows/grant";
+import { runMonthReview } from "@/flows/month";
+import { carrySpending } from "@/engine/ladder";
+import { clauseText, grantClause, spendingCarryWords } from "@/ui/grantWords";
 import { proposePurchase, settlePurchase } from "@/flows/purchase";
 import { applyRefunds, refundedByCapture } from "@/flows/refunds";
 import { teenWeek } from "@/flows/teen";
@@ -100,16 +103,51 @@ describe("spending mode (030)", () => {
     expect(await outcome(f.familyId, cart(f.mid, 5000))).toBe("ALLOW");
   });
 
-  it("each change is a new rules version; 'every purchase' survives a level change, a custom amount doesn't", async () => {
+  it("each change is a new rules version; her choice carries across level changes, never looser (review HIGH 1)", async () => {
     const f = await family(2);
     const v = (await repo.getActiveGrant(db, f.familyId))!.version;
     await setSpending(deps(100), f.familyId, { mode: "upTo", upToCents: 1500 });
     expect((await repo.getActiveGrant(db, f.familyId))!.version).toBe(v + 1);
     await signGrant(deps(100), f.familyId, { level: 3, reason: "ready" });
-    expect((await repo.getActiveGrant(db, f.familyId))!.body.spending).toBeUndefined();
+    expect((await repo.getActiveGrant(db, f.familyId))!.body.spending).toEqual({ mode: "upTo", upToCents: 1500 }); // kept
+    await setSpending(deps(100), f.familyId, { mode: "upTo", upToCents: 2500 });
+    await guardianSetLevel(deps(100), f.familyId, 1, "slow down");
+    expect((await repo.getActiveGrant(db, f.familyId))!.body.spending).toEqual({ mode: "upTo", upToCents: 2000 }); // capped at $20
     await setSpending(deps(100), f.familyId, { mode: "every" });
     await signGrant(deps(100), f.familyId, { level: 2, reason: "back" });
     expect((await repo.getActiveGrant(db, f.familyId))!.body.spending).toEqual({ mode: "every" });
+  });
+
+  it("Up to $5 at Level 1, then the automatic level-up to Level 2: a $15 cart still asks Amara (review HIGH 1)", async () => {
+    const f = await family(1);
+    await setSpending(deps(100), f.familyId, { mode: "upTo", upToCents: 500 });
+    expect(await outcome(f.familyId, cart(f.mid, 800))).toBe("NEEDS_APPROVAL");
+    await db.insert(t.weeks).values(["2026-W41", "2026-W42", "2026-W43", "2026-W44"].map((weekKey) => ({
+      familyId: f.familyId, weekKey, allowanceCents: 2000, commitmentCents: 200, closedAt: new Date("2026-11-02T00:00:00Z"),
+    })));
+    expect((await runMonthReview(deps(100), f.familyId)).action).toBe("PROMOTE");
+    const g = (await repo.getActiveGrant(db, f.familyId))!;
+    expect(g.level).toBe(2);
+    expect(g.body.spending).toEqual({ mode: "upTo", upToCents: 500 });
+    expect(await outcome(f.familyId, cart(f.mid, 1500))).toBe("NEEDS_APPROVAL");
+  });
+
+  it("the clause Amara previews for a new level is the clause that's signed (review HIGH 1)", async () => {
+    const f = await family(1);
+    await setSpending(deps(100), f.familyId, { mode: "upTo", upToCents: 500 });
+    const before = (await repo.getActiveGrant(db, f.familyId))!.body;
+    // What the rules page previews for Level 2: the old rules' choice through the same carry rule.
+    const preview = clauseText(grantClause({ teenName: "Zoe", level: 2, shops: [], floorPct: 10, matchPct: 100, expiresAt: WED,
+      spending: carrySpending(before.spending, 2), investing: before.investing, costs: before.costs }));
+    await guardianSetLevel(deps(100), f.familyId, 2, "ready");
+    const after = (await repo.getActiveGrant(db, f.familyId))!.body;
+    const signed = clauseText(grantClause({ teenName: "Zoe", level: 2, shops: [], floorPct: 10, matchPct: 100, expiresAt: WED,
+      spending: after.spending, investing: after.investing, costs: after.costs }));
+    expect(signed).toBe(preview);
+    expect(signed).toContain("Anything over $5.00 comes to you first.");
+    expect(spendingCarryWords(before.spending!, 2)).toBe("Your spending choice stays: over $5.00 comes to you first.");
+    expect(spendingCarryWords({ mode: "upTo", upToCents: 2500 }, 1))
+      .toBe("Your limit of $25.00 becomes $20.00, Level 1's weekly money: over $20.00, or a shop she hasn't used comes to you first.");
   });
 });
 
@@ -227,7 +265,7 @@ describe("refunds give the money back (030)", () => {
     const { captureId } = await paid(f);
     expect((await ledgerView(db, f.familyId, clock)).spentThisWeekCents).toBe(800);
     const back = await applyRefunds(deps(800), f.familyId, new Map([[captureId, 800]]));
-    expect(back.get(captureId)).toEqual({ weekCents: 800, promisedCents: 0 });
+    expect(back.get(captureId)).toEqual({ weekCents: 800, promisedCents: 0, grossCents: 800 });
     await applyRefunds(deps(800), f.familyId, new Map([[captureId, 800]])); // replayed
     expect(await refundRows(f.familyId)).toHaveLength(1);
     expect((await ledgerView(db, f.familyId, clock)).spentThisWeekCents).toBe(0);
@@ -247,6 +285,33 @@ describe("refunds give the money back (030)", () => {
       ["refund_promised", 300, `${captureId}#300`], ["refund_promised", 200, `${captureId}#500`], ["refund_promised", 300, `${captureId}#800`],
     ]);
     expect(await savingsCents(db, f.familyId)).toBe(2200 + 800);
+  });
+
+  it("closed week over budget: a $15 refund of a $19 purchase adds only the $5 her allowance paid (review MEDIUM 2)", async () => {
+    const f = await family(2); // $30 week
+    const { captureId } = await paid(f, 1900);
+    await repo.appendJournal(db, { familyId: f.familyId, kind: "spend", amountCents: 2100, at: clock, ref: `over-${n}` }); // $21 Amara approved past the week (R40)
+    expect((await ledgerView(db, f.familyId, clock)).spentThisWeekCents).toBe(4000);
+    clock = new Date("2026-11-10T09:00:00Z");
+    await closeWeek(deps(1900), f.familyId); // $40 spent of $30: the week adds $0
+    expect(await savingsCents(db, f.familyId)).toBe(0);
+    const back = await applyRefunds(deps(1900), f.familyId, new Map([[captureId, 1500]]));
+    expect(await savingsCents(db, f.familyId)).toBe(500); // as if seen before the close: $25 of $30 spent → $5
+    expect(back.get(captureId)).toEqual({ weekCents: 0, promisedCents: 500, grossCents: 1500 });
+    await applyRefunds(deps(1900), f.familyId, new Map([[captureId, 1900]])); // the rest, later: $4 more, all from her allowance
+    expect(await savingsCents(db, f.familyId)).toBe(900);
+    await applyRefunds(deps(1900), f.familyId, new Map([[captureId, 1900]])); // replayed
+    expect(await savingsCents(db, f.familyId)).toBe(900);
+  });
+
+  it("the same refund seen before the close gives the same result", async () => {
+    const f = await family(2);
+    const { captureId } = await paid(f, 1900);
+    await repo.appendJournal(db, { familyId: f.familyId, kind: "spend", amountCents: 2100, at: clock, ref: `over2-${n}` });
+    await applyRefunds(deps(1900), f.familyId, new Map([[captureId, 1500]])); // open week: back into it
+    clock = new Date("2026-11-10T09:00:00Z");
+    await closeWeek(deps(1900), f.familyId);
+    expect(await savingsCents(db, f.familyId)).toBe(500);
   });
 
   it("PayPal's rows: undo rows add up; a reversed capture counts once, with or without its undo row", () => {

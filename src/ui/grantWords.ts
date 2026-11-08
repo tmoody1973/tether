@@ -1,5 +1,5 @@
 // The plain-words clause Amara signs and Zoe reads. Deterministic code only: no model touches the consent surface.
-import { LEVELS, askOverCents, commitmentFloorCents, unspentCents, type Level } from "@/engine/ladder";
+import { LEVELS, askOverCents, carrySpending, commitmentFloorCents, unspentCents, type Level } from "@/engine/ladder";
 import type { Cents, CostTerms, SpendingMode } from "@/engine/types";
 
 export type Seg = string | { b: string };
@@ -177,3 +177,12 @@ export function costLine(c: { totalCents: Cents; itemsCents?: Cents; estTaxCents
 /** Decision 030: a non-new offer says so (Channel3 states "used", or nothing). */
 export const conditionWords = (c: string | undefined): string | null =>
   c === "used" ? "Used" : c === "unknown" ? "Condition not stated" : null;
+
+/** Review HIGH 1: on a level change her spending choice stays, capped at the new weekly money; the confirm says which. */
+export function spendingCarryWords(spending: SpendingMode, level: Level): string {
+  const kept = carrySpending(spending, level)!;
+  const capped = spending.mode === "upTo" && kept.mode === "upTo" && kept.upToCents !== spending.upToCents;
+  return capped
+    ? `Your limit of ${formatCents((spending as { upToCents: number }).upToCents)} becomes ${formatCents((kept as { upToCents: number }).upToCents)}, Level ${level}'s weekly money: ${approvalShort(level, kept)} comes to you first.`
+    : `Your spending choice stays: ${approvalShort(level, kept)} comes to you first.`;
+}

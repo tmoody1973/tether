@@ -57,8 +57,10 @@ describe("consent words (030)", () => {
   });
 
   it("refund Proof line", () => {
-    expect(refundedWords({ weekCents: 800, promisedCents: 0 }, "Zoe")).toBe("Refunded in PayPal · $8.00 back to Zoe's week");
-    expect(refundedWords({ weekCents: 0, promisedCents: 500 }, "Zoe")).toBe("Refunded in PayPal · $5.00 added to what you've promised");
+    expect(refundedWords({ weekCents: 800, promisedCents: 0, grossCents: 800 }, "Zoe")).toBe("Refunded in PayPal · $8.00 back to Zoe's week");
+    expect(refundedWords({ weekCents: 0, promisedCents: 500, grossCents: 500 }, "Zoe")).toBe("Refunded in PayPal · $5.00 added to what you've promised");
+    expect(refundedWords({ weekCents: 0, promisedCents: 500, grossCents: 1500 }, "Zoe"))
+      .toBe("Refunded in PayPal · $5.00 added to what you've promised · $10.00 covered spending past that week's money");
     expect(refundedWords(undefined, "Zoe")).toBe("Refunded in PayPal");
   });
 

@@ -289,6 +289,18 @@ describe("decision 029 on the shared demo family", () => {
     expect((await getActiveGrant(db, r.familyId))!.body.costs).toEqual({ salesTaxBps: 800, shippingCents: 599 });
   });
 
+  it("a snapshot from before decision 030 gets the demo's cost estimates at the next reset, saved back once (review MEDIUM 4)", async () => {
+    const { r, keys } = await seeded();
+    const fam = (await getFamily(db, r.familyId))!;
+    const { costs: _gone, ...oldGrant } = fam.demo!.grant; // as the live demo's snapshot is today
+    expect(_gone).toBeDefined();
+    await db.update(t.families).set({ demo: { ...fam.demo!, grant: oldGrant } }).where(eq(t.families.id, r.familyId));
+    await resetDemo(d(), r.familyId, keys);
+    expect((await getActiveGrant(db, r.familyId))!.body.costs).toEqual({ salesTaxBps: 800, shippingCents: 599 });
+    expect((await getFamily(db, r.familyId))!.demo!.grant.costs).toEqual({ salesTaxBps: 800, shippingCents: 599 });
+    expect(await openApprovals(r.familyId)).toHaveLength(2); // the seeded ask and shop suggestion reopen as before
+  });
+
   it("an earlier judge's Stop doesn't mark the next judge's week stopped or not kept (review MEDIUM 2)", async () => {
     const { r, keys } = await seeded();
     await revoke(d(), r.familyId); // judge 1 stops in W53
