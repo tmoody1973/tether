@@ -119,3 +119,13 @@ test("month end → Level 3 → Zoe proposes a fund → Amara approves → inves
   await page.goto(`${teenHome}/invest`);
   await expect(page.getByRole("region", { name: "Your investments" })).toContainText(/VTI/);
 });
+
+test("demo Settings points to adding several teens (read-only: the shared demo has one teen)", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Open Amara's view" }).first().click();
+  await expect(page).toHaveURL(/\/g$/);
+  await page.goto("/g/settings");
+  const teens = page.locator("section[aria-labelledby='teens-h']");
+  await expect(teens.getByText("Several teens?")).toBeVisible();
+  await expect(teens.getByRole("link", { name: "Start your own family" })).toHaveAttribute("href", "/g/login/paypal");
+});
