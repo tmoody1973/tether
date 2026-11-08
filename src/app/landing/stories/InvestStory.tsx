@@ -124,7 +124,7 @@ async function script(a: Act<S>) {
   a.mark('reset')
   await a.snap({ scroll: 0, amount: '', sending: false }, 'zoe-form')
   a.put({ launch: false, note: false, sent: false, bought: false })
-  await a.wait(420)
+  await a.wait(280)
   await a.snap({ open: false, approving: false, noteAt: ZERO })
 }
 

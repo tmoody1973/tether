@@ -111,6 +111,8 @@ async function script(a: Act<S>) {
   a.mark('ask')
   await a.click({ at: 'ask', x: 0.78, y: 0.55 })
   a.put({ sheet: false, asked: true })
+  // The finger lifts away, off the page that replaces the sheet, toward Amara's phone
+  void a.move(a.layout === 'compact' ? { x: 330, y: 30 } : { x: 700, y: 560 })
   await a.wait(compact ? 350 : 450)
 
   // 4. Amara's phone buzzes
@@ -145,7 +147,7 @@ async function script(a: Act<S>) {
   a.mark('reset')
   await a.snap({ query: '', shown: 0, scroll: 0 }, 'zoe-col')
   a.put({ launch: false, note: false, asked: false })
-  await a.wait(420)
+  await a.wait(280)
   await a.snap({ open: false, paid: false, approve: 'idle', noteAt: START.noteAt })
   if (compact) await a.set({ focus: 'zoe' })
   await a.wait(200)

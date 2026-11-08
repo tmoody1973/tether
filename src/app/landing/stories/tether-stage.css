@@ -301,7 +301,7 @@
   z-index: 1;
   visibility: hidden;
   opacity: 0;
-  transition: opacity 380ms ease, visibility 0s 380ms;
+  transition: opacity 240ms ease, visibility 0s 240ms;
 }
 
 .tt .tt-launch[data-on] {
