@@ -37,6 +37,8 @@ export const E2E = {
   consentKey: "e2e-guardian-key-for-tests-only-0015", consentTeen: "e2e-teen-consent-0001",
   pauseKey: "e2e-guardian-key-for-tests-only-0016", pauseTeen: "e2e-teen-pause-0001",
   clauseKey: "e2e-guardian-key-for-tests-only-0017", // rules stopped while on "every purchase" (review NEW-1)
+  // Decision 031: a goal that is a Channel3 product, picked at $169.99, $149.99 today (fake), $34 saved.
+  goalPriceKey: "e2e-guardian-key-for-tests-only-0018", goalPriceTeen: "e2e-teen-goal-price-0001",
   teenAskKey: "e2e-guardian-key-for-tests-only-0007",
   teenResetKey: "e2e-guardian-key-for-tests-only-0008",
   // Another family entirely (Sam & Kai).

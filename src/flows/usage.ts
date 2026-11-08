@@ -5,14 +5,14 @@ import * as t from "@/db/schema";
 export type UsageKind = (typeof t.usage.kind.enumValues)[number];
 
 /** Per-family DAILY caps (real time) on top of the hourly/5s throttle: the demo key is public, so model and Channel3 spend is bounded. */
-export const DAILY_CAPS: Record<UsageKind, number> = { shop_agent: 150, shop_lookup: 400, month_ask: 60, fund_words: 300, shop_sites: 200, teen_shop_sites: 200, push: 200, market_data: 40, market_news: 20 };
+export const DAILY_CAPS: Record<UsageKind, number> = { shop_agent: 150, shop_lookup: 400, month_ask: 60, fund_words: 300, shop_sites: 200, teen_shop_sites: 200, push: 200, market_data: 40, market_news: 20, price_history: 60 };
 export const DAILY_CAP_MESSAGE = "That's a lot for one day — try again tomorrow.";
 
 /**
  * The paid lookups (a model or a paid data API) that self-started families (decision 026) ALSO take from one shared
  * daily pot, the same size as one family's cap: 30 new families can't cost 30 times one family. Add new paid kinds here.
  */
-export const POOLED_KINDS: readonly UsageKind[] = ["shop_agent", "shop_lookup", "month_ask", "fund_words", "market_data", "market_news"];
+export const POOLED_KINDS: readonly UsageKind[] = ["shop_agent", "shop_lookup", "month_ask", "fund_words", "market_data", "market_news", "price_history"];
 
 const utcDay = (realNow: number) => new Date(realNow).toISOString().slice(0, 10);
 

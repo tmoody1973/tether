@@ -5,7 +5,9 @@ import { GOAL_TITLE_MAX, teenGoals } from "@/flows/teenGoals";
 import { formatCents, matchWords } from "@/ui/grantWords";
 import { PendingButton } from "@/ui/PendingButton";
 import { Bar, LinkGone, Money, TeenLoading, TeenShell } from "@/ui/teen";
-import { SAVINGS_LABEL, savingsPromisedLine, weeksToGoal } from "@/ui/teenWords";
+import { PRICE_CHECK_FAILED, SAVINGS_LABEL, goalPriceLine, priceStatusLine, savingsPromisedLine, weeksToGoal } from "@/ui/teenWords";
+import { goalPrice } from "@/flows/goalPrice";
+import { paymentDeps } from "@/app/g/flowDeps";
 import { goalAction } from "./actions";
 import { PromiseEditor } from "./PromiseEditor";
 
@@ -34,8 +36,11 @@ async function Goals({ params, searchParams }: { params: Promise<{ token: string
   const sp = await searchParams;
   const flash = typeof sp.goal === "string" ? GOAL_FLASH[sp.goal] : undefined;
   const chosen = g.pendingCents ?? g.commitmentCents; // what she promised from now on
-  const weeks = w.goal ? weeksToGoal(w.goal.targetCents, w.savingsCents, chosen) : null;
-  const pct = w.goal ? Math.min(100, Math.round((w.savingsCents / w.goal.targetCents) * 100)) : 0;
+  // Decision 031: today's price from Channel3 (at most a few seconds; the stored price if it can't be checked).
+  const price = w.goal ? await goalPrice({ db, channel3: paymentDeps(db).channel3 }, fam.id, { channel3ProductId: g.goalProductId }) : null;
+  const target = price?.todayCents ?? w.goal?.targetCents ?? 0;
+  const weeks = w.goal ? weeksToGoal(target, w.savingsCents, chosen) : null;
+  const pct = w.goal ? Math.min(100, Math.round((w.savingsCents / target) * 100)) : 0;
 
   return (
     <TeenShell token={token} active="goals" level={w.level}>
@@ -59,11 +64,18 @@ async function Goals({ params, searchParams }: { params: Promise<{ token: string
         <section className="t-card" aria-label="Your goal">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
             <h1 className="t-h2">{w.goal.title}</h1>
-            <span className="t-muted" style={{ fontWeight: 650 }}>of <Money cents={w.goal.targetCents} /></span>
+            <span className="t-muted" style={{ fontWeight: 650 }}>of <Money cents={target} /></span>
           </div>
-          <Bar value={w.savingsCents} max={w.goal.targetCents} label={`${SAVINGS_LABEL}: ${formatCents(w.savingsCents)} of ${formatCents(w.goal.targetCents)}`} gold />
+          <Bar value={w.savingsCents} max={target} label={`${SAVINGS_LABEL}: ${formatCents(w.savingsCents)} of ${formatCents(target)}`} gold />
           <div className="t-barlabels"><span>{SAVINGS_LABEL} <Money cents={w.savingsCents} /></span><span>{pct}%</span></div>
           <p className="t-small" style={{ marginTop: 10 }}>{savingsPromisedLine(w.guardianName)}</p>
+          {price?.state === "ok" && price.todayCents !== null && (
+            <p className="t-small" style={{ marginTop: 6 }} data-testid="goal-price">
+              {goalPriceLine({ todayCents: price.todayCents, pickedCents: w.goal.targetCents, savedCents: w.savingsCents, commitmentCents: chosen, who: "you" })}
+              {price.status && <> {priceStatusLine(price.status)}</>}
+            </p>
+          )}
+          {price?.state === "failed" && <p className="t-small" style={{ marginTop: 6 }} data-testid="goal-price">{PRICE_CHECK_FAILED}</p>}
         </section>
       )}
       {!w.goal && (

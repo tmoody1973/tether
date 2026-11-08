@@ -11,6 +11,10 @@ import { formatDay } from "@/ui/grantWords";
 import { GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { CHANGE_OR_STOP, SAVINGS_INTRO, recordPayment, savingsFacts } from "@/ui/savingsWords";
 import { PromisedCard } from "../PromisedCard";
+import { goalPrice } from "@/flows/goalPrice";
+import { teenGoals } from "@/flows/teenGoals";
+import { PRICE_CHECK_FAILED, goalPriceLine, priceStatusLine } from "@/ui/teenWords";
+import { paymentDeps } from "../flowDeps";
 import { ReleaseCard } from "../ReleaseCard";
 
 // Savings (decision 028): the amount promised to the teen and the goal, the release owed now, payments recorded, and
@@ -45,6 +49,7 @@ async function Savings({ searchParams }: { searchParams: Promise<Record<string, 
       <div className="g-two">
         <div className="g-stack">
           <PromisedCard teen={zoe} cents={h.savingsCents} goal={h.goal}>
+            {h.goal && <Suspense fallback={null}><GoalPriceFact familyId={familyId} teen={zoe} /></Suspense>}
             <p className="g-more"><Link className="g-textlink" href="/g/statement">Statement</Link></p>
           </PromisedCard>
 
@@ -82,5 +87,22 @@ async function Savings({ searchParams }: { searchParams: Promise<Record<string, 
         </section>
       </div>
     </GuardianShell>
+  );
+}
+
+/** Decision 031: the same goal-price fact Zoe sees, streamed so it never holds up Amara's page. */
+async function GoalPriceFact({ familyId, teen }: { familyId: string; teen: string }) {
+  const db = await getDb();
+  const g = await teenGoals(db, familyId, await clockNow(db, familyId));
+  const goal = g.week.goal;
+  if (!goal) return null;
+  const price = await goalPrice({ db, channel3: paymentDeps(db).channel3 }, familyId, { channel3ProductId: g.goalProductId });
+  if (price.state === "none") return null;
+  if (price.state === "failed" || price.todayCents === null) return <p className="g-note" data-testid="goal-price">{PRICE_CHECK_FAILED}</p>;
+  return (
+    <p className="g-note" data-testid="goal-price">
+      {goalPriceLine({ todayCents: price.todayCents, pickedCents: goal.targetCents, savedCents: g.week.savingsCents, commitmentCents: g.pendingCents ?? g.commitmentCents, who: teen })}
+      {price.status && <> {priceStatusLine(price.status)}</>}
+    </p>
   );
 }

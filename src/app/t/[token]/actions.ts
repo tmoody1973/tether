@@ -8,12 +8,17 @@ import { ledgerView } from "@/ledger/ledger";
 import { DAILY_CAP_MESSAGE, takeDaily } from "@/flows/usage";
 import { allowedShops, askAmara, buy, cartFor, markLevelSeen, nudge, proposeCarts, shopThrottle, teenWeek, TeenError, type Proposed } from "@/flows/teen";
 import { ApprovalError } from "@/flows/approvals";
-import { cardOutcome, pausedWords, type CardKind } from "@/ui/teenWords";
+import { cardOutcome, cardSetsBack, pausedWords, type CardKind } from "@/ui/teenWords";
+import { cachedGoalPriceCents } from "@/flows/goalPrice";
+import * as t from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { agentModel, teenDeps } from "../teenDeps";
 
 export interface ShopCard {
   purchaseId: string; title: string; shop: string; priceCents: number; kind: CardKind; label: string; reason?: string;
   imageUrl?: string; condition?: string; cost: string; // decision 030
+  /** Decision 031: "This sets {goal} back N weeks." before she buys (null: no goal, no promise, or goal already met). */
+  setsBack?: string;
 }
 export type ShopState = { cards: ShopCard[]; error?: string; note?: string };
 
@@ -71,7 +76,12 @@ export async function shopAction(_prev: ShopState, form: FormData): Promise<Shop
       const found = await deps.channel3.search(query, shops.domains, 6);
       items = found.flatMap((p) => { const cart = cartFor(p, shops.merchantIdByDomain, costs); return cart ? [{ cart }] : []; });
     }
-    const cards = (await proposeCarts(deps, fam.id, items)).map((p) => toCard(p, fam.guardianName));
+    const [goal] = await db.select({ productId: t.goals.channel3ProductId }).from(t.goals).where(eq(t.goals.familyId, fam.id));
+    const todayGoal = cachedGoalPriceCents(goal?.productId ?? null, shops.domains);
+    const cards = (await proposeCarts(deps, fam.id, items)).map((p) => {
+      const back = cardSetsBack(week.goal, todayGoal, week.savingsCents, p.priceCents, week.commitmentCents);
+      return { ...toCard(p, fam.guardianName), ...(back ? { setsBack: back } : {}) };
+    });
     return cards.length ? { cards } : { cards, note: "Nothing from your shops matched that. Try saying it another way." };
   } catch (err) {
     console.error("shopAction failed", mode, err instanceof Error ? err.message : err);

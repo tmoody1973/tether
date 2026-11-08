@@ -170,3 +170,34 @@ export const pausedLine = (guardian: string): string =>
 
 /** Decision 030: totals on her cards include Tether's estimates. */
 export const TEEN_ESTIMATES = "Totals include an estimate of tax and shipping. A real shop's checkout would give the exact amount, and if it were more, it would come back to you.";
+
+// ---- Decision 031: her goal at today's price. Facts only: never "buy now", never "wait". -------------------------------
+
+/**
+ * "$149.99 today, $20.00 less than when you picked it. That's 2 weeks closer." `who` is "you" for Zoe, her name for
+ * Amara. The weeks part only when her weekly promise makes it countable and the count actually changes.
+ */
+export function goalPriceLine(i: { todayCents: Cents; pickedCents: Cents; savedCents: Cents; commitmentCents: Cents; who: string }): string {
+  const today = `${formatCents(i.todayCents)} today`;
+  const diff = i.pickedCents - i.todayCents;
+  if (diff === 0) return `${today}, the same as when ${i.who} picked it.`;
+  const was = weeksToGoal(i.pickedCents, i.savedCents, i.commitmentCents);
+  const now = weeksToGoal(i.todayCents, i.savedCents, i.commitmentCents);
+  const moved = was !== null && now !== null && was !== now
+    ? ` That's ${weeks(Math.abs(was - now))} ${was > now ? "closer" : "further"}.` : "";
+  return `${today}, ${formatCents(Math.abs(diff))} ${diff > 0 ? "less" : "more"} than when ${i.who} picked it.${moved}`;
+}
+
+/** Channel3's 90-day price statistics, as a fact. */
+export const priceStatusLine = (status: "low" | "typical" | "high"): string => `Today's price is ${status} for the last 90 days.`;
+
+export const PRICE_CHECK_FAILED = "Couldn't check today's price.";
+
+/**
+ * Decision 031, step 6: the line on a suggestion card BEFORE she buys, from the card's full estimated cost. Code
+ * computes it, never a model. Nothing without a goal, a weekly promise, or once she's saved enough for it.
+ */
+export function cardSetsBack(goal: { title: string; targetCents: Cents } | null, todayGoalCents: Cents | null, savedCents: Cents, totalCents: Cents, commitmentCents: Cents): string | null {
+  if (!goal || weeksToGoal(todayGoalCents ?? goal.targetCents, savedCents, commitmentCents) === 0) return null;
+  return setsBack(goal, totalCents, commitmentCents);
+}

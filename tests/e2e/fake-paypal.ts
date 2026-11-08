@@ -156,6 +156,12 @@ createServer((req, res) => {
     if (req.method === "GET" && path === "/v1/reporting/transactions") return send(200, { transaction_details: search, total_pages: 1 });
     // The saved wallet is a placeholder PayPal has never seen: removal is refused, so the page must say so honestly.
     if (req.method === "DELETE" && path.startsWith("/v3/vault/payment-tokens/")) return send(404, { name: "RESOURCE_NOT_FOUND", message: "not found" });
+    // Decision 031: 90-day price statistics; "low" at the sku's own price.
+    const history = path.match(/^\/v0\/price-tracking\/history\/sku-(\d+)$/);
+    if (req.method === "GET" && history) {
+      const price = Number(history[1]) / 100;
+      return send(200, { canonical_product_id: `sku-${history[1]}`, statistics: { current_price: price, min_price: price, max_price: price + 30, mean: price + 15, std_dev: 8, currency: "USD", current_status: "low" } });
+    }
     const product = path.match(/^\/v1\/products\/sku-(\d+)$/);
     if (req.method === "GET" && product) {
       const w = url.searchParams.get("website_ids") ?? "";

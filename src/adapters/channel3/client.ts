@@ -25,7 +25,15 @@ export interface Channel3Adapter {
   websites(query: string): Promise<{ domain: string; name: string }[]>;
   /** Shops that sell what `query` means: product search across every shop, products counted per shop, most first. */
   shopsSelling(query: string, limit?: number): Promise<{ domain: string; products: number }[]>;
+  /**
+   * Decision 031: the last 90 days' price statistics for a product (a paid call: count it first). Null when Channel3 has
+   * no history for it. Throws on a failure or after `timeoutMs`. Optional so test fakes needn't implement it.
+   */
+  priceHistory?(productId: string, timeoutMs: number): Promise<PriceFacts | null>;
 }
+
+/** Decision 031: today's price and where it sits in the last 90 days, from Channel3's price statistics. */
+export interface PriceFacts { currentCents: Cents; status: Channel3Api.PriceStatus }
 
 // The SDK's own field types (decision 030: don't guess field names). Condition is "new" | "used" | null in SDK 4.8;
 // "refurbished" is deprecated there and arrives as null, so Tether can only say "Used" or "Condition not stated".
@@ -52,6 +60,11 @@ export interface Channel3Like {
   };
   websites: {
     search(req: { query: string }): Promise<{ websites: { url: string; name?: string | null }[] }>;
+  };
+  priceTracking?: {
+    retrieveHistory(
+      req: { canonical_product_id: string; days?: number }, opts?: { timeoutInSeconds?: number; maxRetries?: number },
+    ): Promise<Pick<Channel3Api.PriceHistoryResponse, "statistics">>;
   };
 }
 
@@ -162,6 +175,21 @@ export function createChannel3(sdk?: Channel3Like): Channel3Adapter {
         const domain = bareDomain(w.url);
         return { domain, name: w.name || domain };
       });
+    },
+
+    async priceHistory(productId, timeoutMs) {
+      if (!c.priceTracking) return null;
+      try {
+        const h = await c.priceTracking.retrieveHistory(
+          { canonical_product_id: productId, days: 90 }, { timeoutInSeconds: Math.max(1, Math.ceil(timeoutMs / 1000)), maxRetries: 0 },
+        );
+        const st = h.statistics;
+        if (!st || st.currency !== "USD" || !Number.isFinite(st.current_price)) return null;
+        return { currentCents: Math.round(st.current_price * 100), status: st.current_status };
+      } catch (e) {
+        if (statusOf(e) === 404) return null;
+        throw e;
+      }
     },
 
     async shopsSelling(query, limit = SELLING_LIMIT) {
