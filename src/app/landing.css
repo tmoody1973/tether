@@ -374,3 +374,11 @@ html:has(.l-page) { scroll-behavior: smooth; scrollbar-color: #B9C6D6 #F8F9FA; }
   .l-tether path { animation: none; }
   .l-btn, .l-btn:hover { transition: none; transform: none; }
 }
+
+/* ---------- animated stories (src/app/landing/stories) ---------- */
+/* Each stage scales itself to its column. Until it loads, this box holds the same height: shopping is 1000×680,
+   or 358×640 in a column under 720px; investing is 880×660, or 358×640 under 620px. */
+.l-story { margin: 0; container-type: inline-size; }
+.l-story--shop { margin-bottom: 44px; border-bottom: 1px solid var(--l-line); } /* the crop sits on a shelf, not in mid-air */
+.l-story--shop .l-story__space { height: min(680px, 68cqw); }
+@container (max-width: 719px) { .l-story--shop .l-story__space { height: 178.8cqw; } }
