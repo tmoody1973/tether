@@ -7,7 +7,7 @@ import { getLatestGrant, recentReceipts } from "@/db/repo";
 import { LEVELS } from "@/engine/ladder";
 import { shopsForLevel } from "@/flows/grant";
 import { commitmentFloorCents } from "@/engine/ladder";
-import { guardianHome, type NeedsYou } from "@/flows/home";
+import { guardianHome, needsCount, type NeedsYou } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
 import { weekEnd } from "@/ui/activityWords";
 import { teenMessage } from "@/flows/approvals";
@@ -17,6 +17,7 @@ import { approvalShort, formatCents, formatDay, listWords } from "@/ui/grantWord
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
 import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
+import { savingsSub } from "@/ui/savingsWords";
 import { advanceClockAction } from "./actions";
 import { AskBox } from "./AskBox";
 import { PaymentRow } from "./PaymentRow";
@@ -46,9 +47,13 @@ function flash(sp: Search, names: { teen: string; guardian: string }, paid: Para
   if (paypal === "failed") return { text: "PayPal didn't finish saving, so nothing was saved. Try again.", warn: true };
   if (paypal === "cancelled") return { text: "You left PayPal before saving. Nothing changed.", warn: true };
   if (paypal === "different") return { text: "That PayPal is a different account from the one you logged in with, so nothing was saved.", warn: true, connectPaypal: true };
-  if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.` };
+  const teens = Number(one("teens") ?? 1);
+  const others = teens > 1 && teens <= 5 ? ` Your other teens are a tap away in the teen switcher at the top.` : "";
+  if (one("started") === "1") return { text: `Your family is set up. Three steps and ${names.teen} can start.${others}` };
   if (one("switched") === "1") return { text: `Now showing ${names.teen}.` };
-  if (one("started") === "added") return { text: `${names.teen} is added. Three steps and ${names.teen} can start. Switch between your teens in Settings.` };
+  if (one("started") === "added") {
+    return { text: `${teens > 1 && teens <= 5 ? `${teens} teens are added, starting with ${names.teen}.` : `${names.teen} is added.`} Three steps and ${names.teen} can start. Switch teens at the top.` };
+  }
   const demo = one("demo");
   if (demo === "reset" || demo === "reset-paypal") {
     const kept = "Demo reset to how it was set up. Every PayPal charge stays on the record; ones made since setup no longer count.";
@@ -78,14 +83,14 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
   const leftCents = Math.max(0, h.weeklyCents - h.spentThisWeekCents);
   // Decision 026: a family started with PayPal sees its first-run checklist instead of "Needs you" until all three are done.
   const firstRun = h.firstRun?.some((s) => !s.done) ? h.firstRun : null;
-  const needs = firstRun ? firstRun.filter((s) => !s.done).length : h.needsYou.length;
+  const needs = needsCount(h);
   const rulesLine = firstRun ? await firstRulesLine(db, familyId, now) : "";
   // Review L9: a family started with PayPal could be anyone's teen, so its Home says the teen's name, never "her".
   // The shared demo family (and seeded ones) keep today's wording.
   const w = teenWords(zoe, h.firstRun !== null);
 
   return (
-    <GuardianShell active="home" teenName={zoe} needs={needs}>
+    <GuardianShell active="home" teenName={zoe} needs={needs} familyId={familyId}>
       <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}</h1>
         {h.level && <span className="g-chip g-chip--accent">Level {h.level}</span>}
@@ -148,7 +153,8 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
             </div>
             {h.goal && <Bar goal value={h.savingsCents} max={h.goal.targetCents}
               label={`${formatCents(h.savingsCents)} saved of ${formatCents(h.goal.targetCents)}`} />}
-            <div className="g-card__sub">What {zoe} didn&apos;t spend. It stays in your PayPal; Tether keeps count.</div>
+            <div className="g-card__sub">{savingsSub(zoe)}</div>
+            <p className="g-more"><Link className="g-textlink" href="/g/savings">See {zoe}&apos;s savings</Link></p>
           </section>
 
           <section className="g-card" aria-labelledby="glance-h">

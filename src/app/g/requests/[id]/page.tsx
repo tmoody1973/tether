@@ -3,7 +3,7 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { guardianHome } from "@/flows/home";
+import { guardianHome, needsCount } from "@/flows/home";
 import { closedRequestView, requestView, type ClosedRequest, type RequestView } from "@/flows/request";
 import { marketFromEnv } from "@/adapters/alpaca/data";
 import { companyFacts, fundInside } from "@/adapters/financialdatasets/client";
@@ -39,7 +39,7 @@ async function Request({ params }: { params: Promise<{ id: string }> }) {
   const closed = v ? null : await closedRequestView(db, familyId, id, now);
   const zoe = h.teenName;
   return (
-    <GuardianShell active="home" teenName={zoe} needs={h.needsYou.length}>
+    <GuardianShell active="home" teenName={zoe} needs={needsCount(h)} familyId={familyId}>
       <Link className="g-back" href="/g">‹ Home</Link>
       {v ? <Open v={v} /> : closed ? <Settled c={closed} /> : <Closed />}
     </GuardianShell>

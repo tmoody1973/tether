@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { needsCount } from "@/flows/home";
 import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
@@ -14,9 +15,8 @@ import { checkWords, herReason, hiddenNote, monthEnd, shownReceipts } from "@/ui
 import { approvalWords, formatCents, formatDay, formatMonth, formatWhen } from "@/ui/grantWords";
 import { INVEST_STATUS } from "@/ui/investWords";
 import { Bar, GuardianLoading, GuardianShell, Money, SignedOut } from "@/ui/guardian";
-import { PendingButton } from "@/ui/PendingButton";
 import { Seam } from "@/ui/Seam";
-import { confirmReleaseAction } from "../actions";
+import { ReleaseCard } from "../ReleaseCard";
 import { paymentDeps } from "../flowDeps";
 import { AskBox } from "../AskBox";
 import { ItemsLine, PaymentRow } from "../PaymentRow";
@@ -55,7 +55,7 @@ async function Activity({ searchParams }: { searchParams: Promise<Record<string,
   const note = flash(sp);
 
   return (
-    <GuardianShell active="activity" teenName={zoe} needs={r.home.needsYou.length}>
+    <GuardianShell active="activity" teenName={zoe} needs={needsCount(r.home)} familyId={familyId}>
       <div className="g-head g-head--base">
         <h1 className="g-title">Activity</h1>
         <span className="g-sub">What {zoe} bought, how her month is going, and the proof behind every payment.</span>
@@ -72,7 +72,7 @@ async function Activity({ searchParams }: { searchParams: Promise<Record<string,
         </div>
         <div className="g-stack">
           <CheckIn v={v} r={r} now={now} />
-          {v.release && <Release zoe={zoe} release={v.release} />}
+          {v.release && <ReleaseCard zoe={zoe} release={v.release} />}
           <section className="g-card" aria-labelledby="ask-h">
             <h2 className="g-label" id="ask-h">Ask about the month</h2>
             <AskBox />
@@ -216,24 +216,6 @@ function CheckIn({ v, r, now }: { v: ReviewView; r: RecordView; now: Date }) {
           &ldquo;{herReason(v.latestChange.reason)}&rdquo;
         </p>
       )}
-    </section>
-  );
-}
-
-function Release({ zoe, release }: { zoe: string; release: NonNullable<ReviewView["release"]> }) {
-  return (
-    <section className="g-card" aria-labelledby="release-h" style={{ borderColor: "var(--g-goal)" }}>
-      <h2 className="g-label" id="release-h">Release to {zoe}</h2>
-      <div className="g-card__figure">
-        <Money cents={release.savedCents} /> saved + <Money cents={release.matchCents} /> your match
-        = <Money cents={release.savedCents + release.matchCents} />
-      </div>
-      <p className="g-card__sub">Send it to {zoe} yourself — Venmo, PayPal or cash — then tap below.</p>
-      <div style={{ marginTop: 8 }}><Seam kinds={["release"]} /></div>
-      <form action={confirmReleaseAction} style={{ marginTop: 12 }}>
-        <input type="hidden" name="releaseId" value={release.id} />
-        <PendingButton label="I've sent it" pendingLabel="Recording…" className="g-btn g-btn--block" />
-      </form>
     </section>
   );
 }

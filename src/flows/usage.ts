@@ -36,12 +36,13 @@ export async function takeDaily(db: Db, familyId: string, kind: UsageKind, realN
   return f?.sub ? takePool(db, kind, cap, realNow) : true;
 }
 
-/** One use of a site-wide daily counter (usage_pool), atomic like takeDaily: false once `cap` is reached today. */
-export async function takePool(db: Db, kind: string, cap: number, realNow: number = Date.now()): Promise<boolean> {
-  const res = await db.insert(t.usagePool).values({ kind, day: utcDay(realNow), count: 1 }).onConflictDoUpdate({
+/** `n` uses (default 1) of a site-wide daily counter (usage_pool), atomic like takeDaily: false, taking none, if they'd pass `cap` today. */
+export async function takePool(db: Db, kind: string, cap: number, realNow: number = Date.now(), n = 1): Promise<boolean> {
+  if (n > cap) return false;
+  const res = await db.insert(t.usagePool).values({ kind, day: utcDay(realNow), count: n }).onConflictDoUpdate({
     target: [t.usagePool.kind, t.usagePool.day],
-    set: { count: sql`${t.usagePool.count} + 1` },
-    setWhere: sql`${t.usagePool.count} < ${cap}`,
+    set: { count: sql`${t.usagePool.count} + ${n}` },
+    setWhere: sql`${t.usagePool.count} + ${n} <= ${cap}`, // all n or none: a batch is never cut short
   }).returning({ count: t.usagePool.count });
   return res.length > 0;
 }

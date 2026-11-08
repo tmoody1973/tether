@@ -9,7 +9,7 @@ import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import * as t from "@/db/schema";
 import { STAND_IN_LABEL } from "@/adapters/alpaca/broker";
-import { guardianHome } from "@/flows/home";
+import { guardianHome, needsCount } from "@/flows/home";
 import { allowedFunds } from "@/flows/teenInvest";
 import { formatCents } from "@/ui/grantWords";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
@@ -39,7 +39,7 @@ async function Invest() {
   const custodial = process.env.ALPACA_CUSTODIAL_ENABLED === "true";
 
   return (
-    <GuardianShell active="invest" teenName={zoe} needs={h.firstRun?.some((s) => !s.done) ? h.firstRun.filter((s) => !s.done).length : h.needsYou.length}>
+    <GuardianShell active="invest" teenName={zoe} needs={needsCount(h)} familyId={familyId}>
       <h1 className="g-title">Investing</h1>
       {!custodial && <div className="g-card"><Seam>{STAND_IN_LABEL}</Seam></div>}
 

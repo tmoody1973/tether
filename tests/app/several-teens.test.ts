@@ -19,10 +19,13 @@ import * as repo from "@/db/repo";
 import * as t from "@/db/schema";
 import { GUARDIAN_COOKIE, signGuardianCookie, verifyGuardianCookie } from "@/auth/guardian";
 import {
-  BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, PAYPAL_WHO_COOKIE, START_COOKIE, STARTED_COOKIE, openBrowserFamilies, openLoginState,
+  BROWSER_FAMILY_COOKIE, LOGIN_STATE_COOKIE, sealStart, PAYPAL_WHO_COOKIE, START_COOKIE, STARTED_COOKIE, openBrowserFamilies, openLoginState,
   openPaypalWho, openStart, sealBrowserFamilies, sealLoginState, sealPaypalWho, sealStarted, type PaypalWho,
 } from "@/auth/start";
-import { settingsTeens } from "@/flows/start";
+import { NEW_FAMILIES_PER_DAY, parseTeensForm, settingsTeens } from "@/flows/start";
+import { switcherTeens } from "@/flows/home";
+import { pushAliasFor } from "@/flows/notify";
+import { parentPushAlias, pushAlias } from "@/auth/guardian";
 import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
 import { GET as login } from "@/app/g/login/paypal/route";
 import { GET as loginReturn } from "@/app/g/login/paypal/return/route";
@@ -64,10 +67,10 @@ function createPost(start: string, extra: Record<string, string | undefined> = {
   }));
 }
 
-function switchPost(target: string, c: { current?: string; who?: PaypalWho; browser?: string[]; origin?: string }) {
+function switchPost(target: string, c: { current?: string; who?: PaypalWho; browser?: string[]; origin?: string; to?: string }) {
   const now = new Date();
   return switchTeen(new Request("http://localhost/g/settings/switch", {
-    method: "POST", body: new URLSearchParams({ familyId: target }),
+    method: "POST", body: new URLSearchParams({ familyId: target, ...(c.to ? { to: c.to } : {}) }),
     headers: {
       "content-type": "application/x-www-form-urlencoded", ...(c.origin ? { origin: c.origin } : {}),
       cookie: jar({
@@ -242,5 +245,113 @@ describe("the remembered PayPal cookie", () => {
     const now = new Date();
     const ids = Array.from({ length: 12 }, (_, i) => `f${i}`);
     expect(openBrowserFamilies(sealBrowserFamilies(ids, now), now)).toEqual(ids.slice(2));
+  });
+});
+
+describe("onboarding several teens in one go", () => {
+  const rows = (teens: [string, string][], guardian = true) => {
+    const p = new URLSearchParams();
+    for (const [n, a] of teens) { p.append("teenName", n); p.append("age", a); }
+    if (guardian) p.set("guardian", "on");
+    return p;
+  };
+  const postRows = (start: string, body: URLSearchParams, extra: Record<string, string | undefined> = {}) =>
+    create(new Request("http://localhost/g/start/teen/create", {
+      method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded", cookie: jar({ [START_COOKIE]: start, ...extra }) },
+    }));
+  const pool = async () => (await testDb.select().from(t.usagePool).where(eq(t.usagePool.kind, "family_start")))[0]?.count ?? 0;
+
+  it("two teens, one starting cookie ⇒ two families, signed in to the first, both in this browser's list; the cookie can't be replayed", async () => {
+    const ticket = sealStart({ sub: "S-batch", givenName: "Amara", email: "batch@example.com" }, new Date());
+    const before = await pool();
+    const res = await postRows(ticket, rows([["Zoe", "15"], ["Maya", "13"]]));
+    expect(where(res)).toBe("/g?started=1&teens=2");
+    const ids = openBrowserFamilies(valueOf(res, BROWSER_FAMILY_COOKIE), new Date());
+    expect(ids).toHaveLength(2);
+    expect(signedInTo(res)).toBe(ids[0]);
+    expect((await repo.getFamily(testDb, ids[0]))).toMatchObject({ teenName: "Zoe", paypalSub: "S-batch" });
+    expect((await repo.getFamily(testDb, ids[1]))).toMatchObject({ teenName: "Maya", paypalSub: "S-batch" });
+    expect(await pool()).toBe(before + 2); // each teen counts against the daily site cap
+    const again = await postRows(ticket, rows([["Ola", "14"]]));
+    expect(where(again)).toBe("/g?login=used");
+    expect(signedInTo(again)).toBeNull();
+  });
+
+  it("when the daily cap can't take the whole list, none is made and the count doesn't move", async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await testDb.insert(t.usagePool).values({ kind: "family_start", day, count: NEW_FAMILIES_PER_DAY - 1 })
+      .onConflictDoUpdate({ target: [t.usagePool.kind, t.usagePool.day], set: { count: NEW_FAMILIES_PER_DAY - 1 } });
+    const ticket = sealStart({ sub: "S-batch-full", email: "full@example.com" }, new Date());
+    const res = await postRows(ticket, rows([["Zoe", "15"], ["Maya", "13"]]));
+    expect(where(res)).toBe("/g/start/teen?e=fullmany");
+    expect(signedInTo(res)).toBeNull();
+    expect(await pool()).toBe(NEW_FAMILIES_PER_DAY - 1);
+    expect(await testDb.select().from(t.families).where(eq(t.families.paypalSub, "S-batch-full"))).toHaveLength(0);
+    await testDb.delete(t.usagePool);
+  });
+
+  it("checks every row: names and ages as for one teen, no name twice, at most 5, the checkbox once", () => {
+    const check = (b: URLSearchParams) => {
+      const f = new FormData();
+      for (const [k, v] of b) f.append(k, v);
+      const r = parseTeensForm(f);
+      return r.ok ? r.teens.map((x) => x.teenName) : r.error;
+    };
+    expect(check(rows([["Zoe", "15"], ["Maya", "13"]]))).toEqual(["Zoe", "Maya"]);
+    expect(check(rows([["Zoe", "15"], ["zoe", "13"]]))).toBe("duplicate");
+    expect(check(rows([["Zoe", "15"], ["Maya", "12"]]))).toBe("age");
+    expect(check(rows([["Zoe", "15"], ["<b>", "13"]]))).toBe("name");
+    expect(check(rows([["Zoe", "15"], ["Maya", "13"]], false))).toBe("guardian");
+    expect(check(rows([["A", "13"], ["B", "13"], ["C", "13"], ["D", "13"], ["E", "13"], ["F", "13"]]))).toBe("many");
+  });
+});
+
+describe("the teen switcher", () => {
+  it("lists only the teens she may open, each with Home's count; null without PayPal proof", async () => {
+    const zoe = await own("S-sw", "Zoe"), maya = await own("S-sw", "Maya");
+    await testDb.update(t.families).set({ teenLinkSentAt: new Date() }).where(eq(t.families.id, maya.id)); // one first-run step done
+    await own("S-sw", "Old", { retired: true });
+    await own("S-not-her", "Ola");
+    const list = await switcherTeens(testDb, { id: zoe.id, teenName: "Zoe" }, { sub: "S-sw", shared: false }, []);
+    expect(list).toEqual([
+      { id: zoe.id, teenName: "Zoe", current: true, needs: 3 },
+      { id: maya.id, teenName: "Maya", current: false, needs: 2 },
+    ]);
+    expect(await switcherTeens(testDb, { id: zoe.id, teenName: "Zoe" }, null, [])).toBeNull();
+  });
+
+  it("shared login: only this browser's teens", async () => {
+    const a = await own("S-sw-shared", "Ama"), b = await own("S-sw-shared", "Ben");
+    await own("S-sw-shared", "Kim");
+    const list = await switcherTeens(testDb, { id: a.id, teenName: "Ama" }, { sub: "S-sw-shared", shared: true }, [a.id, b.id]);
+    expect(list?.map((x) => x.teenName)).toEqual(["Ama", "Ben"]);
+  });
+
+  it("switching lands on the same tab; an unknown tab lands on Home", async () => {
+    const zoe = await own("S-tab", "Zoe"), maya = await own("S-tab", "Maya");
+    const me: PaypalWho = { sub: "S-tab", shared: false };
+    expect(where(await switchPost(maya.id, { current: zoe.id, who: me, to: "rules" }))).toBe("/g/rules");
+    expect(where(await switchPost(maya.id, { current: zoe.id, who: me, to: "savings" }))).toBe("/g/savings");
+    for (const to of ["https://evil.example", "/g/../x", "__proto__", "constructor"]) {
+      expect(where(await switchPost(maya.id, { current: zoe.id, who: me, to }))).toBe("/g?switched=1");
+    }
+  });
+});
+
+describe("push: where a family's asks go", () => {
+  it("an ordinary parent's teens share one alias; the shared login and the demo keep one per family", async () => {
+    const zoe = await own("S-push", "Zoe"), maya = await own("S-push", "Maya");
+    await testDb.update(t.families).set({ paypalEmail: "push@example.com" }).where(eq(t.families.paypalSub, "S-push"));
+    expect(await pushAliasFor(testDb, zoe.id)).toBe(parentPushAlias("S-push"));
+    expect(await pushAliasFor(testDb, maya.id)).toBe(parentPushAlias("S-push"));
+    expect(parentPushAlias("S-push")).not.toBe(pushAlias(zoe.id));
+
+    const judge = await own("S-push-shared", "Ama");
+    await testDb.update(t.families).set({ paypalEmail: SANDBOX_LOGIN.email }).where(eq(t.families.id, judge.id));
+    expect(await pushAliasFor(testDb, judge.id)).toBe(pushAlias(judge.id));
+    const noEmail = await own("S-push-noemail", "Cy"); // PayPal sent no email: can't tell, so per family
+    expect(await pushAliasFor(testDb, noEmail.id)).toBe(pushAlias(noEmail.id));
+    const demo = await own(null, "Zoe");
+    expect(await pushAliasFor(testDb, demo.id)).toBe(pushAlias(demo.id));
   });
 });

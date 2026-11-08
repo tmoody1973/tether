@@ -23,8 +23,11 @@ const PROBLEM: Record<string, string> = {
   name: "Type your teen's first name, in letters.",
   age: "Tether is for teens aged 13 to 17.",
   guardian: "Tick the box to say you're this teen's parent or guardian.",
+  duplicate: "Two teens have the same name. Give each teen a different name.",
+  many: "Up to 5 teens at a time.",
   browser: "This browser started a family less than an hour ago. Log in with PayPal to open it, or try again later.",
   full: "Today's new families are used up. Try the shared demo family, or come back tomorrow.",
+  fullmany: "Today's new families can't fit all your teens, so none were made. Nothing changed. Try fewer teens, or come back tomorrow.",
   addfull: "Today's new families are used up, so no teen was added. Nothing changed. Try again tomorrow.",
 };
 
@@ -50,7 +53,7 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
   const demo = demoLinks();
   const trouble = problem && (
     <p className="g-flash g-flash--warn" role="alert" style={{ marginTop: 12 }}>
-      {problem}{e === "full" && demo && <> <a className="g-textlink" href={demo.amara}>Open the shared demo family</a></>}
+      {problem}{(e === "full" || e === "fullmany") && demo && <> <a className="g-textlink" href={demo.amara}>Open the shared demo family</a></>}
     </p>
   );
   if (e === "addfull") {
@@ -79,8 +82,8 @@ async function StartTeen({ searchParams }: { searchParams: Promise<Record<string
       <p className="g-note">{who.givenName ? "Your name came from PayPal." : "PayPal didn't share your name, so Tether will call you Parent."} Not you? <a className="g-textlink" href="/g/login/paypal">Start again</a></p>
       {trouble}
       <h2>{ticket.add ? "Your other teen" : "Now, your teen"}</h2>
-      {ticket.add && <p className="g-note">This teen gets their own rules, budget, record, investing and link. You save your PayPal once for each teen.</p>}
-      <StartForm />
+      {ticket.add && <p className="g-note">Each teen gets their own rules, budget, record, investing and link. You save your PayPal once for each teen.</p>}
+      <StartForm add={ticket.add} />
       <p className="g-note" style={{ marginTop: 14 }}>Next time, Log in with PayPal: the same PayPal is your way back in.</p>
       <p className="g-note">The family relationship is simulated — PayPal has no notion of it. Sandbox only; no real money moves.</p>
     </Gate>

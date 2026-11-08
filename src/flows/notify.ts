@@ -1,7 +1,10 @@
-import { pushAlias } from "@/auth/guardian";
+import { parentPushAlias, pushAlias } from "@/auth/guardian";
 import { sendPush, type PushConfig, type PushResult } from "@/adapters/onesignal/push";
 import type { Quote } from "@/adapters/alpaca/data";
+import type { Db } from "@/db/client";
+import { getFamily } from "@/db/repo";
 import type { Deps } from "@/flows/purchase";
+import { isSharedLogin } from "@/flows/start";
 import { requestView, type RequestView } from "@/flows/request";
 import { takeDaily } from "@/flows/usage";
 import { requestTitle } from "@/ui/approveWords";
@@ -19,6 +22,18 @@ export function tellAmara(deps: { notify?: Notify }, familyId: string, approvalI
   }
 }
 
+/**
+ * Where a family's pushes go (decision 028). A parent who started with her own PayPal: one alias for all her teens, so
+ * she hears every teen on whichever device she turned notifications on. The shared sandbox login (judges share one
+ * PayPal), or any doubt about it, and the demo and seeded families: the family's own alias, as before.
+ */
+export async function pushAliasFor(db: Db, familyId: string): Promise<string> {
+  const fam = await getFamily(db, familyId);
+  if (!fam?.paypalSub) return pushAlias(familyId);
+  const who = { sub: fam.paypalSub, email: fam.paypalEmail ?? undefined, payerId: fam.paypalPayerId ?? undefined };
+  return (await isSharedLogin(db, who)) ? pushAlias(familyId) : parentPushAlias(fam.paypalSub);
+}
+
 /** The share count's price may hold the push this long, before the send's own 5 s: about 7 s at worst. */
 export const QUOTE_WAIT_MS = 2_000;
 
@@ -29,7 +44,8 @@ export interface PushOpts {
 }
 
 /**
- * The scheduled job: one push about one open request, in the request page's own words, to the family's alias.
+ * The scheduled job: one push about one open request, in the request page's own words (they name the teen), to the
+ * family's alias (pushAliasFor).
  * Off without config; skipped if the request already closed; at most DAILY_CAPS.push per family per day. Never throws.
  */
 export async function pushRequest(
@@ -41,7 +57,7 @@ export async function pushRequest(
     if (!v) return "closed";
     if (!(await takeDaily(deps.db, familyId, "push", o.realNow))) return "capped";
     return await sendPush(o.cfg, {
-      title: "Tether", body: await bodyOf(v, o), url: `${o.baseUrl}/g/requests/${approvalId}`, externalId: pushAlias(familyId),
+      title: "Tether", body: await bodyOf(v, o), url: `${o.baseUrl}/g/requests/${approvalId}`, externalId: await pushAliasFor(deps.db, familyId),
     }, o.fetchImpl);
   } catch (err) {
     console.error("push to Amara failed", err instanceof Error ? err.message : err);

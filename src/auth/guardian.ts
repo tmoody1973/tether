@@ -39,6 +39,15 @@ export function pushAlias(familyId: string): string {
   return createHmac("sha256", signingKey()).update(`push-alias:${familyId}`).digest("hex");
 }
 
+/**
+ * The OneSignal external id for a parent's PayPal (decision 028): every teen she owns shares it, so a device that turns
+ * notifications on while she's on one teen also hears the others. Same HMAC as pushAlias, its own prefix ("paypal:"
+ * can't be the start of a family id, which is a UUID).
+ */
+export function parentPushAlias(paypalSub: string): string {
+  return createHmac("sha256", signingKey()).update(`push-alias:paypal:${paypalSub}`).digest("hex");
+}
+
 export function signGuardianCookie(familyId: string, now: Date): string {
   if (!familyId || familyId.includes(".")) throw new Error("invalid familyId");
   const payload = `${familyId}.${now.getTime() + TTL_MS}`;

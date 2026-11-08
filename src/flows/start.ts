@@ -21,18 +21,42 @@ const NAME_MAX = 30;
 const FIRST_NAME = /^\p{L}[\p{L}\p{M}' -]*$/u;
 
 export type TeenInput = { teenName: string; age: number };
-export type TeenFormError = "name" | "age" | "guardian";
+export type TeenFormError = "name" | "age" | "guardian" | "duplicate" | "many";
+/** Teens one teen form can make at once (decision 028). */
+export const TEENS_PER_FORM = 5;
 
-/** Server-side check of the teen form. The age is only checked (13 to 17), never stored. */
-export function parseTeenForm(form: FormData): { ok: true; teen: TeenInput } | { ok: false; error: TeenFormError } {
-  const rawName = form.get("teenName");
+/** One name-and-age row: the name cleaned up, the age only checked (13 to 17), never stored. */
+function teenRow(rawName: FormDataEntryValue | null, rawAge: FormDataEntryValue | null): TeenInput | "name" | "age" {
   const teenName = typeof rawName === "string" ? rawName.trim().replace(/\s+/g, " ") : "";
-  if (!teenName || teenName.length > NAME_MAX || !FIRST_NAME.test(teenName)) return { ok: false, error: "name" };
-  const rawAge = form.get("age");
+  if (!teenName || teenName.length > NAME_MAX || !FIRST_NAME.test(teenName)) return "name";
   const age = typeof rawAge === "string" && /^\d{1,2}$/.test(rawAge.trim()) ? Number(rawAge.trim()) : NaN;
-  if (!(age >= TEEN_AGES.min && age <= TEEN_AGES.max)) return { ok: false, error: "age" };
+  if (!(age >= TEEN_AGES.min && age <= TEEN_AGES.max)) return "age";
+  return { teenName, age };
+}
+
+/** Server-side check of the teen form, one teen. */
+export function parseTeenForm(form: FormData): { ok: true; teen: TeenInput } | { ok: false; error: TeenFormError } {
+  const r = parseTeensForm(form);
+  return r.ok ? { ok: true, teen: r.teens[0] } : r;
+}
+
+/**
+ * Server-side check of the teen form with one or more rows (decision 028): 1 to 5 teens, each name and age checked as
+ * for one teen, no name twice (ignoring case), and the parent checkbox once for all of them.
+ */
+export function parseTeensForm(form: FormData): { ok: true; teens: TeenInput[] } | { ok: false; error: TeenFormError } {
+  const names = form.getAll("teenName"), ages = form.getAll("age");
+  if (names.length === 0) return { ok: false, error: "name" };
+  if (names.length > TEENS_PER_FORM || ages.length > TEENS_PER_FORM) return { ok: false, error: "many" };
+  const teens: TeenInput[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const row = teenRow(names[i], ages[i] ?? null);
+    if (typeof row === "string") return { ok: false, error: row };
+    if (teens.some((t) => t.teenName.toLowerCase() === row.teenName.toLowerCase())) return { ok: false, error: "duplicate" };
+    teens.push(row);
+  }
   if (form.get("guardian") !== "on") return { ok: false, error: "guardian" };
-  return { ok: true, teen: { teenName, age } };
+  return { ok: true, teens };
 }
 
 /** Records a starting cookie's nonce. True only for the first caller: one atomic insert, so a replay or a race loses. */
@@ -97,13 +121,25 @@ export async function settingsTeens(
  * PayPal first name as the guardian name ("Parent" if PayPal gave none). Null when today's new families are used up.
  */
 export async function startFamily(db: Db, who: PaypalIdentity, teen: TeenInput, realNow: number = Date.now()): Promise<Family | null> {
-  if (!(await takePool(db, "family_start", NEW_FAMILIES_PER_DAY, realNow))) return null;
+  return (await startFamilies(db, who, [teen], realNow))?.[0] ?? null;
+}
+
+/**
+ * One family per teen, in order (decision 028). Each counts against the daily site cap, and the cap is taken for the
+ * whole list at once: if it would cut the list short, none is made (null) and nothing changes.
+ */
+export async function startFamilies(db: Db, who: PaypalIdentity, teens: TeenInput[], realNow: number = Date.now()): Promise<Family[] | null> {
+  if (!(await takePool(db, "family_start", NEW_FAMILIES_PER_DAY, realNow, teens.length))) return null;
   const guardianName = who.givenName ?? "Parent";
-  return insertFamily(db, {
-    name: `${guardianName} & ${teen.teenName}`, guardianName, teenName: teen.teenName,
-    teenToken: randomBytes(24).toString("base64url"),
-    paypalSub: who.sub, paypalPayerId: who.payerId ?? null, paypalEmail: who.email ?? null, parentGivenName: who.givenName ?? null,
-  });
+  const made: Family[] = [];
+  for (const teen of teens) {
+    made.push(await insertFamily(db, {
+      name: `${guardianName} & ${teen.teenName}`, guardianName, teenName: teen.teenName,
+      teenToken: randomBytes(24).toString("base64url"),
+      paypalSub: who.sub, paypalPayerId: who.payerId ?? null, paypalEmail: who.email ?? null, parentGivenName: who.givenName ?? null,
+    }));
+  }
+  return made;
 }
 
 export const removalDate = (createdAt: Date): Date => new Date(createdAt.getTime() + RETIRE_AFTER_MS);

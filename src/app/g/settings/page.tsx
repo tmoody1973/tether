@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
-import { pushAlias } from "@/auth/guardian";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { BROWSER_FAMILY_COOKIE, PAYPAL_WHO_COOKIE, openBrowserFamilies, openPaypalWho } from "@/auth/start";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { guardianHome } from "@/flows/home";
+import { guardianHome, needsCount } from "@/flows/home";
+import { pushAliasFor } from "@/flows/notify";
 import { settingsTeens } from "@/flows/start";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
 import { appBaseUrl } from "../connect-paypal/setup";
@@ -41,11 +41,10 @@ async function Settings({ searchParams }: { searchParams: Promise<Record<string,
   const { viaPaypal, teens } = await settingsTeens(db, { id: familyId, teenName: teen },
     openPaypalWho(jar.get(PAYPAL_WHO_COOKIE)?.value, now), openBrowserFamilies(jar.get(BROWSER_FAMILY_COOKIE)?.value, now));
   const note = flash(await searchParams);
-  const open = h.firstRun?.filter((s) => !s.done).length ?? 0;
   const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 
   return (
-    <GuardianShell active="settings" teenName={teen} needs={open > 0 ? open : h.needsYou.length}>
+    <GuardianShell active="settings" teenName={teen} needs={needsCount(h)} familyId={familyId}>
       <h1 className="g-title">Settings</h1>
       {note && <p className={note.warn ? "g-flash g-flash--warn" : "g-flash"} role="status">{note.text}</p>}
 
@@ -90,8 +89,9 @@ async function Settings({ searchParams }: { searchParams: Promise<Record<string,
         </div>
 
         <div className="g-stack">
-          {/* Push is on only where OneSignal is set up; the alias is this family's opaque external id, never its raw id. */}
-          {appId && <NotifyCard appId={appId} alias={pushAlias(familyId)} teenName={teen} />}
+          {/* Push is on only where OneSignal is set up; the alias is opaque (an HMAC), never a raw id: the parent's, shared by
+              her teens, or this family's own on the shared login and the demo (decision 028). */}
+          {appId && <NotifyCard appId={appId} alias={await pushAliasFor(db, familyId)} teenName={teen} />}
 
           <section className="g-card" aria-labelledby="paypal-h">
             <h2 className="g-label" id="paypal-h">PayPal</h2>

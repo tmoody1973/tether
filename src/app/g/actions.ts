@@ -119,7 +119,7 @@ export async function confirmReleaseAction(form: FormData): Promise<void> {
     if (!(err instanceof GrantError)) throw err;
     redirect("/g/activity");
   }
-  redirect("/g/activity?sent=1");
+  redirect(form.get("back") === "savings" ? "/g/savings?sent=1" : "/g/activity?sent=1"); // only these two places
 }
 
 export type LevelState = { error?: string };

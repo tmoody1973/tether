@@ -64,74 +64,157 @@ test("signed out: the page offers Log in with PayPal, and a cancelled login says
   await expect(page.getByRole("link", { name: "Log in with PayPal" })).toBeVisible();
 });
 
-// Decision 028: a parent with several teens. Start a family, add a second teen through Log in with PayPal again, switch
-// back and forth in Settings; each teen's rules page is that teen's. The menu has five items and fits a 390px phone.
-test("several teens: add a second teen, switch between them, five menu items that fit a phone", async ({ page }) => {
+// Decision 028: a parent with several teens. Two teens in one teen form; the teen switcher shows both with what's waiting
+// on each, so an ask from Maya shows while Amara is on Zoe; switching keeps the tab; Settings adds a third through Log
+// in with PayPal again. Six menu items on a desktop; on a phone five tabs, a Settings gear and the switcher, no sideways scroll.
+test("several teens: two at onboarding, the switcher with counts, same-tab switching, add one more, fits a phone", async ({ page, context }) => {
   test.setTimeout(300_000);
-  const nav = page.getByRole("navigation", { name: "Main" }).first();
-  const startTeen = async (name: string, age: string) => {
-    await page.getByLabel("Your teen's first name").fill(name);
-    await page.getByLabel(`${name}'s age`).fill(age);
-    await page.getByLabel(`I'm ${name}'s parent or guardian`).check();
-    await page.getByRole("button", { name: "Create our family" }).click();
-  };
-  const rulesSay = async (name: string) => {
-    await nav.getByRole("link", { name: `${name}'s rules` }).click();
-    await expect(page).toHaveURL(/\/g\/rules$/, { timeout: 60_000 });
-    await expect(page.getByRole("heading", { level: 1, name: `${name}'s rules` })).toBeVisible();
-  };
-  const teens = page.getByRole("region", { name: "Your teens" });
+  const shots = (name: string) => test.info().outputPath(name);
+  const hideDevBadge = () => page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+  const side = page.locator(".g-side");
+  const nav = side.getByRole("list");
+  const switcher = (where: "side" | "top") => page.locator(where === "side" ? ".g-side .g-switcher" : ".g-topbar .g-switcher");
+  const switchButton = (where: "side" | "top" = "side") => switcher(where).getByRole("button", { name: /^Teen: / });
 
+  // Onboarding: Zoe and Maya in one go.
   await page.goto("/g/login/paypal");
   await expect(page).toHaveURL(/\/g\/start\/teen$/, { timeout: 60_000 });
-  await startTeen("Zoe", "15");
-  await expect(page).toHaveURL(/\/g\?started=1$/, { timeout: 60_000 });
+  await page.getByLabel("Your teen's first name").fill("Zoe");
+  await page.getByLabel("Zoe's age").fill("15");
+  await page.getByRole("button", { name: "+ Add another teen" }).click();
+  await expect(page.getByLabel("Teen 2's first name")).toBeFocused();
+  await page.getByLabel("Teen 2's first name").fill("Maya");
+  await page.getByLabel("Maya's age").fill("13");
+  await page.getByLabel("I'm Zoe and Maya's parent or guardian").check();
+  await hideDevBadge();
+  await page.screenshot({ path: shots("onboarding-two-teens.png"), fullPage: true });
+  await page.getByRole("button", { name: "Create our family" }).click();
+  await expect(page).toHaveURL(/\/g\?started=1&teens=2$/, { timeout: 60_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Zoe" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Get Zoe started" })).toBeVisible();
 
-  for (const name of [/^Home/, "Zoe's rules", "Investing", "Activity", "Settings"]) await expect(nav.getByRole("link", { name })).toBeVisible();
-  await expect(nav.getByRole("link")).toHaveCount(5);
-  await nav.getByRole("link", { name: "Investing" }).click();
-  await expect(page).toHaveURL(/\/g\/invest$/, { timeout: 60_000 });
-  await expect(nav.getByRole("link", { name: "Investing" })).toHaveAttribute("aria-current", "page");
+  // Six items in the sidebar.
+  await expect(nav.getByRole("link")).toHaveText([/^Home/, "Zoe's rules", "Savings", "Investing", "Activity", "Settings"]);
 
+  // The switcher: Maya's three first-run steps show while on Zoe; Escape closes it and puts focus back.
+  await expect(switchButton()).toContainText("3 waiting for your other teens");
+  await switchButton().click();
+  await expect(switchButton()).toHaveAttribute("aria-expanded", "true");
+  const pop = switcher("side").locator(".g-switcher__pop");
+  await expect(pop.locator("[aria-current=true]")).toContainText("Zoe");
+  await expect(pop.getByRole("button", { name: /^Switch to Maya/ })).toContainText("3 waiting");
+  await page.keyboard.press("Escape");
+  await expect(pop).toBeHidden();
+  await expect(switchButton()).toBeFocused();
+
+  // Switching from Zoe's rules lands on Maya's rules.
+  await nav.getByRole("link", { name: "Zoe's rules" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Zoe's rules" })).toBeVisible({ timeout: 60_000 });
+  await switchButton().click();
+  await pop.getByRole("button", { name: /^Switch to Maya/ }).click();
+  await expect(page).toHaveURL(/\/g\/rules$/, { timeout: 60_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Maya's rules" })).toBeVisible();
+
+  // Maya's first run, so her Home count is her asks, then an ask from Maya's side.
+  await nav.getByRole("link", { name: /^Home/ }).click();
+  const checklist = page.locator("section", { has: page.getByRole("heading", { name: "Get Maya started" }) });
+  await checklist.getByRole("link", { name: "Save your PayPal" }).click();
+  await expect(page).toHaveURL(/\/g\?paypal=connected$/, { timeout: 60_000 });
+  await checklist.getByRole("link", { name: "Sign the rules" }).click();
+  await page.getByRole("button", { name: "Sign and send" }).click();
+  await page.getByRole("button", { name: "Yes, sign" }).click();
+  await expect(page).toHaveURL(/\/g\?signed=1$/, { timeout: 60_000 });
+  await checklist.getByRole("link", { name: "Send the link" }).click();
+  const mayaLink = await page.locator("#teen-link").inputValue();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page).toHaveURL(/\/g$/, { timeout: 60_000 });
+
+  const maya = await context.newPage();
+  await maya.goto(`${mayaLink}/map`);
+  await maya.getByLabel("Find the shop").fill("etsy");
+  await maya.getByRole("button", { name: "Search" }).click();
+  await maya.getByRole("group", { name: "Shops named etsy" }).getByRole("radio", { name: "Etsy" }).check({ timeout: 30_000 });
+  await maya.getByLabel("Why this shop?").fill("art supplies");
+  await maya.getByRole("button", { name: "Suggest to Amara" }).click();
+  await expect(maya.getByRole("main").getByRole("status")).toHaveText("Sent. Amara will see your suggestion for etsy.com.");
+  await maya.close();
+
+  // Back to Zoe (from Home: Home again, with a note); Maya's ask shows on the switcher.
+  await page.reload();
+  await switchButton().click();
+  await pop.getByRole("button", { name: /^Switch to Zoe/ }).click();
+  await expect(page).toHaveURL(/\/g\?switched=1$/, { timeout: 60_000 });
+  await expect(page.getByText("Now showing Zoe.")).toBeVisible();
+  await expect(switchButton()).toContainText("1 waiting for your other teens");
+  await switchButton().click();
+  await expect(pop.getByRole("button", { name: /^Switch to Maya/ })).toContainText("1 waiting");
+  await hideDevBadge();
+  await page.screenshot({ path: shots("switcher-open-desktop.png") });
+  await page.keyboard.press("Escape");
+
+  // Settings: the full list, and adding one more teen through PayPal again.
   await nav.getByRole("link", { name: "Settings" }).click();
-  await expect(page).toHaveURL(/\/g\/settings$/, { timeout: 60_000 });
-  await expect(teens.getByText("Zoe", { exact: true })).toBeVisible();
-  await expect(teens.getByText("Open now")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send Zoe her link" })).toBeVisible(); // her link moved here from Rules
-  await teens.getByRole("link", { name: "Add another teen" }).click(); // PayPal again, the same parent
-
+  const teens = page.getByRole("region", { name: "Your teens" });
+  await expect(teens.getByText("Zoe", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(teens.getByRole("button", { name: "Switch to Maya" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send Zoe her link" })).toBeVisible(); // her link lives here
+  await teens.getByRole("link", { name: "Add another teen" }).click();
   await expect(page).toHaveURL(/\/g\/start\/teen$/, { timeout: 60_000 });
   await expect(page.getByRole("heading", { name: "Add another teen" })).toBeVisible();
-  await startTeen("Kofi", "14"); // straight after Zoe: the one-per-browser-hour limit doesn't apply to adding a teen
+  await page.getByLabel("Your teen's first name").fill("Kofi");
+  await page.getByLabel("Kofi's age").fill("14");
+  await page.getByLabel("I'm Kofi's parent or guardian").check();
+  await page.getByRole("button", { name: "Add to our family" }).click(); // straight after: the hourly limit doesn't apply to adding
   await expect(page).toHaveURL(/\/g\?started=added$/, { timeout: 60_000 });
   await expect(page.getByRole("heading", { level: 1, name: "Kofi" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Get Kofi started" })).toBeVisible(); // his own first-run checklist
-  await rulesSay("Kofi");
 
-  for (const [to, from] of [["Zoe", "Kofi"], ["Kofi", "Zoe"], ["Zoe", "Kofi"]]) {
-    await nav.getByRole("link", { name: "Settings" }).click();
-    await expect(teens.getByRole("button", { name: `Switch to ${from}` })).toHaveCount(0); // the one she's on is marked, not a button
-    await teens.getByRole("button", { name: `Switch to ${to}` }).click();
-    await expect(page).toHaveURL(/\/g\?switched=1$/, { timeout: 60_000 });
-    await expect(page.getByText(`Now showing ${to}.`)).toBeVisible();
-    await rulesSay(to);
-  }
+  // Savings: Kofi's own page, with what "savings" means.
+  await nav.getByRole("link", { name: "Savings" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Kofi's savings" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Tether counts what Kofi didn't spend each week.")).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Savings" })).toHaveAttribute("aria-current", "page");
 
-  // A phone: the five tabs fit, nothing scrolls sideways.
+  // A phone: five tabs, a Settings gear, the switcher at the top, nothing scrolls sideways.
   await page.setViewportSize({ width: 390, height: 844 });
   const bar = page.locator(".g-tabbar");
-  for (const path of ["/g", "/g/settings"]) {
+  for (const path of ["/g", "/g/settings", "/g/savings", "/g/rules"]) {
     await page.goto(path);
     await expect(bar).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), path).toBeLessThanOrEqual(390);
   }
-  for (const name of [/^Home/, "Rules", "Investing", "Activity", "Settings"]) await expect(bar.getByRole("link", { name })).toBeInViewport();
-  const widths = await bar.getByRole("link").evaluateAll((links) => links.map((a) => [a.scrollWidth, a.clientWidth]));
-  expect(widths).toHaveLength(5);
-  for (const [scroll, client] of widths) expect(scroll).toBeLessThanOrEqual(client); // no label cut off
-  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); // the dev badge, for the screenshots only
-  await page.screenshot({ path: test.info().outputPath("settings-390.png") });
-  await bar.screenshot({ path: test.info().outputPath("tabbar-390.png") });
+  await expect(bar.getByRole("link")).toHaveText([/^Home/, "Rules", "Savings", "Investing", "Activity"]);
+  for (const [scroll, client] of await bar.getByRole("link").evaluateAll((ls) => ls.map((a) => [a.scrollWidth, a.clientWidth]))) {
+    expect(scroll).toBeLessThanOrEqual(client); // no label cut off
+  }
+  const gear = page.locator(".g-topbar").getByRole("link", { name: "Settings" });
+  await expect(gear).toBeVisible();
+  const box = (await gear.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  await hideDevBadge();
+  await bar.screenshot({ path: shots("tabbar-390.png") });
+  await switchButton("top").click();
+  const phonePop = switcher("top").locator(".g-switcher__pop");
+  await expect(phonePop).toBeVisible();
+  const popBox = (await phonePop.boundingBox())!;
+  expect(popBox.x + popBox.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: shots("switcher-open-390.png") });
+  await phonePop.getByRole("button", { name: /^Switch to Zoe/ }).click(); // from Rules: Zoe's Rules
+  await expect(page).toHaveURL(/\/g\/rules$/, { timeout: 60_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Zoe's rules" })).toBeVisible();
+  await gear.click();
+  await expect(page).toHaveURL(/\/g\/settings$/, { timeout: 60_000 });
+  await page.screenshot({ path: shots("settings-390.png") });
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.screenshot({ path: test.info().outputPath("settings-desktop.png"), fullPage: true });
+  await page.screenshot({ path: shots("settings-desktop.png"), fullPage: true });
+
+  // The teen form on a phone, two rows.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/g/login/paypal?add=1");
+  await page.getByRole("button", { name: "+ Add another teen" }).click();
+  await page.getByLabel("Your teen's first name").fill("Ada");
+  await page.getByLabel("Teen 2's first name").fill("Ben");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await hideDevBadge();
+  await page.screenshot({ path: shots("onboarding-two-teens-390.png"), fullPage: true });
 });

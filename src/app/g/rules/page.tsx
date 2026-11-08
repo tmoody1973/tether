@@ -4,7 +4,7 @@ import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { getLatestGrant } from "@/db/repo";
 import { shopsForLevel } from "@/flows/grant";
-import { guardianHome } from "@/flows/home";
+import { guardianHome, needsCount } from "@/flows/home";
 import { guardianShops } from "@/flows/shops";
 import type { Level } from "@/engine/ladder";
 import { formatDay } from "@/ui/grantWords";
@@ -54,7 +54,7 @@ async function Rules({ searchParams }: { searchParams: Promise<Record<string, st
     : stopped ? "Stopped. Sign new rules below when you're ready." : `Not in force. Sign them below so ${zoe} can spend.`;
 
   return (
-    <GuardianShell active="rules" teenName={zoe} needs={h.needsYou.length}>
+    <GuardianShell active="rules" teenName={zoe} needs={needsCount(h)} familyId={familyId}>
       <div className="g-head g-head--base">
         <h1 className="g-title">{zoe}&apos;s rules</h1>
         {cur && <span className="g-chip">Version {cur.version}</span>}

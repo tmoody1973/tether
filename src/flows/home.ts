@@ -2,7 +2,9 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { getActiveGrant, getFamily, getLatestGrant, getVault } from "@/db/repo";
-import { removalDate } from "@/flows/start";
+import type { PaypalWho } from "@/auth/start";
+import { now as clockNow } from "@/clock/clock";
+import { removalDate, settingsTeens } from "@/flows/start";
 import { ledgerView, weekKey } from "@/ledger/ledger";
 import { pendingApprovals, type PendingApproval } from "@/flows/approvals";
 import type { Level } from "@/engine/ladder";
@@ -63,6 +65,33 @@ export async function guardianHome(db: Db, familyId: string, now: Date): Promise
     firstRun: selfStarted ? firstRunSteps({ paypalSaved: vault !== null, rulesSigned: latest !== null, linkSent: fam.teenLinkSentAt !== null }) : null,
     removesAt: selfStarted ? removalDate(fam.createdAt) : null,
   };
+}
+
+/** The number on Home's tab: the first-run steps still open while there are any, otherwise the "Needs you" items. */
+export function needsCount(h: Pick<GuardianHome, "firstRun" | "needsYou">): number {
+  const open = h.firstRun?.filter((s) => !s.done).length ?? 0;
+  return open > 0 ? open : h.needsYou.length;
+}
+
+export type SwitcherTeen = { id: string; teenName: string; current: boolean; needs: number | null };
+export const SWITCHER_COUNTS_MAX = 10;
+
+/**
+ * The teen switcher (decision 028): the teens she may switch to, each with its Home count, so a request on one teen is
+ * visible while she's on another. Null when she isn't signed in through PayPal (a guardian link, the shared demo
+ * family): those sessions can't switch. Counts only for teens she's allowed to open, at their own demo clock.
+ */
+export async function switcherTeens(
+  db: Db, current: { id: string; teenName: string }, who: PaypalWho | null, browserFamilies: readonly string[],
+): Promise<SwitcherTeen[] | null> {
+  const { viaPaypal, teens } = await settingsTeens(db, current, who, browserFamilies);
+  if (!viaPaypal) return null;
+  // ponytail: one guardianHome per teen (a few queries each), at most SWITCHER_COUNTS_MAX teens; past that a teen shows
+  // no count. A single counting query is the upgrade if parents ever have more than a handful of teens.
+  return Promise.all(teens.map(async (f, i) => ({
+    ...f,
+    needs: i < SWITCHER_COUNTS_MAX ? needsCount(await guardianHome(db, f.id, await clockNow(db, f.id))) : null,
+  })));
 }
 
 /** Zoe's "Nudge Amara" counts only if she sent it after these rules ended. */

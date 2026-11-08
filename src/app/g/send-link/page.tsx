@@ -3,7 +3,7 @@ import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { guardianHome } from "@/flows/home";
+import { guardianHome, needsCount } from "@/flows/home";
 import { GuardianLoading, GuardianShell, SignedOut } from "@/ui/guardian";
 import { PendingButton } from "@/ui/PendingButton";
 import { QrCode } from "@/ui/QrCode";
@@ -29,9 +29,8 @@ async function SendLink() {
   const h = await guardianHome(db, familyId, await clockNow(db, familyId));
   const teen = h.teenName;
   const url = `${appBaseUrl()}/t/${h.teenToken}`;
-  const open = h.firstRun?.filter((s) => !s.done).length ?? 0;
   return (
-    <GuardianShell active={null} teenName={teen} needs={h.firstRun?.some((s) => !s.done) ? open : h.needsYou.length}>
+    <GuardianShell active={null} teenName={teen} needs={needsCount(h)} familyId={familyId}>
       <Link className="g-back" href="/g">‹ Home</Link>
       <div className="g-head g-head--base">
         <h1 className="g-title">Send {teen} the link</h1>

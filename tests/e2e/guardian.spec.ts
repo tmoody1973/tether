@@ -6,7 +6,7 @@ const enter = (page: Page, key: string = E2E.guardianKey) => page.goto(`/g/enter
 const nav = (page: Page) => page.getByRole("navigation", { name: "Main" });
 
 test("no cookie ⇒ neutral page, no data", async ({ page }) => {
-  for (const path of ["/g", "/g/rules", "/g/activity", "/g/grant", "/g/record", "/g/review", "/g/invest",
+  for (const path of ["/g", "/g/rules", "/g/activity", "/g/grant", "/g/record", "/g/review", "/g/invest", "/g/savings", "/g/settings",
     `/g/requests/${E2E.approvalId}`, "/g/enter/not-a-real-key"]) {
     await page.goto(path);
     await expect(page.getByText("Open your Tether link to continue.")).toBeVisible();

@@ -8,7 +8,11 @@ import { goTo, sameOrigin, signIn } from "../../login/login";
 
 // Settings → "Switch to <teen>" (decision 028). Signs her in to another teen only when the PayPal this browser last
 // logged in with can open BOTH the teen she's on now and the one she picked: live, owned by that PayPal, and, for the
-// shared sandbox login, made in this browser. Anything else changes nothing.
+// shared sandbox login, made in this browser. Anything else changes nothing. `to` names the tab she was on, so Rules
+// switches to the other teen's Rules; only these tabs, so it can never send her anywhere else.
+const TABS: Record<string, string> = {
+  home: "/g?switched=1", rules: "/g/rules", savings: "/g/savings", invest: "/g/invest", activity: "/g/activity", settings: "/g/settings",
+};
 export async function POST(req: Request): Promise<Response> {
   if (!sameOrigin(req)) return goTo(req, "/g/settings?switch=failed");
   let current: string;
@@ -19,7 +23,8 @@ export async function POST(req: Request): Promise<Response> {
   }
   const now = new Date();
   const who = openPaypalWho(readCookie(req, PAYPAL_WHO_COOKIE), now);
-  const id = (await req.formData().catch(() => null))?.get("familyId");
+  const form = await req.formData().catch(() => null);
+  const id = form?.get("familyId"), to = form?.get("to");
   if (!who || typeof id !== "string" || id.length > 100) return goTo(req, "/g/settings?switch=failed");
   try {
     const mine = await switchableFamilies(await getDb(), who, openBrowserFamilies(readCookie(req, BROWSER_FAMILY_COOKIE), now));
@@ -28,5 +33,5 @@ export async function POST(req: Request): Promise<Response> {
     console.error("switch: checking her teens failed", safeErrorText(err));
     return goTo(req, "/g/settings?switch=failed");
   }
-  return signIn(goTo(req, "/g?switched=1"), id);
+  return signIn(goTo(req, (typeof to === "string" && Object.hasOwn(TABS, to) ? TABS[to] : null) ?? TABS.home), id);
 }
