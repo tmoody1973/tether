@@ -3,8 +3,10 @@ import { E2E } from "./fixtures";
 
 // A Proof opened while PayPal is still being checked stays open when the answer arrives: only its "Checked against
 // PayPal" line updates (the whole list used to be redrawn, closing it: a flaky test and a real annoyance).
-test("a Proof opened before the PayPal check finishes stays open after it", async ({ page }) => {
+test("a Proof opened before the PayPal check finishes stays open after it", async ({ page, request }) => {
   await page.goto(`/g/enter/${E2E.guardianKey}`);
+  // Only this test's search is slow: the fake answers the next Transaction Search after 2.5 s, then goes back to normal.
+  expect((await request.post(`http://localhost:${E2E.fakePort}/__e2e/slow-next-search?ms=2500`)).status()).toBe(204);
   // Don't wait for the whole page: it streams, and finishes only once PayPal has answered. Act as soon as the list is there.
   await page.goto("/g/activity", { waitUntil: "commit" });
   const row = page.locator(".g-rows > li").filter({ has: page.locator("summary", { hasText: /^Proof for \$6\.00 at Target, / }) }).first();

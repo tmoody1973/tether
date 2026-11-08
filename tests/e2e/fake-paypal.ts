@@ -25,6 +25,7 @@ const search: Row[] = [
   row(E2E.unlinkedCapture, "50.00"),
 ];
 const orders = new Map<string, unknown>(); // PayPal-Request-Id → order
+let slowNextSearchMs = 0; // set by POST /__e2e/slow-next-search; used once
 
 // Decision 030: a photo on a made-up https host (screenshots route it; tests never need it to load), and an offer
 // condition that search, lookup and retrieve all agree on, so a cart re-prices to itself at payment.
@@ -153,10 +154,17 @@ createServer((req, res) => {
       }
       return send(201, orders.get(key));
     }
-    // Like the real Transaction Search, it takes a moment: Activity's Proof must not close when the answer lands.
+    // e2e control: slow down only the NEXT Transaction Search (the Activity Proof-race test arms it); every other
+    // search answers at once, so no other test waits on it.
+    if (req.method === "POST" && path === "/__e2e/slow-next-search") {
+      slowNextSearchMs = Math.min(10_000, Math.max(0, Number(url.searchParams.get("ms") ?? 0) || 0));
+      return send(204);
+    }
     if (req.method === "GET" && path === "/v1/reporting/transactions") {
-      setTimeout(() => send(200, { transaction_details: search, total_pages: 1 }), 2_500);
-      return;
+      const ms = slowNextSearchMs;
+      slowNextSearchMs = 0;
+      if (ms > 0) { setTimeout(() => send(200, { transaction_details: search, total_pages: 1 }), ms); return; }
+      return send(200, { transaction_details: search, total_pages: 1 });
     }
     // The saved wallet is a placeholder PayPal has never seen: removal is refused, so the page must say so honestly.
     if (req.method === "DELETE" && path.startsWith("/v3/vault/payment-tokens/")) return send(404, { name: "RESOURCE_NOT_FOUND", message: "not found" });
