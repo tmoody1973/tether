@@ -302,6 +302,7 @@ Built, reviewed task by task, and running in production: the rule engine and per
 | In this build | In production |
 |---|---|
 | Every purchase pays **one Tether sandbox business account**; the receipt records which shop it was for. A saved PayPal wallet can only be charged by the business that saved it (verified: `BILLING_AGREEMENT_NOT_FOUND`). | Tether pays shops as a PayPal platform partner, or through shops' own agent checkouts. |
+| Prices are the item price Channel3's search returns; shipping and tax aren't in the total yet, because Channel3 gives neither. | [Channel3 checkout](https://channel3.ai/docs/checkout) (announced, "coming soon" as of 8 Nov 2026) gives each store's real total and places the order at the store. The permission slip and the rules check stay the same; only where the money goes changes. |
 | Zoe's investments sit in an **ordinary Alpaca sandbox account**, labelled on screen as a stand-in. The sandbox refuses custodial accounts. One setting (`ALPACA_CUSTODIAL_ENABLED=true`) switches to the custodial request. | A custodial account Amara manages for Zoe. |
 | Savings release: Amara sends the money herself and taps "I've sent it". | Same. Tether never holds money. |
 | A demo clock moves time forward so a month fits in a video. | Real time. |
