@@ -1,5 +1,6 @@
 import { APPROVAL_CONSTRAINTS, evaluate } from "./evaluate";
 import { cartHash as hashCart } from "./hash";
+import { asOf } from "./ladder";
 import type { ApprovalGrant, Cart, Decision, Grant, LedgerView, Reason } from "./types";
 
 const isApproval = (constraint: string) => APPROVAL_CONSTRAINTS.has(constraint);
@@ -22,9 +23,10 @@ const liftable = (reasons: Reason[], overCents: number | undefined): boolean => 
 };
 
 export function decide(
-  grant: Grant, cart: Cart, ledger: LedgerView, now: Date,
+  signed: Grant, cart: Cart, ledger: LedgerView, now: Date,
   approval?: ApprovalGrant, cartHash?: string,
 ): Decision {
+  const grant = asOf(signed, now); // this week's amount, when a weekly change waits for next week (029)
   const cartBad: Reason[] = Number.isFinite(cart.totalCents) && cart.totalCents >= 0 ? []
     : [{ constraint: "malformed_cart", detail: "Cart total is not a valid amount - failing closed" }];
   const all = [...cartBad, ...grant.constraints.flatMap((c) => evaluate(c, cart, ledger, now) ?? [])];

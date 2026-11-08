@@ -66,3 +66,9 @@ export const needsBadge = (n: number): string | null => (n <= 0 ? null : n > 9 ?
 
 /** Promotions recorded before the wording fix said "your" to Amara about Zoe; show them the fixed way. */
 export const herReason = (reason: string): string => reason.replace(/^Kept your savings commitment/, "Kept her savings promise");
+
+/** Decision 029: Amara pays Zoe herself; Tether only records that she says she did. Never "withdraw savings". */
+export const releaseWords = (zoe: string, total: string) => ({
+  button: `Record payment to ${zoe}`,
+  line: `Send ${zoe} ${total} yourself — Venmo, PayPal or cash — then record it here. Tether can't see that payment.`,
+});

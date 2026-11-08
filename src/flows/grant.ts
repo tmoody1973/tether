@@ -2,13 +2,40 @@ import { randomBytes } from "node:crypto";
 import { and, eq, isNull, max, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
-import { getActiveGrant, getFamily, getLatestGrant, getVault } from "@/db/repo";
+import { getActiveGrant, getFamily, getLatestGrant, getVault, type GrantRow } from "@/db/repo";
 import { deletePaymentToken } from "@/adapters/paypal/vault";
-import { grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
+import { asOf, grantForLevel, validateCommitment, type Level } from "@/engine/ladder";
 import type { Constraint, Grant } from "@/engine/types";
 import type { Deps } from "@/flows/purchase";
 
 const WEEK_MS = 7 * 86_400_000;
+
+/** Monday 00:00 UTC of the ISO week containing d. */
+export const weekStart = (d: Date): Date =>
+  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7)));
+export const nextMonday = (d: Date): Date => new Date(weekStart(d).getTime() + WEEK_MS);
+
+/**
+ * Whether `g` covers the week starting `monday` (decision 029): it hadn't ended before the week began, and wasn't
+ * stopped before it. Rules stopped during the week still cover it: that week closes as promised.
+ */
+export const coversWeek = (g: Pick<GrantRow, "expiresAt" | "status" | "revokedAt">, monday: Date): boolean =>
+  g.expiresAt > monday && (g.status !== "revoked" || (g.revokedAt !== null && g.revokedAt >= monday));
+
+/** This week's allowance under the latest rules, or null when no rules cover this week. */
+export function thisWeeksCents(latest: GrantRow | null, now: Date): number | null {
+  return latest && coversWeek(latest, weekStart(now)) ? asOf(latest.body, now).weeklyCents : null;
+}
+
+/**
+ * The amount this week keeps when `body` replaces the rules covering it (029): set unless Amara chose to change this
+ * week too, or the weekly amount is the same. Renewals and shop changes copy the body, so they keep it as it is.
+ */
+function keepThisWeek(body: Grant, latest: GrantRow | null, now: Date, applyNow: boolean): Grant {
+  const kept = thisWeeksCents(latest, now);
+  if (applyNow || kept === null || kept === body.weeklyCents) return body;
+  return { ...body, thisWeek: { weeklyCents: kept, until: nextMonday(now).toISOString() } };
+}
 
 export class GrantError extends Error {
   constructor(message: string, readonly minCents?: number) { super(message); this.name = "GrantError"; }
@@ -126,23 +153,29 @@ export async function shopsForLevel(db: Db, familyId: string, level: Level, now:
 }
 
 /** New grant at `level`, keeping the latest grant's settings (or defaults), even after a revoke. Caller holds the family lock. */
-export async function installLevel(tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>): Promise<Grant> {
+export async function installLevel(
+  tx: Db, familyId: string, level: Level, now: Date, s?: Partial<Settings>, keep?: { latest: GrantRow | null; applyNow: boolean },
+): Promise<Grant> {
   const cur = (await getLatestGrant(tx, familyId))?.body;
   const base: Settings = {
     commitmentFloorPct: s?.commitmentFloorPct ?? cur?.commitmentFloorPct ?? 10,
     matchPct: s?.matchPct ?? cur?.matchPct ?? 100,
     fundAllowlist: s?.fundAllowlist ?? cur?.fundAllowlist ?? [],
   };
-  return installGrant(tx, familyId, (version) => buildForLevel(tx, familyId, level, version, base, now), now);
+  return installGrant(tx, familyId, async (version) => {
+    const body = await buildForLevel(tx, familyId, level, version, base, now);
+    return keep ? keepThisWeek(body, keep.latest, now, keep.applyNow) : body; // no `keep`: an engine level-up applies now
+  }, now);
 }
 
 /**
  * Amara signs a grant at `level`. Settings she leaves out keep the active grant's values.
  * Moving Zoe to a different level than her latest grant (active, ended or revoked) is an override,
  * so it needs a reason (recorded). After a revoke she keeps her level; signing again doesn't reset her to Level 1.
+ * A different weekly amount starts next Monday unless `applyNow` ("Change this week too"); shops and approvals apply now.
  */
 export async function signGrant(
-  deps: Pick<Deps, "db" | "now">, familyId: string, draft: { level: Level; reason?: string } & Partial<Settings>,
+  deps: Pick<Deps, "db" | "now">, familyId: string, draft: { level: Level; reason?: string; applyNow?: boolean } & Partial<Settings>,
 ): Promise<Grant> {
   const why = typeof draft.reason === "string" ? draft.reason.trim() : "";
   return withFamilyLock(deps, familyId, async (tx, now) => {
@@ -151,7 +184,7 @@ export async function signGrant(
     if (changesLevel && !why) throw new ReasonRequiredError();
     const body = await installLevel(tx, familyId, draft.level, now, {
       commitmentFloorPct: draft.commitmentFloorPct, matchPct: draft.matchPct, fundAllowlist: draft.fundAllowlist,
-    });
+    }, { latest: cur, applyNow: draft.applyNow === true });
     if (changesLevel) {
       await tx.insert(t.levelChanges).values({
         id: crypto.randomUUID(), familyId, fromLevel: cur.level, toLevel: draft.level, by: "guardian", reason: why, at: now,
@@ -176,13 +209,15 @@ export async function renewGrant(deps: Deps, familyId: string): Promise<Grant> {
   });
 }
 
-export async function guardianSetLevel(deps: Pick<Deps, "db" | "now">, familyId: string, level: Level, reason: string): Promise<Grant> {
+export async function guardianSetLevel(
+  deps: Pick<Deps, "db" | "now">, familyId: string, level: Level, reason: string, applyNow = false,
+): Promise<Grant> {
   const why = typeof reason === "string" ? reason.trim() : "";
   if (!why) throw new ReasonRequiredError();
   return withFamilyLock(deps, familyId, async (tx, now) => {
     const cur = await getLatestGrant(tx, familyId);
     if (cur?.status === "revoked") throw new RulesStoppedError(); // stopped rules stay stopped until Amara signs again
-    const body = await installLevel(tx, familyId, level, now);
+    const body = await installLevel(tx, familyId, level, now, undefined, { latest: cur, applyNow });
     await tx.insert(t.levelChanges).values({
       id: crypto.randomUUID(), familyId, fromLevel: cur?.level ?? 0, toLevel: level, by: "guardian", reason: why, at: now,
     });
@@ -204,13 +239,14 @@ export async function setCommitment(deps: Deps, familyId: string, cents: number)
 export type RevokeResult = { revoked: true; paypalTokenDeleted: boolean; error?: string; reason?: "no_vault" | "demo_kept" };
 
 /**
- * Fail closed: the local revoke is committed first and stands even if PayPal's delete fails.
+ * Fail closed: the local revoke is committed first and stands even if PayPal's delete fails. The stop time is
+ * recorded (demo clock), so the week it falls in still closes with the allowance in force (decision 029).
  * The shared demo family keeps its saved PayPal (owner decision, final review C1): deleting it would break the demo
  * for every judge after this one, and re-saving needs Amara's approval at PayPal. Real families delete as always.
  */
 export async function revoke(deps: Pick<Deps, "db" | "now" | "paypal">, familyId: string): Promise<RevokeResult> {
-  await withFamilyLock(deps, familyId, (tx) =>
-    tx.update(t.grants).set({ status: "revoked" }).where(and(eq(t.grants.familyId, familyId), eq(t.grants.status, "active"))));
+  await withFamilyLock(deps, familyId, (tx, now) =>
+    tx.update(t.grants).set({ status: "revoked", revokedAt: now }).where(and(eq(t.grants.familyId, familyId), eq(t.grants.status, "active"))));
   const vault = await getVault(deps.db, familyId);
   if (!vault) return { revoked: true, paypalTokenDeleted: false, reason: "no_vault" };
   if ((await getFamily(deps.db, familyId))?.demo) return { revoked: true, paypalTokenDeleted: false, reason: "demo_kept" };

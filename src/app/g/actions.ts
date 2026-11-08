@@ -44,7 +44,8 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   if (!(matchPct >= 0 && matchPct <= 200)) return { error: "Choose a match." };
   let version: number;
   try {
-    ({ version } = await signGrant(g.deps, g.familyId, { level: level as Level, commitmentFloorPct: floorPct, matchPct, reason }));
+    const applyNow = form.get("applyNow") === "1"; // "Change this week too" (decision 029)
+    ({ version } = await signGrant(g.deps, g.familyId, { level: level as Level, commitmentFloorPct: floorPct, matchPct, reason, applyNow }));
   } catch (err) {
     if (err instanceof ReasonRequiredError) return { error: "Say why you're changing her level — it goes on the record." };
     if (err instanceof GrantError) return { error: "Those rules couldn't be signed. Nothing changed." };
@@ -109,7 +110,7 @@ export async function decideRequestAction(form: FormData): Promise<void> {
   redirect(`/g?decided=${code}&req=${encodeURIComponent(id)}`);
 }
 
-/** "I've sent it": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
+/** "Record payment to Zoe": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
 export async function confirmReleaseAction(form: FormData): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");
@@ -133,7 +134,7 @@ export async function setLevelAction(_prev: LevelState, form: FormData): Promise
   if (![1, 2, 3].includes(level)) return { error: "Choose a level." };
   if (!reason) return { error: "Say why — it goes on the record. Nothing changed." };
   try {
-    await guardianSetLevel(g.deps, g.familyId, level as Level, reason);
+    await guardianSetLevel(g.deps, g.familyId, level as Level, reason, form.get("applyNow") === "1");
   } catch (err) {
     if (err instanceof RulesStoppedError) return { error: "Her rules are stopped. Sign new rules to change her level." };
     console.error("guardianSetLevel failed", err);
@@ -142,7 +143,10 @@ export async function setLevelAction(_prev: LevelState, form: FormData): Promise
   redirect(`/g/rules?level=${level}`);
 }
 
-/** Stop Zoe's rules (after the page's confirm step). The rules stop even if PayPal won't remove the saved wallet. */
+/**
+ * Stop Zoe's rules (after the page's confirm step). The rules stop even if PayPal won't remove the saved wallet.
+ * Lands on the closing statement (decision 029): what is still promised, with this week counted.
+ */
 export async function revokeAction(): Promise<void> {
   const g = await guardianDeps();
   if (!g) redirect("/g");
@@ -150,7 +154,7 @@ export async function revokeAction(): Promise<void> {
   if (r.error) console.error("revoke: PayPal delete failed", r.error);
   const how = r.paypalTokenDeleted ? "wallet-removed"
     : r.reason === "no_vault" ? "no-wallet" : r.reason === "demo_kept" ? "demo-kept" : "wallet-kept";
-  redirect(`/g/rules?stopped=${how}`);
+  redirect(`/g/statement?stopped=${how}`);
 }
 
 // ---- Zoe's shops (the Shops section on Zoe's rules page). No AI: Channel3 website search and plain rules. ----

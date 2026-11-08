@@ -1,0 +1,10 @@
+/* Closing statement (decision 029): on paper it is only the statement. */
+.g-statement td.g-num, .g-statement th.g-num { text-align: right; white-space: nowrap; }
+.g-statement__total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-weight: 700; font-size: 18px; }
+@media print {
+  .g-side, .g-tabbar, .g-noprint, .g-flash[role="status"] { display: none !important; }
+  .g-app { display: block; }
+  .g-main { padding: 0; max-width: none; }
+  .g-card { box-shadow: none; break-inside: avoid; }
+  a.g-textlink { color: inherit; text-decoration: none; }
+}
