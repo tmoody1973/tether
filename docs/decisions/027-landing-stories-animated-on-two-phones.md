@@ -1,6 +1,6 @@
 # 027 — The landing page tells the shopping and investing loops as short animations on two phones
 
-**Decision** — Two looping animations replace static explanation on the landing page: the shopping loop at the top of "How it works" (about 17 seconds) and the investing loop in place of the fund-page screenshot in the feature tour (about 15 seconds wide, 16 on a phone). Each runs on Zoe's phone and Amara's phone side by side, with every word taken from the app. They are built with a small copied-in animation kit (Stageshow), load only in the browser after the page is up, and show their final frame, still, to anyone who has asked their device for reduced motion.
+**Decision** — Two looping animations replace static explanation on the landing page: the shopping loop at the top of "How it works" (about 18 seconds) and the investing loop in place of the fund-page screenshot in the feature tour (about 15 seconds wide, 16 on a phone). Each runs on Zoe's phone and Amara's phone side by side, with every word taken from the app. They are built with a small copied-in animation kit (Stageshow), load only in the browser after the page is up, and show their final frame, still, to anyone who has asked their device for reduced motion.
 
 **Why this came up** — The page explained the loop in four boxes and a dozen screenshots. A judge skimming for thirty seconds sees screens, not the moment the product is about: the agent proposes, code says no in plain words, Amara says yes with one tap, PayPal's own record proves it. Getting it wrong is costly in two directions: an animation that invents wording or numbers undercuts "every screen below is the live app", and a heavy one slows the page a judge opens first.
 
@@ -14,7 +14,7 @@
 **What we gave up**
 - Three compressions of the real flow. Zoe's "Ask Amara" goes straight to her week page with "Sent." (the real app shows an ask page with an optional reason first). Her three answers on the fund page are already written when the story starts. And the investing story is set on one moment that can really happen: Monday 9 Nov, 10:42 in New York, the market open. Friday's close ($361.86) is still the latest price, Amara's approval fills at once, so her screen says "Bought." rather than "Queued for market open", and Zoe's card is dated 9 Nov ("It's been 1 day" is what the app says for a fill hours old). All three keep the app's words; none shows every screen.
 - The $25.30 Best Buy item is "Over-ear headphones", to match the headphones search; the static refusal card on the same page now says the same. The sandbox's own $25.30 request is a Monopoly board game, and the request screenshot further down (and its alt text) still shows that.
-- The loops run 15 to 17 seconds, longer than the 12 to 14 first asked for; the cursor's travel between taps is timed by distance and each beat needs reading time.
+- The loops run 15 to 18 seconds, longer than the 12 to 14 first asked for; the cursor's travel between taps is timed by distance and each beat needs reading time.
 - Vendored code outside lint, 30 more files to keep, and one local change to them (the pause) to carry over by hand if the kit is ever updated.
 - A visitor without JavaScript sees a blank box of the right size; screen readers get one plain sentence per story instead.
 

@@ -6,13 +6,13 @@ Built with the stageshow skill and rehearsed in its preview (`examples/tether-sh
 
 Gold: `device-pair` (a hero device pinned top, a second device straddling its right edge, lower and in front, the crop through the bottom). Kept: the straddle, one gutter on top, the hero shadow, the bottom bleed. Changed: two phones instead of a window and a phone, both in the app's own looks (teen indigo, guardian teal), the story moving between them. Borrowed: `phone-touch` (touch cursor, card-to-screen thinking, the in-app reset), `ai-cards` (an agent's options as cards with their own actions), the kit's `Expand` with `face` for the notification opening the app.
 
-Beats: Zoe types "headphones under $30" and taps Find options ("Looking in your shops…") → three cards land below the forms; a flick brings them up (Over budget, Fits your week, Needs Amara's OK) → Why not? on the $25.30 Best Buy card opens the amber sheet with her numbers and two ways forward → Ask Amara: the sheet goes, her week page says "Sent." → Amara's lock screen gets the push → she opens it: budget consequence first → Approve $25.30, Working… → payoff holds: "Approved and paid — $25.30 at Best Buy" and the proof (PayPal ID, Rules v3, single-use permission slip, Matches PayPal). Reset: Amara's phone locks; Zoe's page gives way to a fresh Shop. Loop 17.3s wide, 17.7s compact (measured from the films).
+Beats: Zoe types "headphones under $30" and taps Find options ("Looking in your shops…") → three cards land below the forms; a flick brings them up (Over budget, Fits your week, Needs Amara's OK) → Why not? on the $25.30 Best Buy card opens the amber sheet with her numbers and two ways forward → Ask Amara: the sheet goes, her week page says "Sent." → Amara's lock screen gets the push → she opens it: budget consequence first → Approve $25.30, Working… → payoff holds: "Approved and paid — $25.30 at Best Buy" and the proof (PayPal ID, Rules v3, single-use permission slip, Matches PayPal). Reset: Amara's phone locks; Zoe's page gives way to a fresh Shop. Then Zoe's week catches up (the purchase moves to This week, "Amara approved this one", $0.00 left, spent $42.28 of $30.00), and the approval leads: Amara's phone steps forward while a veil of Zoe's own canvas quiets her screen. Loop 18.1s wide, 18.5s compact (measured from the films).
 
-Poster (reduced motion, thumbnails): the payoff on both phones; compact shows Amara's.
+Poster (reduced motion, thumbnails): the payoff on both phones, the approval leading; compact shows Amara's.
 
 ## Investing loop (`InvestStory.tsx`, the investing feature in the tour)
 
-Gold: the shopping loop above (same pair, same look, on the teen band's color). Beats: VTI's page (One share costs $361.86, What's inside) → a flick to her three written answers → she types 5: "= about 0.0138 of one VTI share at $361.86." → Propose to Amara, Sending…, "Sent. Amara will see your answers and decide." → Amara's push → the request with her answer → Approve $5.00, Working… → payoff: Amara's "Bought." and Zoe's Invest page with her VTI card: You own 0.0138 share, too soon to tell. Loop 14.6s wide, 16.1s compact (the compact pans between the phones). Poster: that payoff on both phones; compact shows Zoe's card.
+Gold: the shopping loop above (same pair, same look, on the teen band's color). Set on Monday 9 Nov, 10:42 in New York, market open, so the approval fills ("Bought.") and the card is dated that day. Beats: VTI's page (One share costs $361.86, What's inside) → a flick to her three written answers → she types 5: "= about 0.0138 of one VTI share at $361.86." → Propose to Amara, Sending…, "Sent. Amara will see your answers and decide." → Amara's push → the request with her answer → Approve $5.00, Working… → payoff: Amara's "Bought." and Zoe's Invest page with her VTI card: You own 0.0138 share, too soon to tell. Loop 14.6s wide, 16.1s compact (the compact pans between the phones). Poster: that payoff on both phones; compact shows Zoe's card.
 
 ## Captured
 
@@ -60,3 +60,16 @@ In the real page the gate also prints 6 `kit override:` lines. They point at the
 - Live frame pacing on a slow phone (the virtual clock proves geometry, not frame rate).
 - The investing story inside the real page at widths between 560 and 1080, beyond the frames filmed.
 - A deployed build; only `next build` and `next dev` locally.
+
+## Round 2 (independent review and team-lead rulings, 8 Nov)
+
+- Shopping payoff: Zoe's week shows the paid, approved ask as the app does (src/app/t/[token]/page.tsx, src/flows/teen.ts); the approval leads by depth (Amara's phone forward, deeper shadow) and a veil over Zoe's screen. No app type restyled.
+- Pause (WCAG 2.2.2): a pause/play button per story, above the stage, outside the role=img figure, keyboard-reachable, hidden under reduced motion. Paused holds the frame: a marked Tether addition in the vendored kit (stage.tsx, act.ts) stops the script's clock and pauses running CSS animations. Verified in the page: two screenshots 1.5s apart while paused are identical, and the stage moves again after play.
+- Placeholder: compact is min(640px, 178.771cqw), the stage's 1:1 cap. Measured placeholder vs loaded height: 390 625.69/625.69, 414 640/640, 600 640/640, 768 640/640, 1440 680/680 and 660/660; 1024 within 0.25px.
+- Loading: each story's code loads when its slot is within 400px of the viewport.
+- The kit's centering of a stage stopped at its design size was zeroed by the app's global reset; restored for the stories.
+- Words: numbers computed from cents (formatCents); sentences from the app's client-safe word functions; the rest pinned by tests/app/landing-stories.test.ts, including each inline page phrase against its source file.
+- Investing timeline made honest (see decision 027). The static refusal card says "Over-ear headphones".
+- Looked at 768 and 1024 in the page: 1024 uses both wide designs at about 0.92; 768 uses the compact designs at 1:1, centered in a wider column.
+
+Gate, round 2 (preview, 22-frame loops and --states): shopping wide, 390, states: rehearsal passed; investing wide, 390, states: rehearsal passed.
