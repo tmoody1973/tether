@@ -21,6 +21,7 @@
     "@paypal/agent-toolkit": "^1.11.0",
     "ai": "^7.0.163",
     "drizzle-orm": "^0.45.4",
+    "lucide-react": "0.468.0",
     "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
