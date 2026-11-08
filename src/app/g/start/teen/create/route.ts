@@ -6,7 +6,7 @@ import {
 import { safeErrorText } from "@/adapters/paypal/http";
 import { getDb } from "@/db/client";
 import type { Family } from "@/db/repo";
-import { consumeStartNonce, parseTeensForm, startFamilies } from "@/flows/start";
+import { consumeStartNonce, parseTeensForm, startFamilies, startProblem } from "@/flows/start";
 import { goTo, retireQuietly, sameOrigin, signIn } from "../../../login/login";
 
 // "Create our family": needs the starting cookie from Log in with PayPal; every field is checked again here. One form
@@ -26,6 +26,8 @@ export async function POST(req: Request): Promise<Response> {
   let made: Family[] | null;
   try {
     const db = await getDb();
+    const problem = await startProblem(db, ticket.who, parsed.teens, openBrowserFamilies(readCookie(req, BROWSER_FAMILY_COOKIE), now));
+    if (problem) return goTo(req, `/g/start/teen?e=${problem}`); // before the ticket is spent: she can fix it and resend
     // M1: this starting cookie is used once, whoever presents it and however often: one batch of families at most.
     if (!(await consumeStartNonce(db, ticket.nonce))) return goTo(req, "/g?login=used", { dropStart: true });
     await retireQuietly();

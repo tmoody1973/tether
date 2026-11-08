@@ -1,5 +1,6 @@
 "use client";
 
+import { FamilyField } from "@/ui/FamilyField";
 import { useState } from "react";
 import { revokeAction } from "../actions";
 
@@ -15,6 +16,7 @@ export function StopRules({ teenName, demo }: { teenName: string; demo: boolean 
   }
   return (
     <form action={revokeAction} role="group" aria-label="Confirm stop">
+      <FamilyField />
       <p style={{ marginBottom: 10, fontWeight: 600 }}>
         Stop {teenName}&apos;s rules now? She can&apos;t spend anything until you sign new ones{demo
           ? ". Demo: your saved PayPal is kept so the next person can try it."

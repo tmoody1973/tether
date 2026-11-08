@@ -53,17 +53,31 @@ describe("connect PayPal", () => {
   it("start needs the guardian cookie, then redirects to PayPal and remembers the setup token", async () => {
     const anon = await connect(new Request("http://localhost/g/connect-paypal"));
     expect(new URL(anon.headers.get("location")!).pathname).toBe("/g");
-    const res = await connect(new Request("http://localhost/g/connect-paypal", { headers: signedIn() }));
+    const res = await connect(new Request(`http://localhost/g/connect-paypal?for=${fam.id}`, { headers: signedIn() }));
     expect(res.headers.get("location")).toContain("sandbox.paypal.com");
     expect(cookieOf(res, "tether_setup")).toMatch(/HttpOnly/i);
+    expect(decodeURIComponent(cookieOf(res, "tether_setup")!.split(";")[0])).toMatch(new RegExp(`^tether_setup=${fam.id}\\|`));
+  });
+
+  it("028 HIGH-1: a Save-your-PayPal link drawn for another teen (she switched in another tab) starts nothing", async () => {
+    for (const q of ["?for=someone-else", ""]) {
+      const res = await connect(new Request(`http://localhost/g/connect-paypal${q}`, { headers: signedIn() }));
+      expect(new URL(res.headers.get("location")!, "http://localhost").search).toBe("?stale=1");
+      expect(cookieOf(res, "tether_setup")).toBeUndefined();
+    }
   });
 
   it("return only accepts the setup token this browser started", async () => {
     const url = "http://localhost/g/connect-paypal/return?approval_token_id=SETUP-1";
-    const forged = await paypalReturn(new Request(url, { headers: signedIn("; tether_setup=OTHER") }));
+    const forged = await paypalReturn(new Request(url, { headers: signedIn(`; tether_setup=${encodeURIComponent(`${fam.id}|OTHER`)}`) }));
     expect(new URL(forged.headers.get("location")!).search).toContain("paypal=failed");
     expect(await repo.getVault(testDb, fam.id)).toBeNull();
-    const ok = await paypalReturn(new Request(url, { headers: signedIn("; tether_setup=SETUP-1") }));
+    // 028 HIGH-1: started for another teen, and she has switched since: nothing saved, to either teen.
+    const stale = await paypalReturn(new Request(url, { headers: signedIn(`; tether_setup=${encodeURIComponent("other-teen|SETUP-1")}`) }));
+    expect(new URL(stale.headers.get("location")!).search).toBe("?stale=1");
+    expect(await repo.getVault(testDb, fam.id)).toBeNull();
+    expect(vaultCalls).toEqual([]);
+    const ok = await paypalReturn(new Request(url, { headers: signedIn(`; tether_setup=${encodeURIComponent(`${fam.id}|SETUP-1`)}`) }));
     expect(new URL(ok.headers.get("location")!).search).toContain("paypal=connected");
     expect((await repo.getVault(testDb, fam.id))?.paymentTokenId).toBe("PT-SETUP-1");
     expect(vaultCalls).toEqual(["SETUP-1"]);

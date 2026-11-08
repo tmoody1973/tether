@@ -23,7 +23,8 @@ import {
   openPaypalWho, openStart, sealBrowserFamilies, sealLoginState, sealPaypalWho, sealStarted, type PaypalWho,
 } from "@/auth/start";
 import { NEW_FAMILIES_PER_DAY, parseTeensForm, settingsTeens } from "@/flows/start";
-import { switcherTeens } from "@/flows/home";
+import { requestElsewhere, switcherTeens } from "@/flows/home";
+import { NEW_TEENS_PER_ACCOUNT_PER_DAY, isSharedLogin, retireStaleFamilies, startProblem, RETIRE_AFTER_MS } from "@/flows/start";
 import { pushAliasFor } from "@/flows/notify";
 import { parentPushAlias, pushAlias } from "@/auth/guardian";
 import { SANDBOX_LOGIN } from "@/ui/sandboxAccount";
@@ -307,15 +308,16 @@ describe("onboarding several teens in one go", () => {
 });
 
 describe("the teen switcher", () => {
-  it("lists only the teens she may open, each with Home's count; null without PayPal proof", async () => {
+  it("lists only the teens she may open; setup steps counted apart from what's waiting (LOW-4); null without PayPal proof", async () => {
     const zoe = await own("S-sw", "Zoe"), maya = await own("S-sw", "Maya");
     await testDb.update(t.families).set({ teenLinkSentAt: new Date() }).where(eq(t.families.id, maya.id)); // one first-run step done
+    await testDb.update(t.families).set({ teenNudgeAt: new Date(), teenNudgeNote: "a phone case" }).where(eq(t.families.id, maya.id)); // Maya asked
     await own("S-sw", "Old", { retired: true });
     await own("S-not-her", "Ola");
     const list = await switcherTeens(testDb, { id: zoe.id, teenName: "Zoe" }, { sub: "S-sw", shared: false }, []);
     expect(list).toEqual([
-      { id: zoe.id, teenName: "Zoe", current: true, needs: 3 },
-      { id: maya.id, teenName: "Maya", current: false, needs: 2 },
+      { id: zoe.id, teenName: "Zoe", current: true, needs: 0, setupLeft: 3 },
+      { id: maya.id, teenName: "Maya", current: false, needs: 1, setupLeft: 2 },
     ]);
     expect(await switcherTeens(testDb, { id: zoe.id, teenName: "Zoe" }, null, [])).toBeNull();
   });
@@ -353,5 +355,81 @@ describe("push: where a family's asks go", () => {
     expect(await pushAliasFor(testDb, noEmail.id)).toBe(pushAlias(noEmail.id));
     const demo = await own(null, "Zoe");
     expect(await pushAliasFor(testDb, demo.id)).toBe(pushAlias(demo.id));
+  });
+});
+
+describe("review fixes", () => {
+  const approval = (familyId: string, id: string) => testDb.insert(t.approvals).values({
+    id, familyId, subject: "shop", subjectId: `shop-${id}`, expiresAt: new Date(Date.now() + 86_400_000),
+  });
+
+  it("HIGH-2: a request belongs to another teen she may switch to ⇒ that teen; anyone else's ⇒ not found", async () => {
+    const zoe = await own("S-req", "Zoe"), maya = await own("S-req", "Maya"), stranger = await own("S-req-other", "Ola");
+    await approval(maya.id, "req-maya");
+    await approval(stranger.id, "req-stranger");
+    const others = [{ id: maya.id, teenName: "Maya" }];
+    expect(await requestElsewhere(testDb, "req-maya", others)).toEqual({ id: maya.id, teenName: "Maya" });
+    expect(await requestElsewhere(testDb, "req-stranger", others)).toBeNull();
+    expect(await requestElsewhere(testDb, "req-maya", [])).toBeNull();
+    // The switch it offers lands on that request; a request id that isn't one lands on Home.
+    const me: PaypalWho = { sub: "S-req", shared: false };
+    const go = (request: string) => switchTeen(new Request("http://localhost/g/settings/switch", {
+      method: "POST", body: new URLSearchParams({ familyId: maya.id, to: "request", request }),
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie: jar({
+        [GUARDIAN_COOKIE]: signGuardianCookie(zoe.id, new Date()), [PAYPAL_WHO_COOKIE]: sealPaypalWho(me, new Date()) }) },
+    }));
+    const res = await go("req-maya");
+    expect(where(res)).toBe("/g/requests/req-maya");
+    expect(signedInTo(res)).toBe(maya.id);
+    expect(where(await go("../../evil"))).toBe("/g?switched=1");
+  });
+
+  it("MEDIUM-1: the shared account is still recognised by its PayPal id after its email changes and its families retire", async () => {
+    const judge = await own("S-shared-retire", "Ama");
+    const parent = await own("S-ordinary-retire", "Zoe");
+    await testDb.update(t.families).set({ paypalEmail: SANDBOX_LOGIN.email.toUpperCase(), createdAt: new Date(Date.now() - RETIRE_AFTER_MS - 60_000) })
+      .where(eq(t.families.id, judge.id));
+    await testDb.update(t.families).set({ paypalEmail: "parent@example.com", createdAt: new Date(Date.now() - RETIRE_AFTER_MS - 60_000) })
+      .where(eq(t.families.id, parent.id));
+    await retireStaleFamilies({ db: testDb, paypal: { configured: false } as never });
+    const [j] = await testDb.select().from(t.families).where(eq(t.families.id, judge.id));
+    const [p] = await testDb.select().from(t.families).where(eq(t.families.id, parent.id));
+    expect(j.guardianToken.startsWith(repo.ARCHIVED_PREFIX)).toBe(true);
+    expect(j).toMatchObject({ paypalSub: "S-shared-retire", paypalEmail: SANDBOX_LOGIN.email.toLowerCase(), teenName: "Removed" });
+    expect(p).toMatchObject({ paypalSub: null, paypalEmail: null }); // anyone else's PayPal identity is wiped as before
+    // Someone changed the shared account's email: still the shared login, by its PayPal id.
+    expect(await isSharedLogin(testDb, { sub: "S-shared-retire", email: "changed@example.com" })).toBe(true);
+    expect(await isSharedLogin(testDb, { sub: "S-ordinary-retire", email: "changed@example.com" })).toBe(false);
+  });
+
+  it("LOW-3: one ordinary PayPal makes at most 5 new teens a day; the shared login has only the site cap", async () => {
+    expect(NEW_TEENS_PER_ACCOUNT_PER_DAY).toBe(5);
+    const who = { sub: "S-cap", email: "cap@example.com" };
+    for (const n of ["A", "B", "C", "D"]) await own("S-cap", n);
+    expect(await startProblem(testDb, who, [{ teenName: "E", age: 14 }], [])).toBeNull();
+    expect(await startProblem(testDb, who, [{ teenName: "E", age: 14 }, { teenName: "F", age: 14 }], [])).toBe("account");
+    const judge = { sub: "S-cap-shared", email: SANDBOX_LOGIN.email };
+    for (const n of ["A", "B", "C", "D", "E", "F"]) await own("S-cap-shared", n);
+    expect(await startProblem(testDb, judge, [{ teenName: "G", age: 14 }], [])).toBeNull();
+    // Refused before the ticket is spent: the same ticket still works with fewer teens.
+    const ticket = sealStart(who, new Date());
+    const body = (names: string[]) => { const p = new URLSearchParams(); for (const n of names) { p.append("teenName", n); p.append("age", "14"); } p.set("guardian", "on"); return p; };
+    const send = (names: string[]) => create(new Request("http://localhost/g/start/teen/create", {
+      method: "POST", body: body(names), headers: { "content-type": "application/x-www-form-urlencoded", cookie: jar({ [START_COOKIE]: ticket }) },
+    }));
+    expect(where(await send(["Eve", "Fay"]))).toBe("/g/start/teen?e=account");
+    expect(where(await send(["Eve"]))).toBe("/g?started=1");
+  });
+
+  it("LOW-5: a name she already has (any case) is refused before the ticket is spent", async () => {
+    await own("S-taken", "Zoe");
+    const who = { sub: "S-taken", email: "taken@example.com" };
+    expect(await startProblem(testDb, who, [{ teenName: "zoe", age: 14 }], [])).toBe("taken");
+    expect(await startProblem(testDb, who, [{ teenName: "Maya", age: 14 }], [])).toBeNull();
+    // The shared login compares only with this browser's teens, never another judge's.
+    const theirs = await own("S-taken-shared", "Kim");
+    const judge = { sub: "S-taken-shared", email: SANDBOX_LOGIN.email };
+    expect(await startProblem(testDb, judge, [{ teenName: "Kim", age: 14 }], [])).toBeNull();
+    expect(await startProblem(testDb, judge, [{ teenName: "Kim", age: 14 }], [theirs.id])).toBe("taken");
   });
 });

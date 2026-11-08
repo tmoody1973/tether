@@ -26,6 +26,8 @@ const PROBLEM: Record<string, string> = {
   guardian: "Tick the box to say you're this teen's parent or guardian.",
   duplicate: "Two teens have the same name. Give each teen a different name.",
   many: "Up to 5 teens at a time.",
+  taken: "You already have a teen with one of these names. Give each teen a different name.",
+  account: "One PayPal can add up to 5 teens a day. Nothing changed. Try fewer teens, or come back tomorrow.",
   browser: "This browser started a family less than an hour ago. Log in with PayPal to open it, or try again later.",
   full: "Today's new families are used up. Try the shared demo family, or come back tomorrow.",
   fullmany: "Today's new families can't fit all your teens, so none were made. Nothing changed. Try fewer teens, or come back tomorrow.",

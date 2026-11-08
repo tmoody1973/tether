@@ -24,7 +24,7 @@ export async function POST(req: Request): Promise<Response> {
   const now = new Date();
   const who = openPaypalWho(readCookie(req, PAYPAL_WHO_COOKIE), now);
   const form = await req.formData().catch(() => null);
-  const id = form?.get("familyId"), to = form?.get("to");
+  const id = form?.get("familyId"), to = form?.get("to"), requestId = form?.get("request");
   if (!who || typeof id !== "string" || id.length > 100) return goTo(req, "/g/settings?switch=failed");
   try {
     const mine = await switchableFamilies(await getDb(), who, openBrowserFamilies(readCookie(req, BROWSER_FAMILY_COOKIE), now));
@@ -33,5 +33,7 @@ export async function POST(req: Request): Promise<Response> {
     console.error("switch: checking her teens failed", safeErrorText(err));
     return goTo(req, "/g/settings?switch=failed");
   }
-  return signIn(goTo(req, (typeof to === "string" && Object.hasOwn(TABS, to) ? TABS[to] : null) ?? TABS.home), id);
+  // A push for another teen's request (review HIGH-2): straight to that request, once she's on that teen.
+  const request = to === "request" && typeof requestId === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(requestId) ? `/g/requests/${requestId}` : null;
+  return signIn(goTo(req, request ?? (typeof to === "string" && Object.hasOwn(TABS, to) ? TABS[to] : null) ?? TABS.home), id);
 }

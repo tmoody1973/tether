@@ -97,13 +97,14 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   // Six items in the sidebar.
   await expect(nav.getByRole("link")).toHaveText([/^Home/, "Zoe's rules", "Savings", "Investing", "Activity", "Settings"]);
 
-  // The switcher: Maya's three first-run steps show while on Zoe; Escape closes it and puts focus back.
-  await expect(switchButton()).toContainText("3 waiting for your other teens");
+  // The switcher: Maya's setup steps show as setup, not as waiting (review LOW-4); Escape closes it and puts focus back.
+  await expect(switchButton()).not.toContainText("waiting");
   await switchButton().click();
   await expect(switchButton()).toHaveAttribute("aria-expanded", "true");
   const pop = switcher("side").locator(".g-switcher__pop");
   await expect(pop.locator("[aria-current=true]")).toContainText("Zoe");
-  await expect(pop.getByRole("button", { name: /^Switch to Maya/ })).toContainText("3 waiting");
+  await expect(pop.getByRole("button", { name: /^Switch to Maya/ })).toContainText("3 setup steps left");
+  await expect(pop.getByRole("button", { name: /^Switch to Maya/ })).not.toContainText("waiting");
   await page.keyboard.press("Escape");
   await expect(pop).toBeHidden();
   await expect(switchButton()).toBeFocused();
@@ -142,6 +143,7 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
 
   // Back to Zoe (from Home: Home again, with a note); Maya's ask shows on the switcher.
   await page.reload();
+  const mayaAsk = await page.getByRole("link", { name: /Maya suggests a new shop: etsy\.com/ }).getAttribute("href");
   await switchButton().click();
   await pop.getByRole("button", { name: /^Switch to Zoe/ }).click();
   await expect(page).toHaveURL(/\/g\?switched=1$/, { timeout: 60_000 });
@@ -152,6 +154,17 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   await hideDevBadge();
   await page.screenshot({ path: shots("switcher-open-desktop.png") });
   await page.keyboard.press("Escape");
+
+  // A push for Maya's ask opened while on Zoe (review HIGH-2): it says whose it is and switches straight to it.
+  await page.goto(mayaAsk!);
+  await expect(page.getByText("This is Maya's request.")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Nothing more is needed from you")).toHaveCount(0);
+  await page.getByRole("main").getByRole("button", { name: "Switch to Maya" }).click();
+  await expect(page).toHaveURL(new RegExp(`${mayaAsk}$`), { timeout: 60_000 });
+  await expect(page.getByText(/Maya suggests a new shop: etsy\.com/).first()).toBeVisible();
+  await switchButton().click();
+  await pop.getByRole("button", { name: /^Switch to Zoe/ }).click();
+  await expect(page).toHaveURL(/\/g\?switched=1$/, { timeout: 60_000 });
 
   // Settings: the full list, and adding one more teen through PayPal again.
   await nav.getByRole("link", { name: "Settings" }).click();
@@ -213,13 +226,24 @@ test("several teens: two at onboarding, the switcher with counts, same-tab switc
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: shots("settings-desktop.png"), fullPage: true });
 
-  // The teen form on a phone, two rows.
+  // The teen form on a phone, two rows. Naming a teen she already has is refused (review LOW-5), nothing is made, and
+  // what she typed comes back (LOW-6).
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/g/login/paypal?add=1");
   await page.getByRole("button", { name: "+ Add another teen" }).click();
   await page.getByLabel("Your teen's first name").fill("Ada");
-  await page.getByLabel("Teen 2's first name").fill("Ben");
+  await page.getByLabel("Ada's age").fill("14");
+  await page.getByLabel("Teen 2's first name").fill("zoe");
+  await page.getByLabel("zoe's age").fill("16");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await hideDevBadge();
   await page.screenshot({ path: shots("onboarding-two-teens-390.png"), fullPage: true });
+  await page.getByLabel("I'm Ada and zoe's parent or guardian").check();
+  await page.getByRole("button", { name: "Add to our family" }).click();
+  await expect(page).toHaveURL(/\/g\/start\/teen\?e=taken$/, { timeout: 60_000 });
+  await expect(page.getByRole("alert").filter({ hasText: "You already have a teen with one of these names" }))
+    .toHaveText("You already have a teen with one of these names. Give each teen a different name.");
+  await expect(page.getByLabel("Your teen's first name")).toHaveValue("Ada");
+  await expect(page.getByLabel("Teen 2's first name")).toHaveValue("zoe");
+  await expect(page.getByLabel("zoe's age")).toHaveValue("16");
 });

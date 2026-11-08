@@ -63,6 +63,27 @@ test("Amara's Settings offers notifications; OneSignal loads only on her page, o
   expect(os.optedIn).toBe(true);
 });
 
+// Decision 028, review LOW-2: the card moved to Settings, so Home keeps an already-on device on the family's current
+// alias without a word or a prompt (pushes for an ordinary parent now go to one alias for all her teens).
+test("Home quietly keeps a device that already has notifications on, on the current alias; never prompts", async ({ page, context }) => {
+  const sdk: string[] = [];
+  await context.route("https://cdn.onesignal.com/**", (route) => {
+    sdk.push(route.request().url());
+    return route.fulfill({ contentType: "application/javascript", body: SDK_STUB.replace("optedIn: false", "optedIn: true") });
+  });
+  let asked = 0;
+  await context.exposeFunction("__asked", () => { asked++; });
+  await context.addInitScript(() => {
+    Object.defineProperty(Notification, "permission", { get: () => "granted" });
+    Notification.requestPermission = async () => { (window as unknown as { __asked: () => void }).__asked(); return "granted"; };
+  });
+  await page.goto(`/g/enter/${E2E.guardianKey}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Zoe" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __os?: { login?: string } }).__os?.login)).toMatch(/^[0-9a-f]{64}$/);
+  await expect(page.getByRole("heading", { name: "Get a buzz when Zoe asks." })).toHaveCount(0); // no card on Home
+  expect(asked).toBe(0);
+});
+
 test("Tether's root worker hosts OneSignal, so a tapped push can navigate the open app", async ({ request }) => {
   const res = await request.get("/sw.js");
   expect(res.ok()).toBe(true);

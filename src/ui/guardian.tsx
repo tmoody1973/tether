@@ -3,6 +3,7 @@ import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { needsBadge } from "@/ui/activityWords";
 import { PaypalLoginButton } from "@/ui/PaypalLogin";
+import { FamilyProvider } from "@/ui/FamilyField";
 import { TeenSwitcherSlot } from "@/ui/TeenSwitcherSlot";
 
 // Money and Bar live in @/ui/money so client components (the assistant's answer cards) can use them too.
@@ -62,7 +63,7 @@ export function GuardianShell({ active, teenName, needs = 0, familyId, children 
           {switcher}
           <Link className="g-gear" href="/g/settings" aria-label="Settings" aria-current={active === "settings" ? "page" : undefined}>{COG}</Link>
         </div>
-        {children}
+        {familyId ? <FamilyProvider id={familyId}>{children}</FamilyProvider> : children}
       </main>
       <nav className="g-tabbar" aria-label="Main">{items(true)}</nav>
     </div>

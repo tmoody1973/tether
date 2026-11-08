@@ -16,9 +16,15 @@ function Avatar({ t }: { t: Pick<SwitcherTeen, "id" | "teenName"> }) {
   return <span className="g-avatar" style={{ background: teenColour(t.id) }} aria-hidden="true">{Array.from(t.teenName)[0]?.toUpperCase()}</span>;
 }
 
-function Count({ n }: { n: number | null }) {
-  const b = n === null ? null : needsBadge(n);
-  return b ? <span className="g-badge">{b}<span className="g-sr"> waiting</span></span> : null;
+/** Asks waiting on her: the amber badge. Setup steps still open: plain words, never "waiting" (review LOW-4). */
+function Count({ t }: { t: Pick<SwitcherTeen, "needs" | "setupLeft"> }) {
+  const b = t.needs === null ? null : needsBadge(t.needs);
+  return (
+    <>
+      {t.setupLeft > 0 && <span className="g-switcher__setup">{t.setupLeft} setup step{t.setupLeft === 1 ? "" : "s"} left</span>}
+      {b && <span className="g-badge">{b}<span className="g-sr"> waiting</span></span>}
+    </>
+  );
 }
 
 /**
@@ -56,14 +62,14 @@ export function TeenSwitcher({ teens, active }: { teens: SwitcherTeen[]; active:
             <li key={t.id}>
               {t.current ? (
                 <div className="g-switcher__row" aria-current="true">
-                  <Avatar t={t} /><span className="g-switcher__rowname">{t.teenName}</span><span className="g-switcher__now">Open now</span><Count n={t.needs} />
+                  <Avatar t={t} /><span className="g-switcher__rowname">{t.teenName}</span><span className="g-switcher__now">Open now</span><Count t={t} />
                 </div>
               ) : (
                 <form method="post" action="/g/settings/switch">
                   <input type="hidden" name="familyId" value={t.id} />
                   <input type="hidden" name="to" value={active} />
                   <button type="submit" className="g-switcher__row">
-                    <Avatar t={t} /><span className="g-switcher__rowname"><span className="g-sr">Switch to </span>{t.teenName}</span><Count n={t.needs} />
+                    <Avatar t={t} /><span className="g-switcher__rowname"><span className="g-sr">Switch to </span>{t.teenName}</span><Count t={t} />
                   </button>
                 </form>
               )}

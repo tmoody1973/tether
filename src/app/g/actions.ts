@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { guardianFamilyId } from "@/auth/guardianSession";
+import { guardianFamilyId, refuseStaleForm } from "@/auth/guardianSession";
 import { clockFor } from "@/clock/clock";
 import { getDb } from "@/db/client";
 import { ApprovalError, decideApproval } from "@/flows/approvals";
@@ -20,9 +20,11 @@ import { paymentDeps, paypalOrUnavailable } from "./flowDeps";
 
 const SIGNED_OUT = "Open your Tether link to continue.";
 
-async function guardianDeps() {
+/** The signed-in guardian, refusing a form drawn for another teen (refuseStaleForm, review HIGH-1). */
+async function guardianDeps(form: FormData) {
   const familyId = await guardianFamilyId();
   if (!familyId) return null;
+  refuseStaleForm(form, familyId);
   const db = await getDb();
   return { familyId, deps: { db, now: clockFor(db) } };
 }
@@ -33,7 +35,7 @@ export type SignState = { error?: string };
 
 /** Sign and send: validates the form, then the flow does the work (and refuses a level change without a reason). */
 export async function signGrantAction(_prev: SignState, form: FormData): Promise<SignState> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) return { error: SIGNED_OUT };
   const level = int(form.get("level"));
   const floorPct = int(form.get("floorPct"));
@@ -54,8 +56,8 @@ export async function signGrantAction(_prev: SignState, form: FormData): Promise
   redirect(`/g?signed=${version}`);
 }
 
-export async function resetTeenLinkAction(): Promise<void> {
-  const g = await guardianDeps();
+export async function resetTeenLinkAction(form: FormData): Promise<void> {
+  const g = await guardianDeps(form);
   if (!g) redirect("/g");
   await resetTeenLink(g.deps, g.familyId);
   redirect("/g/settings?link=reset");
@@ -63,7 +65,7 @@ export async function resetTeenLinkAction(): Promise<void> {
 
 /** Demo clock (D10): moves this family's "today" forward, closes ended weeks and, at a month end, runs the review. */
 export async function advanceClockAction(form: FormData): Promise<void> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) redirect("/g");
   const to = String(form.get("to") ?? "");
   if (!(ADVANCES as readonly string[]).includes(to)) redirect("/g");
@@ -72,8 +74,8 @@ export async function advanceClockAction(form: FormData): Promise<void> {
 }
 
 /** Reset demo (D11): only the shared demo family, identified by the configured demo keys; anyone else is refused. */
-export async function resetDemoAction(): Promise<void> {
-  const g = await guardianDeps();
+export async function resetDemoAction(form: FormData): Promise<void> {
+  const g = await guardianDeps(form);
   if (!g) redirect("/g");
   let needsPaypal: boolean;
   try {
@@ -92,7 +94,7 @@ export async function resetDemoAction(): Promise<void> {
  * decided or foreign request lands on the same calm "closed" page.
  */
 export async function decideRequestAction(form: FormData): Promise<void> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) redirect("/g");
   const id = String(form.get("approvalId") ?? "").slice(0, 100);
   const result = form.get("result");
@@ -111,7 +113,7 @@ export async function decideRequestAction(form: FormData): Promise<void> {
 
 /** "I've sent it": Amara moved the money herself (Venmo, PayPal or cash); Tether only records that she says so. */
 export async function confirmReleaseAction(form: FormData): Promise<void> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) redirect("/g");
   try {
     await confirmRelease(g.deps, String(form.get("releaseId") ?? "").slice(0, 100), g.familyId);
@@ -126,7 +128,7 @@ export type LevelState = { error?: string };
 
 /** Amara overrides the level. A reason is required and goes on the record; without one nothing changes. */
 export async function setLevelAction(_prev: LevelState, form: FormData): Promise<LevelState> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) return { error: SIGNED_OUT };
   const level = int(form.get("level"));
   const reason = String(form.get("reason") ?? "").trim().slice(0, 500);
@@ -143,8 +145,8 @@ export async function setLevelAction(_prev: LevelState, form: FormData): Promise
 }
 
 /** Stop Zoe's rules (after the page's confirm step). The rules stop even if PayPal won't remove the saved wallet. */
-export async function revokeAction(): Promise<void> {
-  const g = await guardianDeps();
+export async function revokeAction(form: FormData): Promise<void> {
+  const g = await guardianDeps(form);
   if (!g) redirect("/g");
   const r = await revoke({ ...g.deps, paypal: paypalOrUnavailable() }, g.familyId);
   if (r.error) console.error("revoke: PayPal delete failed", r.error);
@@ -162,7 +164,7 @@ export type ShopChangeState = { done?: string; error?: string };
 
 /** "Add a shop": Channel3 website search, counted against the family's daily cap before Channel3 is called. */
 export async function searchShopsAction(_prev: ShopSearchState, form: FormData): Promise<ShopSearchState> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) return { error: SIGNED_OUT };
   const query = String(form.get("q") ?? "").trim().slice(0, SHOP_QUERY_MAX + 1);
   try {
@@ -185,7 +187,7 @@ async function changed(db: Awaited<ReturnType<typeof getDb>>, familyId: string, 
 
 /** Add a shop after the in-page confirm. It applies right away, at any level (levels are defaults, not gates). */
 export async function addShopAction(_prev: ShopChangeState, form: FormData): Promise<ShopChangeState> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) return { error: SIGNED_OUT };
   try {
     const r = await addShop(g.deps, g.familyId, { domain: String(form.get("domain") ?? "").slice(0, 200), name: String(form.get("name") ?? "") });
@@ -200,7 +202,7 @@ export async function addShopAction(_prev: ShopChangeState, form: FormData): Pro
 
 /** Remove a shop after the in-page confirm: off every list right away, and it stays off until she adds it back. */
 export async function removeShopAction(_prev: ShopChangeState, form: FormData): Promise<ShopChangeState> {
-  const g = await guardianDeps();
+  const g = await guardianDeps(form);
   if (!g) return { error: SIGNED_OUT };
   try {
     const r = await removeShop(g.deps, g.familyId, String(form.get("merchantId") ?? "").slice(0, 100));

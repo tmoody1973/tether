@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lt, not, like, or } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, not, like, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { ARCHIVED_PREFIX, insertFamily, type Family } from "@/db/repo";
@@ -124,22 +124,47 @@ export async function startFamily(db: Db, who: PaypalIdentity, teen: TeenInput, 
   return (await startFamilies(db, who, [teen], realNow))?.[0] ?? null;
 }
 
+/** New teens one ordinary PayPal account can make in a rolling day (review LOW-3). The shared login shares one PayPal
+ * id among all judges, so it has only the site cap. */
+export const NEW_TEENS_PER_ACCOUNT_PER_DAY = 5;
+
 /**
- * One family per teen, in order (decision 028). Each counts against the daily site cap, and the cap is taken for the
- * whole list at once: if it would cut the list short, none is made (null) and nothing changes.
+ * Checks before a teen form spends its one-time ticket, so she can fix the form and try again (decision 028):
+ * "taken" when a name matches one of the teens she can already open (review LOW-5); "account" when this PayPal would
+ * pass NEW_TEENS_PER_ACCOUNT_PER_DAY. ponytail: counted, then made in a separate step, so two forms sent at the same
+ * instant can pass it together; the site cap (atomic) still holds.
+ */
+export async function startProblem(
+  db: Db, who: PaypalIdentity, teens: TeenInput[], browserFamilies: readonly string[], realNow: number = Date.now(),
+): Promise<"taken" | "account" | null> {
+  const shared = await isSharedLogin(db, who);
+  const mine = await switchableFamilies(db, { sub: who.sub, shared }, browserFamilies);
+  const names = new Set(mine.map((f) => f.teenName.toLowerCase()));
+  if (teens.some((x) => names.has(x.teenName.toLowerCase()))) return "taken";
+  if (shared) return null;
+  const [{ n }] = await db.select({ n: count() }).from(t.families)
+    .where(and(eq(t.families.paypalSub, who.sub), gt(t.families.createdAt, new Date(realNow - 86_400_000))));
+  return n + teens.length > NEW_TEENS_PER_ACCOUNT_PER_DAY ? "account" : null;
+}
+
+/**
+ * One family per teen, in order (decision 028), in one transaction (review LOW-1). Each counts against the daily site
+ * cap, taken for the whole list at once: if it would cut the list short, or anything fails, none is made (null).
  */
 export async function startFamilies(db: Db, who: PaypalIdentity, teens: TeenInput[], realNow: number = Date.now()): Promise<Family[] | null> {
-  if (!(await takePool(db, "family_start", NEW_FAMILIES_PER_DAY, realNow, teens.length))) return null;
-  const guardianName = who.givenName ?? "Parent";
-  const made: Family[] = [];
-  for (const teen of teens) {
-    made.push(await insertFamily(db, {
-      name: `${guardianName} & ${teen.teenName}`, guardianName, teenName: teen.teenName,
-      teenToken: randomBytes(24).toString("base64url"),
-      paypalSub: who.sub, paypalPayerId: who.payerId ?? null, paypalEmail: who.email ?? null, parentGivenName: who.givenName ?? null,
-    }));
-  }
-  return made;
+  return db.transaction(async (tx) => {
+    if (!(await takePool(tx, "family_start", NEW_FAMILIES_PER_DAY, realNow, teens.length))) return null;
+    const guardianName = who.givenName ?? "Parent";
+    const made: Family[] = [];
+    for (const teen of teens) {
+      made.push(await insertFamily(tx, {
+        name: `${guardianName} & ${teen.teenName}`, guardianName, teenName: teen.teenName,
+        teenToken: randomBytes(24).toString("base64url"),
+        paypalSub: who.sub, paypalPayerId: who.payerId ?? null, paypalEmail: who.email ?? null, parentGivenName: who.givenName ?? null,
+      }));
+    }
+    return made;
+  });
 }
 
 export const removalDate = (createdAt: Date): Date => new Date(createdAt.getTime() + RETIRE_AFTER_MS);
@@ -152,23 +177,30 @@ export class AccountCapError extends Error {
 /**
  * Lazily, whenever someone logs in with PayPal or starts a family: retires self-started families more than 7 days old.
  * Retired, not deleted: the journal is append-only (a database trigger refuses deletes), so money rows stay, as with a
- * demo reset (decision 014). Both links stop working, the PayPal identity and names are wiped, and the saved PayPal
+ * demo reset (decision 014). Both links stop working, the PayPal identity (except the published shared account's, see
+ * below) and names are wiped, and the saved PayPal
  * is deleted at PayPal (best effort, logged). Never touches the demo family or seeded families (no paypal_sub).
  */
 export async function retireStaleFamilies(deps: { db: Db; paypal: PaypalHttp }, realNow: number = Date.now()): Promise<number> {
   const { db } = deps;
-  const stale = await db.select({ id: t.families.id }).from(t.families).where(and(
-    isNotNull(t.families.paypalSub), isNull(t.families.demo), lt(t.families.createdAt, new Date(realNow - RETIRE_AFTER_MS))));
+  const stale = await db.select({ id: t.families.id, email: t.families.paypalEmail }).from(t.families).where(and(
+    isNotNull(t.families.paypalSub), isNull(t.families.demo), live, lt(t.families.createdAt, new Date(realNow - RETIRE_AFTER_MS))));
   // Starting cookies live 30 minutes, so a nonce older than a day can never be presented again.
   await db.delete(t.usedStartNonces).where(lt(t.usedStartNonces.usedAt, new Date(realNow - 86_400_000)));
+  const sharedEmail = SANDBOX_LOGIN.email.toLowerCase();
   let retired = 0;
-  for (const { id } of stale) {
+  for (const { id, email } of stale) {
     const gone = () => `${ARCHIVED_PREFIX}${randomBytes(24).toString("base64url")}`;
-    // The paypal_sub condition is the claim: two logins at once retire a family once.
+    // Review MEDIUM-1: a family made with the published shared sandbox account keeps that account's PayPal id and
+    // email (published test credentials, nobody's personal data), so isSharedLogin still recognises the account by
+    // its PayPal id after someone changes its email. Every other family's PayPal identity is wiped as before.
+    const keep = email?.toLowerCase() === sharedEmail;
+    // "Still live" is the claim: two logins at once retire a family once.
     const [claimed] = await db.update(t.families).set({
       guardianToken: gone(), teenToken: gone(), name: "Removed family", guardianName: "Removed", teenName: "Removed",
-      paypalSub: null, paypalPayerId: null, paypalEmail: null, parentGivenName: null,
-    }).where(and(eq(t.families.id, id), isNotNull(t.families.paypalSub))).returning({ id: t.families.id });
+      parentGivenName: null, paypalPayerId: null,
+      ...(keep ? { paypalEmail: sharedEmail } : { paypalSub: null, paypalEmail: null }),
+    }).where(and(eq(t.families.id, id), live)).returning({ id: t.families.id });
     if (!claimed) continue;
     retired++;
     const [saved] = await db.update(t.vault).set({ deletedAt: new Date(realNow) })

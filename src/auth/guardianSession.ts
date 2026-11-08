@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { GUARDIAN_COOKIE, GuardianAuthError, requireGuardian, verifyGuardianCookie } from "@/auth/guardian";
 import { getDb } from "@/db/client";
@@ -18,6 +19,15 @@ export async function requireLiveGuardian(req: Request): Promise<string> {
 export async function isLiveFamily(familyId: string): Promise<boolean> {
   const fam = await getFamily(await getDb(), familyId);
   return !!fam && !fam.guardianToken.startsWith(ARCHIVED_PREFIX);
+}
+
+/**
+ * Decision 028 (review HIGH-1): every guardian form carries the teen it was drawn for (a hidden `familyId`, from
+ * FamilyField). Switching teens in another tab changes the session, so a form left open on the old teen must not act
+ * on the new one: a missing or different id goes Home with "nothing changed". Call before changing anything.
+ */
+export function refuseStaleForm(form: FormData, familyId: string): void {
+  if (form.get("familyId") !== familyId) redirect("/g?stale=1");
 }
 
 /** For pages and server actions: the signed-in guardian's family id, or null. Reads cookies, so call it inside <Suspense>. */

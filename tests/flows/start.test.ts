@@ -34,10 +34,12 @@ const valueOf = (res: Response, name: string) => { const c = cookieOf(res, name)
 const where = (res: Response) => { const u = new URL(res.headers.get("location")!, "http://localhost"); return `${u.pathname}${u.search}`; };
 const form = (v: Record<string, string>) => { const f = new FormData(); for (const [k, x] of Object.entries(v)) f.set(k, x); return f; };
 
+let parents = 0;
 const AMARA = { sub: "S-amara", givenName: "Amara", email: "amara@example.com", payerId: "P-AMARA" };
 function post(fields: Record<string, string>, cookies: { start?: string | null; started?: string } = {}) {
   const jar: string[] = [];
-  const start = cookies.start === undefined ? sealStart(AMARA, new Date()) : cookies.start;
+  // Each post is its own parent by default: one PayPal can't have two teens with one name (028, LOW-5) or pass 5 a day.
+  const start = cookies.start === undefined ? sealStart({ ...AMARA, sub: `S-amara-${++parents}` }, new Date()) : cookies.start;
   if (start) jar.push(`${START_COOKIE}=${encodeURIComponent(start)}`);
   if (cookies.started) jar.push(`${STARTED_COOKIE}=${encodeURIComponent(cookies.started)}`);
   return create(new Request("http://localhost/g/start/teen/create", {
@@ -73,7 +75,7 @@ describe("POST /g/start/teen/create", () => {
     const f = (await repo.getFamily(testDb, familyId))!;
     expect(f).toMatchObject({
       teenName: "Zoe", guardianName: "Amara", parentGivenName: "Amara", name: "Amara & Zoe",
-      paypalSub: "S-amara", paypalEmail: "amara@example.com", paypalPayerId: "P-AMARA", demo: null, teenLinkSentAt: null,
+      paypalSub: expect.stringMatching(/^S-amara-\d+$/), paypalEmail: "amara@example.com", paypalPayerId: "P-AMARA", demo: null, teenLinkSentAt: null,
     });
     expect(f.teenToken).toMatch(/^[A-Za-z0-9_-]{32,64}$/);
     expect(await repo.getLatestGrant(testDb, familyId)).toBeNull(); // no rules until she signs (Level 1)

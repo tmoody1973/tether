@@ -70,7 +70,22 @@ function readBrowser(): Browser {
   });
 }
 
-/** Home's "get a buzz" card. `alias` is this family's opaque OneSignal external id, computed on the server. */
+/**
+ * Home, invisible (review LOW-2): where notifications are already allowed and on, keeps this device on the parent's
+ * current alias, as the card used to when it lived on Home. Never prompts; loads nothing unless permission was granted.
+ */
+export function PushAliasRefresh({ appId, alias }: { appId: string; alias: string }) {
+  const b = useSyncExternalStore(noSubscribe, readBrowser, () => null);
+  useEffect(() => {
+    if (!b?.supported || b.permission !== "granted") return;
+    loadOneSignal(appId).then(async (os) => {
+      if (os.User.PushSubscription.optedIn === true) await os.login(alias);
+    }).catch((err) => console.error("OneSignal unavailable", err));
+  }, [b, appId, alias]);
+  return null;
+}
+
+/** Settings' "get a buzz" card. `alias` is this family's opaque OneSignal external id, computed on the server. */
 export function NotifyCard({ appId, alias, teenName }: { appId: string; alias: string; teenName: string }) {
   const b = useSyncExternalStore(noSubscribe, readBrowser, () => null);
   const [permission, setPermission] = useState<NotificationPermission | null>(null); // after her tap

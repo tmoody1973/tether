@@ -1,3 +1,4 @@
+import { FamilyField } from "@/ui/FamilyField";
 import type { ReviewView } from "@/flows/month";
 import { Money } from "@/ui/guardian";
 import { PendingButton } from "@/ui/PendingButton";
@@ -19,6 +20,7 @@ export function ReleaseCard({ zoe, release, back = "activity" }: {
       <p className="g-card__sub">Send it to {zoe} yourself — Venmo, PayPal or cash — then tap below.</p>
       <div style={{ marginTop: 8 }}><Seam kinds={["release"]} /></div>
       <form action={confirmReleaseAction} style={{ marginTop: 12 }}>
+        <FamilyField />
         <input type="hidden" name="releaseId" value={release.id} />
         <input type="hidden" name="back" value={back} />
         <PendingButton label={recordPayment(zoe)} pendingLabel="Recording…" className="g-btn g-btn--block" />

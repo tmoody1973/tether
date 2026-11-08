@@ -1,3 +1,4 @@
+import { FamilyField } from "@/ui/FamilyField";
 import { Suspense } from "react";
 import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
@@ -52,6 +53,7 @@ async function SendLink() {
             <p className="g-note">Point {teen}&apos;s phone camera at this. It opens the link.</p>
           </section>
           <form action={linkSentAction}>
+            <FamilyField />
             <PendingButton label="Done" pendingLabel="Saving…" className="g-btn g-btn--block" />
           </form>
         </div>

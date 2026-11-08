@@ -1,9 +1,13 @@
+import { FamilyField } from "@/ui/FamilyField";
 import { Suspense } from "react";
 import Link from "next/link";
 import { guardianFamilyId } from "@/auth/guardianSession";
 import { now as clockNow } from "@/clock/clock";
 import { getDb } from "@/db/client";
-import { guardianHome, needsCount } from "@/flows/home";
+import { guardianHome, needsCount, requestElsewhere } from "@/flows/home";
+import { switchableFamilies } from "@/flows/start";
+import { BROWSER_FAMILY_COOKIE, PAYPAL_WHO_COOKIE, openBrowserFamilies, openPaypalWho } from "@/auth/start";
+import { cookies } from "next/headers";
 import { closedRequestView, requestView, type ClosedRequest, type RequestView } from "@/flows/request";
 import { marketFromEnv } from "@/adapters/alpaca/data";
 import { companyFacts, fundInside } from "@/adapters/financialdatasets/client";
@@ -37,12 +41,45 @@ async function Request({ params }: { params: Promise<{ id: string }> }) {
   const h = await guardianHome(db, familyId, now);
   const v = await requestView(db, familyId, id, now);
   const closed = v ? null : await closedRequestView(db, familyId, id, now);
+  const other = v || closed ? null : await otherTeensRequest(db, familyId, id);
   const zoe = h.teenName;
   return (
     <GuardianShell active="home" teenName={zoe} needs={needsCount(h)} familyId={familyId}>
       <Link className="g-back" href="/g">‹ Home</Link>
-      {v ? <Open v={v} /> : closed ? <Settled c={closed} /> : <Closed />}
+      {v ? <Open v={v} /> : closed ? <Settled c={closed} /> : other ? <OtherTeen teen={other} requestId={id} /> : <Closed />}
     </GuardianShell>
+  );
+}
+
+/**
+ * Review HIGH-2: one push alias covers all her teens, so a tap can open another teen's request. If it belongs to a teen
+ * this session may switch to (the same check as the switcher), say whose it is and offer the switch. Anyone else's
+ * stays the calm "closed" page.
+ */
+async function otherTeensRequest(db: Awaited<ReturnType<typeof getDb>>, familyId: string, requestId: string) {
+  const jar = await cookies();
+  const now = new Date();
+  const who = openPaypalWho(jar.get(PAYPAL_WHO_COOKIE)?.value, now);
+  if (!who) return null;
+  const mine = await switchableFamilies(db, who, openBrowserFamilies(jar.get(BROWSER_FAMILY_COOKIE)?.value, now));
+  if (!mine.some((f) => f.id === familyId)) return null; // signed in another way: no switching
+  return requestElsewhere(db, requestId, mine.filter((f) => f.id !== familyId));
+}
+
+function OtherTeen({ teen, requestId }: { teen: { id: string; teenName: string }; requestId: string }) {
+  return (
+    <div className="g-request">
+      <div className="g-quiet" role="status">
+        <div className="g-quiet__big">This is {teen.teenName}&apos;s request.</div>
+        <p>You&apos;re looking at another teen right now. Switch to {teen.teenName} to see it and decide.</p>
+      </div>
+      <form method="post" action="/g/settings/switch">
+        <input type="hidden" name="familyId" value={teen.id} />
+        <input type="hidden" name="to" value="request" />
+        <input type="hidden" name="request" value={requestId} />
+        <button type="submit" className="g-btn g-btn--block">Switch to {teen.teenName}</button>
+      </form>
+    </div>
   );
 }
 
@@ -177,6 +214,7 @@ function Open({ v }: { v: RequestView }) {
       </section>
 
       <form action={decideRequestAction} style={{ display: "grid", gap: 9 }}>
+        <FamilyField />
         <input type="hidden" name="approvalId" value={v.id} />
         <DecideButtons approveLabel={approveLabel(v)} />
         {v.purchase && <Seam center kinds={["sandbox"]} />}

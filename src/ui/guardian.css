@@ -70,6 +70,7 @@ button.g-switcher__row:hover { background: #F1F2F5; }
 .g-switcher__row[aria-current="true"] { background: var(--g-accent-soft); }
 .g-switcher__rowname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-switcher__now { font-size: 12.5px; color: var(--g-accent); font-weight: 700; }
+.g-switcher__setup { font-size: 12.5px; color: var(--ink-3-text); font-weight: 600; white-space: nowrap; }
 .g-app a.g-switcher__add {
   display: flex; align-items: center; min-height: 44px; padding: 6px 8px; border-top: 1px solid var(--g-line);
   color: var(--g-accent); font-weight: 700; font-size: 14.5px;

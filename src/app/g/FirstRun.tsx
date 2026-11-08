@@ -1,12 +1,13 @@
 import Link from "next/link";
 import type { FirstRunStep } from "@/flows/home";
+import { connectPaypalHref } from "@/ui/connectPaypalHref";
 import "@/ui/start.css";
 
 /**
  * Home's first-run checklist for a family started with PayPal (mockup 03a/03b), in place of "Needs you" while a step
  * is open. Only the first open step gets the filled button. New screens use the teen's name, never "her" or "his".
  */
-export function FirstRun({ steps, teen, rulesLine }: { steps: FirstRunStep[]; teen: string; rulesLine: string }) {
+export function FirstRun({ steps, teen, rulesLine, familyId }: { steps: FirstRunStep[]; teen: string; rulesLine: string; familyId: string }) {
   const done = steps.filter((s) => s.done).length;
   const next = steps.find((s) => !s.done)?.key;
   const btn = (key: FirstRunStep["key"]) => (key === next ? "g-btn g-btn--small" : "g-btn g-btn--ghost g-btn--small");
@@ -15,7 +16,7 @@ export function FirstRun({ steps, teen, rulesLine }: { steps: FirstRunStep[]; te
       title: steps[0].done ? "PayPal saved" : "Save your PayPal",
       sub: `Sandbox. Tether charges it only for purchases that pass ${teen}'s rules.`,
       // A plain <a>: this starts a PayPal redirect and must never be prefetched.
-      action: <a className={btn("paypal")} href="/g/connect-paypal">Save your PayPal</a>,
+      action: <a className={btn("paypal")} href={connectPaypalHref(familyId)}>Save your PayPal</a>,
     },
     rules: { title: `Sign ${teen}'s first rules`, sub: rulesLine, action: <Link className={btn("rules")} href="/g/rules">Sign the rules</Link> },
     link: {

@@ -1,3 +1,4 @@
+import { connectPaypalHref } from "@/ui/connectPaypalHref";
 import { Suspense } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -102,7 +103,7 @@ async function Settings({ searchParams }: { searchParams: Promise<Record<string,
               <>
                 <p style={{ marginTop: 6 }}>Not saved for {teen} yet. Tether can&apos;t pay for anything {teen} buys until it is.</p>
                 {/* A plain <a>: this starts a PayPal redirect and must never be prefetched. */}
-                <a className="g-btn g-btn--block" href="/g/connect-paypal" style={{ marginTop: 10 }}>Save your PayPal</a>
+                <a className="g-btn g-btn--block" href={connectPaypalHref(familyId)} style={{ marginTop: 10 }}>Save your PayPal</a>
               </>
             )}
             <p className="g-note" style={{ marginTop: 8 }}>Sandbox only; no real money moves.</p>
