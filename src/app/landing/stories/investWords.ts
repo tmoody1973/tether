@@ -41,4 +41,6 @@ export const INVEST = {
   owns: '0.0138 share',
   putIn: '$5.00 on 6 Nov',
   since: 'since 6 Nov 2026',
+  // Her Invest page after the buy: $41.50 saved less the $5.00
+  left: '$36.50',
 } as const

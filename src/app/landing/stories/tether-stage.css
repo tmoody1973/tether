@@ -349,3 +349,11 @@
 /* Compact: the phone fills the column, so a wide hero shadow would be clipped
    at the stage's sides into a faint box; it takes the tight ground shadow */
 .tt .ss-stage[data-layout='compact'] .tt-phone { box-shadow: var(--ss-shadow-ground); }
+
+/* A record list's filler rows: one card, rows divided by hairlines */
+.tt .g-rows { display: flex; flex-direction: column; padding-block: 4px; }
+.tt .g-rowitem { display: grid; gap: 9px; padding: 12px 0; border-bottom: 1px solid var(--tt-g-line); }
+.tt .g-rowitem:last-child { border-bottom: none; }
+
+/* A flicked page is thrown on: UIKit's deceleration, as a swipe in motion.md */
+.tt .tt-col { transition: transform 700ms cubic-bezier(0.25, 1, 0.5, 1); }

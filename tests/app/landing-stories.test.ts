@@ -67,6 +67,7 @@ describe("the investing story's words", () => {
     expect(INVEST.bought).toBe(approveWords("inv-filled", "Zoe").text);
     expect(INVEST.tooSoon).toBe(tooSoonWords(1));
     expect(INVEST.owns).toBe(youOwnWords(500 / 36186));
+    expect(INVEST.left).toBe("$36.50"); // $41.50 saved, less the $5.00
     const held = { symbol: "VTI", shares: 500 / 36186, putInCents: 500, worthCents: 500, marketCents: null, daysHeld: 1, line: null } as unknown as Holding;
     expect(INVEST.herSentence).toBe(holdingSentence(held, "guardian"));
   });

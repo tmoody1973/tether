@@ -28,7 +28,6 @@ type S = {
   looking: boolean
   shown: number
   scroll: number
-  dragging: boolean
   sheet: boolean
   asked: boolean
   note: boolean
@@ -48,7 +47,6 @@ const START: S = {
   looking: false,
   shown: 0,
   scroll: 0,
-  dragging: false,
   sheet: false,
   asked: false,
   note: false,
@@ -99,10 +97,11 @@ async function script(a: Act<S>) {
   const phone = a.rect('zoe-phone')
   const start = { x: phone.x + 13 * s + 9, y: compact ? 560 : 590 }
   await a.move(start)
-  a.put({ dragging: true })
-  await a.drag({ x: start.x - 6, y: start.y - lift }, (at, from) => a.put({ scroll: Math.max(0, (from.y - at.y) / s) }), { duration: 600 })
-  a.put({ dragging: false })
-  await a.wait(500)
+  // A flick: the finger travels a third of the way and lifts while moving; the page is thrown on
+  const flick = a.drag({ x: start.x - 4, y: start.y - lift / 3 }, undefined, { duration: 260 })
+  a.put({ scroll: lift / s })
+  await flick
+  await a.wait(800)
 
   // 3. The one over budget: the amber sheet, her numbers, two ways forward
   a.mark('sheet')
@@ -158,12 +157,16 @@ function ZoeShop({ s }: { s: S }) {
       <div className="tt-col" data-target="zoe-col" style={{ transform: `translateY(${-s.scroll}px)` }}>
         <div>
           <div className="t-eyebrow">Shop</div>
-          <p className="t-left"><b className="money">{SHOP.left}</b> left this week</p>
+          <p className="t-left">
+            <b className="money">{SHOP.left}</b> left this week
+          </p>
         </div>
         <div className="t-card t-form">
           <span className="t-label">What are you after?</span>
           <Field className="t-field" value={s.query} placeholder={SHOP.placeholder} focused={s.typing} box={{ 'data-target': 'query', 'data-cursor': 'pointer' }} />
-          <Button className="t-btn t-btn--primary" variant="primary" data-target="find">{s.looking ? 'Looking in your shops…' : 'Find options'}</Button>
+          <Button className="t-btn t-btn--primary" variant="primary" data-target="find">
+            {s.looking ? 'Looking in your shops…' : 'Find options'}
+          </Button>
           <p className="t-muted">A helper looks only in your shops and suggests two or three. It can&apos;t buy anything — your rules decide.</p>
         </div>
         <div className="t-card t-form">
@@ -178,7 +181,9 @@ function ZoeShop({ s }: { s: S }) {
         </div>
         <div className="t-results" data-target="results">
           <Collapse open={s.shown > 0}>
-            <div className="t-eyebrow" style={{ paddingBottom: 6 }}>What your rules say</div>
+            <div className="t-eyebrow" style={{ paddingBottom: 6 }}>
+              What your rules say
+            </div>
           </Collapse>
           {SHOP.cards.map((c, i) => (
             <Collapse key={c.kind} open={s.shown > i} reveal="drop">
@@ -192,7 +197,11 @@ function ZoeShop({ s }: { s: S }) {
                   <ChipIcon kind={c.kind} />
                   {c.label}
                 </span>
-                <Button className={`t-btn ${c.kind === 'over' ? 't-btn--ghost' : 't-btn--primary'}`} variant={c.kind === 'over' ? 'secondary' : 'primary'} data-target={c.kind === 'over' ? 'why' : undefined}>
+                <Button
+                  className={`t-btn ${c.kind === 'over' ? 't-btn--ghost' : 't-btn--primary'}`}
+                  variant={c.kind === 'over' ? 'secondary' : 'primary'}
+                  data-target={c.kind === 'over' ? 'why' : undefined}
+                >
                   {c.action}
                 </Button>
               </article>
@@ -214,16 +223,24 @@ function ZoeWeek({ s }: { s: S }) {
           <div className="t-hero-sub">left this week</div>
         </div>
         <div>
-          <div className="t-bar"><span style={{ width: `${(16.98 / 30) * 100}%` }} /></div>
+          <div className="t-bar">
+            <span style={{ width: `${(16.98 / 30) * 100}%` }} />
+          </div>
           <div className="t-barlabels">
-            <span>spent <span className="money">$16.98</span> of <span className="money">$30.00</span></span>
+            <span>
+              spent <span className="money">$16.98</span> of <span className="money">$30.00</span>
+            </span>
             <span>{SHOP.resets}</span>
           </div>
         </div>
         <div className="t-pill">{SHOP.level}</div>
-        <p className="t-flash" data-target="flash">{SHOP.sent}</p>
+        <p className="t-flash" data-target="flash">
+          {SHOP.sent}
+        </p>
         <section>
-          <div className="t-eyebrow" style={{ marginBottom: 6 }}>This week</div>
+          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+            This week
+          </div>
           <div className="t-card t-card--tight">
             {[
               [118, 150],
@@ -240,7 +257,9 @@ function ZoeWeek({ s }: { s: S }) {
           </div>
         </section>
         <section>
-          <div className="t-eyebrow" style={{ marginBottom: 6 }}>Your asks</div>
+          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+            Your asks
+          </div>
           <div className="t-card t-card--tight">
             <div className="t-row">
               <span className="t-row__who">
@@ -251,7 +270,9 @@ function ZoeWeek({ s }: { s: S }) {
             </div>
           </div>
         </section>
-        <Button className="t-btn t-btn--primary" variant="primary">Find something</Button>
+        <Button className="t-btn t-btn--primary" variant="primary">
+          Find something
+        </Button>
       </div>
     </div>
   )
@@ -275,10 +296,14 @@ function Sheet({ s }: { s: S }) {
         </div>
         <div className="t-card t-card--quiet">
           <p className="t-small">{SHOP.sentence}</p>
-          <p className="t-small" style={{ marginTop: 6 }}>{SHOP.numbers}</p>
+          <p className="t-small" style={{ marginTop: 6 }}>
+            {SHOP.numbers}
+          </p>
         </div>
         <div className="t-routes">
-          <Button className="t-btn t-btn--primary" variant="primary" data-target="ask">Ask Amara</Button>
+          <Button className="t-btn t-btn--primary" variant="primary" data-target="ask">
+            Ask Amara
+          </Button>
           <Button className="t-btn t-btn--ghost">{SHOP.wait}</Button>
         </div>
         {/* Her level hint sits under the crop: filler */}
@@ -304,7 +329,9 @@ function AmaraRequest({ s }: { s: S }) {
           <p>
             She has <b className="money">{SHOP.left}</b> left this week. This would use the rest and <b className="money">{SHOP.over}</b> more.
           </p>
-          <div className="g-bar"><span style={{ width: `${(13.02 / 25.3) * 100}%` }} /></div>
+          <div className="g-bar">
+            <span style={{ width: `${(13.02 / 25.3) * 100}%` }} />
+          </div>
           <div className="g-barlabels">
             <span>{SHOP.left} available</span>
             <span className="g-over">{SHOP.over} over</span>
@@ -325,7 +352,9 @@ function AmaraRequest({ s }: { s: S }) {
           </p>
         </section>
         <div className="g-decide">
-          <Button className="g-btn" variant="primary" data-target="approve">{s.approve === 'busy' ? 'Working…' : `Approve ${SHOP.focal.price}`}</Button>
+          <Button className="g-btn" variant="primary" data-target="approve">
+            {s.approve === 'busy' ? 'Working…' : `Approve ${SHOP.focal.price}`}
+          </Button>
           <Button className="g-btn g-btn--ghost">Not this time</Button>
         </div>
         <p className="g-seam">Sandbox only; no real money moves.</p>
@@ -348,7 +377,9 @@ function AmaraPaid({ s }: { s: S }) {
           <dl className="g-proofbox">
             <div>
               <dt>PayPal ID</dt>
-              <dd><code>{SHOP.paypalId}</code></dd>
+              <dd>
+                <code>{SHOP.paypalId}</code>
+              </dd>
             </div>
             <div>
               <dt>Allowed by</dt>
@@ -365,12 +396,19 @@ function AmaraPaid({ s }: { s: S }) {
           </dl>
         </section>
         {/* The record goes on with older payments: filler */}
-        <section className="g-card" style={{ display: 'grid', gap: 9 }}>
-          <div className="g-row">
-            <Bar w={52} h={9} r={4} tone={4} />
-            <Bar w={40} h={9} r={4} tone={3} />
-          </div>
-          <Bar w={150} h={7} r={3} tone={2} />
+        <section className="g-card g-rows">
+          {[
+            [52, 150],
+            [64, 176],
+          ].map(([a, b], i) => (
+            <div key={i} className="g-rowitem">
+              <div className="g-row">
+                <Bar w={a} h={9} r={4} tone={4} />
+                <Bar w={40} h={9} r={4} tone={3} />
+              </div>
+              <Bar w={b} h={7} r={3} tone={2} />
+            </div>
+          ))}
         </section>
       </div>
     </div>
@@ -378,28 +416,12 @@ function AmaraPaid({ s }: { s: S }) {
 }
 
 function TetherNote(props: { 'data-target'?: string }) {
-  return (
-    <Notification
-      {...props}
-      icon={<Image className="tt-appicon" src="/brand/tether-app-icon.svg" alt="" width={38} height={38} />}
-      title="Tether"
-      body={SHOP.request}
-    />
-  )
+  return <Notification {...props} icon={<Image className="tt-appicon" src="/brand/tether-app-icon.svg" alt="" width={38} height={38} />} title="Tether" body={SHOP.request} />
 }
 
 export default function TetherShopStory() {
   return (
-    <Stage<S>
-      width={1000}
-      height={680}
-      compact={{ below: 720, width: 358, height: 640 }}
-      initial={START}
-      poster={POSTER}
-      script={script}
-      cursor={{ at: REST, style: 'touch' }}
-      className="tt tt-shop"
-    >
+    <Stage<S> width={1000} height={680} compact={{ below: 720, width: 358, height: 640 }} initial={START} poster={POSTER} script={script} cursor={{ at: REST, style: 'touch' }} className="tt tt-shop">
       {(s, _rect, layout) => {
         const compact = layout === 'compact'
         const width = compact ? COMPACT.phone : WIDE.phone

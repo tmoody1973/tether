@@ -70,8 +70,11 @@ async function script(a: Act<S>) {
   const phone = a.rect('zoe-phone')
   const start = { x: phone.x + 13 * s + 9, y: compact ? 560 : 600 }
   await a.move(start)
-  await a.drag({ x: start.x - 6, y: start.y - lift }, (at, from) => a.put({ scroll: Math.max(0, (from.y - at.y) / s) }), { duration: 600 })
-  await a.wait(450)
+  // A flick: the finger travels a third of the way and lifts while moving; the page is thrown on
+  const flick = a.drag({ x: start.x - 4, y: start.y - lift / 3 }, undefined, { duration: 260 })
+  a.put({ scroll: lift / s })
+  await flick
+  await a.wait(750)
 
   // 2. Five dollars, shown as a slice of one share as she types
   a.mark('amount')
@@ -141,12 +144,16 @@ function FundTop({ flash }: { flash: boolean }) {
       </section>
       <section className="t-card">
         <div className="t-card__k">What&apos;s inside</div>
-        <p className="t-small" style={{ marginTop: 4 }}>Its biggest holdings, by share of the fund:</p>
+        <p className="t-small" style={{ marginTop: 4 }}>
+          Its biggest holdings, by share of the fund:
+        </p>
         <ul className="t-hl">
           {INVEST.inside.map(([name, pct]) => (
             <li key={name}>
               <span>{name}</span>
-              <span className="t-hl__bar"><i style={{ width: `${(pct / INVEST.inside[0][1]) * 100}%` }} /></span>
+              <span className="t-hl__bar">
+                <i style={{ width: `${(pct / INVEST.inside[0][1]) * 100}%` }} />
+              </span>
               <span className="t-hl__pct">{pct.toFixed(1)}%</span>
             </li>
           ))}
@@ -163,7 +170,9 @@ function ZoeFund({ s }: { s: S }) {
         <FundTop flash={false} />
         <p className="t-small">{INVEST.onList}</p>
         <div className="t-card t-form" data-target="ask-card">
-          <div className="t-label" style={{ fontSize: 16 }}>Ask yourself</div>
+          <div className="t-label" style={{ fontSize: 16 }}>
+            Ask yourself
+          </div>
           {INVEST.answers.map(([q, answer]) => (
             <div key={q} className="t-form">
               <span className="t-label">{q}</span>
@@ -176,7 +185,9 @@ function ZoeFund({ s }: { s: S }) {
             <p className="t-hint">{INVEST.shares}</p>
           </Collapse>
           <p className="t-muted">{INVEST.limits}</p>
-          <Button className="t-btn t-btn--primary" variant="primary" data-target="propose">{s.sending ? 'Sending…' : 'Propose to Amara'}</Button>
+          <Button className="t-btn t-btn--primary" variant="primary" data-target="propose">
+            {s.sending ? 'Sending…' : 'Propose to Amara'}
+          </Button>
         </div>
       </div>
     </div>
@@ -197,32 +208,45 @@ function ZoeHolding({ s }: { s: S }) {
   return (
     <div className="tt-page" data-on={s.bought || undefined}>
       <div className="tt-col">
-        <div className="t-eyebrow">Your investments</div>
-        <section className="t-card">
-          <div className="g-row">
-            <b style={{ fontSize: 17 }}>VTI</b>
-            <span className="t-muted">{INVEST.since}</span>
-          </div>
-          <div className="t-big money">
-            $5.00 <span className="ti-unit">worth today</span>
-          </div>
-          <div className="t-row ti-row">
-            <span>You own</span>
-            <b>{INVEST.owns}</b>
-          </div>
-          <div className="t-row ti-row">
-            <span>You put in</span>
-            <b>{INVEST.putIn}</b>
-          </div>
-          <p className="t-hint" style={{ marginTop: 8 }}>{INVEST.tooSoon}</p>
-          <p className="t-quote" style={{ marginTop: 10 }}>
-            Why you picked it: <i>&ldquo;{INVEST.answers[0][1]}&rdquo;</i>
+        <div>
+          <div className="t-eyebrow">Invest</div>
+          <div className="t-h2 ti-name">Search the whole market</div>
+          <p className="t-small" style={{ marginTop: 4 }}>
+            You have <b className="money">{INVEST.left}</b> available to invest. You propose, Amara decides. Tether recommends nothing.
           </p>
-        </section>
-        {/* Looking up another fund: the rest of her Invest page, as filler */}
-        <section className="t-card" style={{ display: 'grid', gap: 11 }}>
-          <Bar w={120} h={9} r={4} tone={4} />
-          <div className="t-textarea ti-search" />
+        </div>
+        <div className="t-form">
+          <span className="t-label">A fund or company</span>
+          <Field className="t-field" value="" />
+          <Button className="t-btn t-btn--ghost">Search</Button>
+        </div>
+        <section>
+          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+            Your investments
+          </div>
+          <section className="t-card">
+            <div className="g-row">
+              <b style={{ fontSize: 17 }}>VTI</b>
+              <span className="t-muted">{INVEST.since}</span>
+            </div>
+            <div className="t-big money">
+              $5.00 <span className="ti-unit">worth today</span>
+            </div>
+            <div className="t-row ti-row">
+              <span>You own</span>
+              <b>{INVEST.owns}</b>
+            </div>
+            <div className="t-row ti-row">
+              <span>You put in</span>
+              <b>{INVEST.putIn}</b>
+            </div>
+            <p className="t-hint" style={{ marginTop: 8 }}>
+              {INVEST.tooSoon}
+            </p>
+            <p className="t-quote" style={{ marginTop: 10 }}>
+              Why you picked it: <i>&ldquo;{INVEST.answers[0][1]}&rdquo;</i>
+            </p>
+          </section>
         </section>
       </div>
     </div>
@@ -262,7 +286,9 @@ function AmaraRequest({ s }: { s: S }) {
           </div>
         </section>
         <div className="g-decide">
-          <Button className="g-btn" variant="primary" data-target="approve">{s.approving ? 'Working…' : 'Approve $5.00'}</Button>
+          <Button className="g-btn" variant="primary" data-target="approve">
+            {s.approving ? 'Working…' : 'Approve $5.00'}
+          </Button>
           <Button className="g-btn g-btn--ghost">Not this time</Button>
         </div>
       </div>
@@ -285,12 +311,21 @@ function AmaraBought({ s }: { s: S }) {
           <p className="g-holdline">{INVEST.herSentence}</p>
           <p className="g-note">{INVEST.tooSoon}</p>
         </section>
-        <section className="g-card" style={{ display: 'grid', gap: 9 }}>
-          <div className="g-row">
-            <Bar w={56} h={9} r={4} tone={4} />
-            <Bar w={40} h={9} r={4} tone={3} />
-          </div>
-          <Bar w={170} h={7} r={3} tone={2} />
+        {/* The rest of her Home: this week and the record, as filler */}
+        <section className="g-card g-rows">
+          {[
+            [64, 150],
+            [52, 188],
+            [70, 132],
+          ].map(([a, b], i) => (
+            <div key={i} className="g-rowitem">
+              <div className="g-row">
+                <Bar w={a} h={9} r={4} tone={4} />
+                <Bar w={40} h={9} r={4} tone={3} />
+              </div>
+              <Bar w={b} h={7} r={3} tone={2} />
+            </div>
+          ))}
         </section>
       </div>
     </div>
@@ -316,16 +351,7 @@ function TetherNote(props: { 'data-target'?: string }) {
 
 export default function TetherInvestStory() {
   return (
-    <Stage<S>
-      width={880}
-      height={660}
-      compact={{ below: 620, width: 358, height: 640 }}
-      initial={START}
-      poster={POSTER}
-      script={script}
-      cursor={{ at: REST, style: 'touch' }}
-      className="tt tt-invest"
-    >
+    <Stage<S> width={880} height={660} compact={{ below: 620, width: 358, height: 640 }} initial={START} poster={POSTER} script={script} cursor={{ at: REST, style: 'touch' }} className="tt tt-invest">
       {(s, _rect, layout) => {
         const compact = layout === 'compact'
         const width = compact ? COMPACT.phone : WIDE.phone
