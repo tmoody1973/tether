@@ -14,9 +14,9 @@ import { StandIns } from "./landing/StandIns";
 import { Top } from "./landing/Top";
 import { TryIt } from "./landing/TryIt";
 
-const TITLE = "Tether — a parent signs the rules. An AI agent proposes. Code decides. PayPal pays.";
+const TITLE = "Tether — Let your teen shop. Keep the boundaries you agreed on.";
 const DESCRIPTION =
-  "Real spending money for a teenager online, without handing her a card. The money stays in her parent's PayPal, and plain code checks every cart against the rules the parent signed.";
+  "Your teenager shops within limits you set, using your PayPal without sharing your card or login. A parent signs the rules, an AI agent proposes, code decides, PayPal pays.";
 
 export const metadata: Metadata = {
   // Absolute share-card URLs: APP_BASE_URL where it's set; Next falls back to the Vercel production URL otherwise.
@@ -38,9 +38,10 @@ export default function Landing() {
       <main>
         <Hero links={links} />
         <Problem />
+        {/* The family's experience before the agent architecture. */}
+        <Features />
         <HowItWorks />
         <Agents />
-        <Features />
         <AiCanCant />
         <PayPal />
         <StandIns />

@@ -3,7 +3,7 @@ import type { Db } from "@/db/client";
 import * as t from "@/db/schema";
 import { purchaseTokensForFamily, receiptsForMonth } from "@/db/repo";
 import type { PaypalHttp } from "@/adapters/paypal/http";
-import { listTransactions } from "@/adapters/paypal/transactions";
+import { searchTransactions } from "@/adapters/paypal/transactions";
 
 const DAY_MS = 86_400_000;
 // ponytail: one 31-day search (Transaction Search's widest range) from the month's first slip; a month whose slips
@@ -17,11 +17,15 @@ export type ReconFlag =
   /** PayPal charged this family (custom_field = one of its tokens) but Tether holds no receipt for that capture. */
   | { kind: "paypal_only"; captureId: string; amountCents: number }
   /** A receipt whose capture PayPal's list doesn't show (yet: Transaction Search lags up to ~3 hours). */
-  | { kind: "unconfirmed"; captureId: string; amountCents: number; shop: string }
+  | { kind: "unconfirmed"; captureId: string; amountCents: number; shop: string; paidAt: Date }
   /** A receipt PayPal shows as reversed or refunded. */
   | { kind: "refunded"; captureId: string; amountCents: number; shop: string };
 
-export interface Reconciliation { receiptsChecked: number; flags: ReconFlag[] }
+export interface Reconciliation {
+  receiptsChecked: number; flags: ReconFlag[];
+  /** Real time PayPal's Transaction Search is complete up to, when PayPal said. Payments after it can't show yet. */
+  refreshedThrough?: Date;
+}
 
 export const FLAG_WORDS: Record<ReconFlag["kind"], string> = {
   paypal_only: "PayPal charged, Tether has no receipt",
@@ -75,7 +79,7 @@ export async function reconcileMonth(
   const [receipts, monthTokens] = await Promise.all([receiptsForMonth(db, familyId, month), slipsForMonth(db, familyId, month)]);
   const window = windowFor(monthTokens, receipts.length > 0, realNow);
   if (!window) return { receiptsChecked: 0, flags: [] };
-  const rows = await listTransactions(deps.paypal, window.start, window.end);
+  const { rows, refreshedThrough } = await searchTransactions(deps.paypal, window.start, window.end);
 
   const mine = new Set(monthTokens.map((tk) => tk.tokenId));
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -94,8 +98,8 @@ export async function reconcileMonth(
     ...receipts.flatMap((r): ReconFlag[] => {
       const base = { captureId: r.captureId, amountCents: r.amountCents, shop: r.shop };
       if (undone.has(r.captureId)) return [{ kind: "refunded", ...base }];
-      return byId.has(r.captureId) ? [] : [{ kind: "unconfirmed", ...base }];
+      return byId.has(r.captureId) ? [] : [{ kind: "unconfirmed", ...base, paidAt: r.paidAt }];
     }),
   ];
-  return { receiptsChecked: receipts.length, flags };
+  return refreshedThrough ? { receiptsChecked: receipts.length, flags, refreshedThrough } : { receiptsChecked: receipts.length, flags };
 }

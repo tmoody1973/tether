@@ -7,10 +7,9 @@ export function Hero({ links }: { links: DemoLinks }) {
     <section className="l-hero" aria-labelledby="pitch">
       <div className="l-wrap">
         <h1 id="pitch">
-          <span className="l-h-g">A parent signs the rules.</span> <span className="l-h-ai">An AI agent proposes.</span>{" "}
-          <span className="l-h-code">Code decides.</span> <span>PayPal pays.</span>
+          <span className="l-h-ai">Let your teen shop.</span> <span className="l-h-g">Keep the boundaries you agreed on.</span>
         </h1>
-        <p className="l-lede">Real spending money for a teenager online, without handing her a card. The money stays in her parent&apos;s PayPal.</p>
+        <p className="l-lede">Set a weekly budget and allowed shops. Your teen sees what they can spend, and you approve exceptions in one tap—without sharing your card or PayPal login.</p>
       </div>
 
       <div className="l-stage">
@@ -43,6 +42,12 @@ export function Hero({ links }: { links: DemoLinks }) {
           </span>
           Code checks every cart against her rules
         </p>
+      </div>
+
+      {/* The relationship first, the machinery later: what the family gets before how the agents work. */}
+      <div className="l-wrap l-bond">
+        <h2>Your teen gets room to act. You don&apos;t have to supervise every decision.</h2>
+        <p className="l-lede">Tether lets your teenager shop within limits you set, using your PayPal without sharing your card or login. They see what they have left. Purchases that fit your rules can go through; exceptions come to you with the budget impact clearly explained.</p>
       </div>
 
       <div className="l-wrap">

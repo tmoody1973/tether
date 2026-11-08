@@ -39,11 +39,11 @@ async function family() {
 }
 
 type Row = { transaction_id: string; transaction_amount: { value: string }; transaction_status: string; custom_field?: string; paypal_reference_id?: string; transaction_event_code?: string };
-function fakePaypal(rows: Row[]) {
+function fakePaypal(rows: Row[], refreshed?: string) {
   const f = vi.fn(async (url: string | URL | Request) => {
     const body = String(url).endsWith("/v1/oauth2/token")
       ? { access_token: "AT", expires_in: 3600 }
-      : { transaction_details: rows.map((r) => ({ transaction_info: r })), total_pages: 1 };
+      : { transaction_details: rows.map((r) => ({ transaction_info: r })), total_pages: 1, ...(refreshed ? { last_refreshed_datetime: refreshed } : {}) };
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   });
   return { paypal: paypalHttp({ baseUrl: "https://paypal.test", clientId: "c", secret: "s" }, f as unknown as typeof fetch), f };
@@ -57,6 +57,21 @@ describe("reconcileMonth (R35)", () => {
     await buy(`tok-a${n}`, 600, `CAP-A${n}`);
     const { paypal } = fakePaypal([tx(`CAP-A${n}`, "6.00", `tok-a${n}`)]);
     expect(await reconcileMonth({ db, paypal }, familyId, "2026-11", realNow)).toEqual({ receiptsChecked: 1, flags: [] });
+  });
+
+  it("keeps how far PayPal's list has caught up, and when each unconfirmed payment was really made", async () => {
+    const { familyId, buy } = await family();
+    const before = Date.now();
+    await buy(`tok-l${n}`, 500, `CAP-L${n}`);
+    const { paypal } = fakePaypal([], "2026-11-08T10:59:59Z");
+    const r = await reconcileMonth({ db, paypal }, familyId, "2026-11", realNow);
+    expect(r.refreshedThrough).toEqual(new Date("2026-11-08T10:59:59Z"));
+    const flag = r.flags[0];
+    expect(flag.kind).toBe("unconfirmed");
+    // paidAt is the receipt's wall-clock time, not the demo-clock `at` the spend was booked on
+    expect(flag.kind === "unconfirmed" && flag.paidAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    // garbled or missing: no refreshedThrough, the old wording applies
+    expect((await reconcileMonth({ db, paypal: fakePaypal([], "not a date").paypal }, familyId, "2026-11", realNow)).refreshedThrough).toBeUndefined();
   });
 
   it("reconciliation flags a PayPal transaction missing from Tether, and ignores rows with no family link", async () => {
@@ -89,7 +104,7 @@ describe("reconcileMonth (R35)", () => {
     ]);
     const r = await reconcileMonth({ db, paypal }, familyId, "2026-11", realNow);
     expect([...r.flags].sort((a, b) => a.captureId.localeCompare(b.captureId))).toEqual([
-      { kind: "unconfirmed", captureId: `CAP-D${n}`, amountCents: 600, shop: "Target" },
+      { kind: "unconfirmed", captureId: `CAP-D${n}`, amountCents: 600, shop: "Target", paidAt: expect.any(Date) },
       { kind: "refunded", captureId: `CAP-E${n}`, amountCents: 700, shop: "Target" },
       { kind: "refunded", captureId: `CAP-F${n}`, amountCents: 800, shop: "Target" },
     ]);
