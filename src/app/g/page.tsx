@@ -141,7 +141,7 @@ async function Home({ searchParams }: { searchParams: Promise<Search> }) {
 
           <section className="g-card" aria-labelledby="ask-h">
             <h2 className="g-label" id="ask-h">Ask about {zoe}&apos;s month</h2>
-            <AskBox />
+            <AskBox teen={zoe} />
           </section>
         </div>
 

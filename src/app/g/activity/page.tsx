@@ -73,7 +73,7 @@ async function Activity({ searchParams }: { searchParams: Promise<Record<string,
           {v.release && <ReleaseCard zoe={zoe} release={v.release} />}
           <section className="g-card" aria-labelledby="ask-h">
             <h2 className="g-label" id="ask-h">Ask about the month</h2>
-            <AskBox />
+            <AskBox teen={zoe} />
           </section>
           <Investments r={r} />
         </div>

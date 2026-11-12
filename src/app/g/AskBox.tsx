@@ -5,17 +5,20 @@ import { useFamilyId } from "@/ui/FamilyField";
 import type { AnswerCard } from "@/ai/answerCards";
 import { AnswerCards } from "./AnswerCards";
 
-const EXAMPLES = [
-  "What did Zoe buy this month?",
-  "Which purchases did I approve myself?",
-  "Do Tether's receipts match PayPal?",
-  "Is Zoe on track for her next level?",
-  "How are Zoe's investments doing?",
-];
+/** The example questions, in this family's teen's name (a new family's teen is not Zoe). */
+export function askExamples(teen: string): string[] {
+  return [
+    `What did ${teen} buy this month?`,
+    "Which purchases did I approve myself?",
+    "Do Tether's receipts match PayPal?",
+    `Is ${teen} on track for the next level?`,
+    `How are ${teen}'s investments doing?`,
+  ];
+}
 const CANT_SEE_NOW = "I can't see that right now.";
 
 /** D20: Amara's read-only month assistant. One box, not a chat: the answer first, then cards built from the real data (decision 019). */
-export function AskBox() {
+export function AskBox({ teen }: { teen: string }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [cards, setCards] = useState<AnswerCard[]>([]);
@@ -47,7 +50,7 @@ export function AskBox() {
   return (
     <form className="g-ask" onSubmit={(e) => { e.preventDefault(); void ask(question); }}>
       <div className="g-ask__examples" role="group" aria-label="Example questions">
-        {EXAMPLES.map((q) => <button key={q} type="button" onClick={() => void ask(q)} disabled={pending}>{q}</button>)}
+        {askExamples(teen).map((q) => <button key={q} type="button" onClick={() => void ask(q)} disabled={pending}>{q}</button>)}
       </div>
       <label className="g-def__k" htmlFor="ask-q">Your question</label>
       <div className="g-ask__row">
